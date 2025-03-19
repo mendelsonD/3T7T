@@ -1,0 +1,46 @@
+# Input:
+##### Paths, output name: ######
+#   path_IDs (str): csv with cols ID, SES 
+#       Note: 
+#        -IDs csv is to contain for all participants to use in analyses (either as part of control group or for analysis)
+
+#   name_out (str): naming convention for output folders  (note, if 3T and 7T data are to be analyzed, the output folders will be named as follows: name_out_3T, name_out_7T)
+#   path_out (str): path to desired output directory
+
+#   path_3T (list of str, length 5): paths to the following 3T directories (root, rawdata, derivatives, micapipe, hippunfold)
+#   path_7T (list of str, length 5): paths to the following 7T directories (root, rawdata, derivatives, micapipe, hippunfold)
+################################
+
+##### z-Brains specifiers: ######
+#   smooth_ctx (float) <optional, default: 10>: size (mm) of cortical smoothing kernel. 
+#   smooth_hip (float) <optional, default: 5>: size (mm) of hippocampal smoothing kernel
+#   label_ctx (str) <optional, default: white>: Cortical surfaces used in the volume to surface mapping. Options:
+#               - white         : WM surface (default)
+#               - midthickness  : Midthickness surface
+#               - pial          : Pial surface
+#               - swmD          : Superficial white matter, where D indicates the distance in millimeters. Example: --label_ctx swm2
+#   label_hip (str) <optional, default: midthickness>: Hippocampal surfaces used in the volume to surface mapping. Options:
+#               - midthickness  : Midthickness surface (default)
+#   resolution (str) <optional, default: low>: resolution argument for zBrains of data to be analyzed
+#               - low           : 5k cortical & 2mm hippocampal surfaces
+#               - high          : 32k cortical surfaces & 0p5mm hippocampal surfaces
+#               - all           : all resolutions
+################################
+
+##### ID naming patterns: ######
+#   ptrn_3T (str) <optional, default: 'HC', 'PX'> : pattern in ID identifying 3T participants
+#   ptrn_7T (str) <optional, default: 'PNC', 'PNA', 'PNE'>: pattern in ID identifying 7T participants
+#   ptrn_ctrl (str) <optional, default: 'HC', 'PNC' for 3T,7T resp.>: pattern identifying participants to build distribution from
+#   ptrn_pt (str) <optional, default: 'PX', 'PNE/'PNA' for 3T,7T resp.>: pattern identifying pts to compare indvidually against distribution
+################################
+
+# Output:
+#   zBrains analysis folders
+
+
+# Logic steps:
+# 0. Load IDs
+# 1. [Func] What IDs present: 3T, 7T, both?
+# 2. [Func] ID, SES style: prefix of 'sub-', 'ses'? If no, then add
+# 3. [Func] Seperate studies, seperate pt and ctrl within each study. Save eac list to tmp dir
+# 4. Call zBrains for each study 

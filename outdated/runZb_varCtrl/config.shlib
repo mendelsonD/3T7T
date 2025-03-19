@@ -1,0 +1,23 @@
+config_read_file() {
+    (grep -E "^${2}=" -m 1 "${1}" 2>/dev/null || echo "VAR=__UNDEFINED__") | head -n 1 | cut -d '=' -f 2-;
+} 
+# Takes two arguments, in the following order: file_name "var_name_string". 
+# Searches for "var_name_string" (represented by ${2}) in the file_name (represented by ${1}); 
+# this search looks for the first line with the var name, then extracts all values on that line past '=' character (last command in above line). 
+# If the variable is not defined, then returns "__UNDEFINED__".
+
+
+config_get() {
+    val="$(config_read_file config.cfg "${1}")";
+    if [ "${val}" = "__UNDEFINED__" -o "${val}" = "" ]; then
+        val="${2}";
+        printf "WARNING. Variable '${1}' is illdefined in config.cfg.\n\tProceeding with default value of '${val}'.\n\tCheck that config.cfg contains a line defining variable '${1}' and that its assigned value is meaningful.\n" > /dev/tty
+    fi
+    printf -- "%s" "${val}";
+} 
+# Takes two arguments, in the following order: var_name default_value. 
+# Extracts variable data by calling 'config_read_file' function (above). 
+# If value is undefined, sets value as default value & prints a warning that the default value has been used, what the default value is and to check that this variable is properly specified in the config file.
+# N.b. Assumes config file is named 'config.cfg'
+
+# Adapted from entry by 'user206610' on https://unix.stackexchange.com/questions/175648/use-config-file-for-my-shell-script#%E2%80%A6
