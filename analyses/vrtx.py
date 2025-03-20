@@ -101,6 +101,7 @@ def v_extremeValue(path_gii, threshold, output = "indices"):
 
     return out
 
+
 def adjVertices(path_surf_gii, listVertices, test = False):
     """
     Identifies sets of adjacent vertices in a list of vertices of interest.
@@ -197,3 +198,51 @@ def adjVertices(path_surf_gii, listVertices, test = False):
     # order listAdjSets by length of sets
     listAdjSets.sort(key = len, reverse = True)
     return listAdjSets
+
+
+
+def get_vrtxVals(dir_root, dir_sub, file_name, IDs, ID_col="ID", SES_col="SES"):
+    """
+    Extract vertex values from a .gii file and build into df
+
+    input:
+        dir_root (str): path to root of BIDS directory with .gii files
+        dir_sub (str): name of sub-directory within root directory that contains .gii files
+        file_name (str): name of .gii file to extract vertex values from
+        IDs (str or pd.dataframe): list of IDs and session to extract vertex values for
+        ID_col (str) <optional>: column name for participant ID in 'IDs'
+        SES_col (str) <optional>: column name for sessions in 'IDs'
+
+    return:
+        df (pd.dataframe): dataframe with vertex values for each ID. One column per ID
+    """
+    import os
+    import Utils.gen
+    import pandas as pd
+
+
+    # check that provided root dir exists
+    if not os.path.exists(dir):
+        raise ValueError("[get_vrtxVals] Provided directory does not exist: %s" %dir)
+    
+    # read in csv and check that IDs and SES are properly formatted
+    IDs = Utils.gen.fmt(IDs, [ID_col, SES_col])
+
+    # for each row in IDs, extract vertex values from .gii file
+    for i, row in IDs.iterrows():
+        ID = row[ID_col]
+        SES = row[SES_col]
+
+        # check that file exists
+        path = os.path.join(dir, ID, SES, dir file_name)
+        if not os.path.exists(path):
+            print("[get_vrtxVals] File does not exist: %s" %path)
+            continue
+
+        # load in .gii file
+        if i == 0:
+            df = pd.DataFrame(load_gifti(path, extract = "func.gii"))
+            df.columns = [ID]
+        else:
+            df[ID] = load_gifti(path, extract = "func.gii")
+    
