@@ -3,14 +3,16 @@
 # run z-score
 
 /host/verges/tank/data/daniel/z-brains/zbrains --run "all"\
-    --dataset ${dir_root}\
-    --micapipe ${dir_mp}\
-    --hippunfold ${dir_hu}\
-    --zbrains ${zb}\
-    --control_prefix ${ctrl_prefix}\
-    --smooth_ctx ${smooth_ctx}\
-    --smooth_hip ${smooth_hip}\
-    --res ${res} \
+    --dataset $1\
+    --micapipe $2\
+    --hippunfold $3\
+    --zbrains $4\
+    --control_prefix $5\
+    --demo_ref $6\
+    --demo $7\
+    --smooth_ctx $8\
+    --smooth_hip $9\
+    --res $10\
     --sub "all"\
     --ses "all"\
     --feat "all"\
@@ -21,3 +23,7 @@
 	--volumetric 0\
 	--dicoms 0\
     --pyinit=/data/mica1/03_projects/ian/anaconda3
+
+
+#    --column_map session_id=\"SES\"\
+#    --column_map subject_id=\"ID\"\
