@@ -208,7 +208,7 @@ def get_vrtxVals(dir_root, dir_sub, file_name, IDs, ID_col="ID", SES_col="SES"):
     input:
         dir_root (str): path to root of BIDS directory with .gii files
         dir_sub (str): name of sub-directory within root directory that contains .gii files
-        file_name (str): name of .gii file to extract vertex values from
+        file_name (list of str): patterns of names of .gii file to extract vertex values from
         IDs (str or pd.dataframe): list of IDs and session to extract vertex values for
         ID_col (str) <optional>: column name for participant ID in 'IDs'
         SES_col (str) <optional>: column name for sessions in 'IDs'
@@ -234,7 +234,7 @@ def get_vrtxVals(dir_root, dir_sub, file_name, IDs, ID_col="ID", SES_col="SES"):
         SES = row[SES_col]
 
         # check that file exists
-        path = os.path.join(dir, ID, SES, dir file_name)
+        path = os.path.join(dir, ID, SES, file_name)
         if not os.path.exists(path):
             print("[get_vrtxVals] File does not exist: %s" %path)
             continue
@@ -246,3 +246,47 @@ def get_vrtxVals(dir_root, dir_sub, file_name, IDs, ID_col="ID", SES_col="SES"):
         else:
             df[ID] = load_gifti(path, extract = "func.gii")
     
+def zbFilePtrn(region, hemi=["L", "R"]):
+    """
+    Return zBrains output file pattern (excluding the ID and session)
+
+    input:
+        region (dict) : with attribute 
+            'region' : name of region
+            'surfaces' : surface names
+            'resolution' : resolution
+            'features' : MRI features
+            'smoothing' : smoothing kernel size
+        hemi (list) < optional, default ['L','R'] > : hemisphere(s) of interest
+
+    return:
+        ptrn (list): zBrains output file pattern
+    """
+    ptrn_list = []
+    if region["region"] == "subcortex":
+        for feat in region["features"]:
+            ptrn =  f"feature-{feat}" + ".csv"
+            ptrn_list.append(ptrn)
+    else:
+        res = region["resolution"]
+
+        for h in hemi:
+            for surf in region["surfaces"]:
+                    for smth in region["smoothing"]:
+                        for feat in region["features"]:
+                            
+                            if region["region"] == "cortex":
+                                
+                                ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
+                                ptrn = ptrn + ".func.gii"
+                                ptrn_list.append(ptrn)
+                            
+                            elif region["region"] == "hippocampus":
+                            
+                                ptrn = "_".join([f"hemi-{h}", f"den-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
+                                ptrn = ptrn + ".func.gii"
+                                ptrn_list.append(ptrn)
+    
+    return ptrn_list
+
+#def zbFilePatternList(regions, surf)
