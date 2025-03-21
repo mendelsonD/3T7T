@@ -199,52 +199,56 @@ def adjVertices(path_surf_gii, listVertices, test = False):
     listAdjSets.sort(key = len, reverse = True)
     return listAdjSets
 
+def get_ID_SES(path):
+    """
+    From path string, extract ID and SES.
+    Assumes a path structure like: .../sub-<ID>/ses-<SES>/...
+    """
+    import re
 
+    # Regular expressions to extract ID and session
+    match = re.search(r"sub-([^/]+)/ses-([^/]+)", eg_dir)
 
-def get_vrtxVals(dir_root, dir_sub, file_name, IDs, ID_col="ID", SES_col="SES"):
+    if match:
+        ID = match.group(1)
+        SES = match.group(2)
+    else:
+        print("[extractIDses] Error: ID and SES not found in path: %s" %path)
+        print("[extractIDses] Returning NAN for ID and SES.")
+        ID = NAN
+        SES = NAN
+    
+    return [ID, SES]
+
+def get_vrtxVals(dir):
     """
     Extract vertex values from a .gii file and build into df
 
     input:
-        dir_root (str): path to root of BIDS directory with .gii files
-        dir_sub (str): name of sub-directory within root directory that contains .gii files
-        file_name (list of str): patterns of names of .gii file to extract vertex values from
-        IDs (str or pd.dataframe): list of IDs and session to extract vertex values for
-        ID_col (str) <optional>: column name for participant ID in 'IDs'
-        SES_col (str) <optional>: column name for sessions in 'IDs'
+        dir (str): path to root of BIDS directory with surf.gii files
 
     return:
-        df (pd.dataframe): dataframe with vertex values for each ID. One column per ID
+        df (pd.dataframe): dataframe with vertex values ID/SES. Colname is ID_SES
     """
     import os
     import Utils.gen
     import pandas as pd
 
-
     # check that provided root dir exists
     if not os.path.exists(dir):
         raise ValueError("[get_vrtxVals] Provided directory does not exist: %s" %dir)
     
-    # read in csv and check that IDs and SES are properly formatted
-    IDs = Utils.gen.fmt(IDs, [ID_col, SES_col])
 
-    # for each row in IDs, extract vertex values from .gii file
-    for i, row in IDs.iterrows():
-        ID = row[ID_col]
-        SES = row[SES_col]
+    values = get_giiVals(dir)
+    # search for sub- and ses- in dir, take characters between this pattern and /
+    
+    
+    ID, SES = extractIDses(dir)
+    col_name = "_".join([ID, SES])
+    df[col_name] = values
 
-        # check that file exists
-        path = os.path.join(dir, ID, SES, file_name)
-        if not os.path.exists(path):
-            print("[get_vrtxVals] File does not exist: %s" %path)
-            continue
 
-        # load in .gii file
-        if i == 0:
-            df = pd.DataFrame(load_gifti(path, extract = "func.gii"))
-            df.columns = [ID]
-        else:
-            df[ID] = load_gifti(path, extract = "func.gii")
+            
     
 def zbFilePtrn(region, hemi=["L", "R"]):
     """
