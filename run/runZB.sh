@@ -22,8 +22,5 @@
     --verbose 2\
 	--volumetric 0\
 	--dicoms 0\
-    --pyinit=/data/mica1/03_projects/ian/anaconda3
-
-
-#    --column_map session_id=\"SES\"\
-#    --column_map subject_id=\"ID\"\
+    --pyinit=/data/mica1/03_projects/ian/anaconda3 \
+    --column_map session_id=SES subject_id=ID
