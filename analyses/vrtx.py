@@ -247,8 +247,16 @@ def get_vrtxVals(dir):
     col_name = "_".join([ID, SES])
     df[col_name] = values
 
+def search_files(directory, substrings):
+    # Get the list of all files in the directory
+    import os
 
-            
+    files = os.listdir(directory)
+    
+    # Filter files based on substrings
+    matching_files = [f for f in files if any(sub in f for sub in substrings)]
+    
+    return matching_files         
     
 def zbFilePtrn(region, hemi=["L", "R"]):
     """
@@ -280,7 +288,8 @@ def zbFilePtrn(region, hemi=["L", "R"]):
                         for feat in region["features"]:
                             
                             if region["region"] == "cortex":
-                                
+                                dir = "/".join([region["region"]])
+                                files = search_files()
                                 ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
                                 ptrn = ptrn + ".func.gii"
                                 ptrn_list.append(ptrn)

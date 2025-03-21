@@ -3,6 +3,10 @@ def runZBrain(study, zb_dir, ctx, hip, res, demo_ref, demo, score = "z", dir_sof
     Call zBrains software.
     Supports z-score (default) or w-scores. 
     For w-score, requires path to csv with participant_id, session_id, age, sex columns.
+
+    run_arg <optional> : arguments to send to zBrains software. Default is "proc analysis". Options
+        "proc" : for post-processing only
+        "analysis" : for analysis only
     """
     
     import subprocess
