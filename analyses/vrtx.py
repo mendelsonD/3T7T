@@ -33,7 +33,11 @@ def load_gifti(path_gii, extract = "vertices"):
     """
 
     import nibabel as nib
-    
+    import os
+    # check that file exists
+    if not os.path.exists(path_gii):
+        print("[load_gifti] WARNING. Provided file does not exist: %s" %path_gii)
+        return None
     gii = nib.load(path_gii)
 
     if path_gii.endswith(".func.gii"):
@@ -239,13 +243,14 @@ def get_vrtxVals(dir):
         raise ValueError("[get_vrtxVals] Provided directory does not exist: %s" %dir)
     
 
-    values = get_giiVals(dir)
+    values = load_gifti(dir)
     # search for sub- and ses- in dir, take characters between this pattern and /
     
     
     ID, SES = extractIDses(dir)
     col_name = "_".join([ID, SES])
     df[col_name] = values
+
 
 def search_files(directory, substrings):
     # Get the list of all files in the directory
@@ -275,6 +280,7 @@ def zbFilePtrn(region, hemi=["L", "R"]):
         ptrn (list): zBrains output file pattern
     """
     ptrn_list = []
+
     if region["region"] == "subcortex":
         for feat in region["features"]:
             ptrn =  f"feature-{feat}" + ".csv"
@@ -288,18 +294,15 @@ def zbFilePtrn(region, hemi=["L", "R"]):
                         for feat in region["features"]:
                             
                             if region["region"] == "cortex":
-                                dir = "/".join([region["region"]])
-                                files = search_files()
+
                                 ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
                                 ptrn = ptrn + ".func.gii"
                                 ptrn_list.append(ptrn)
                             
                             elif region["region"] == "hippocampus":
-                            
+                                
                                 ptrn = "_".join([f"hemi-{h}", f"den-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
                                 ptrn = ptrn + ".func.gii"
                                 ptrn_list.append(ptrn)
     
     return ptrn_list
-
-#def zbFilePatternList(regions, surf)
