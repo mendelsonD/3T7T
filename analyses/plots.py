@@ -1,5 +1,74 @@
 # functions to create stacked histograms
 
+def corresp_paths(regions, MICs, PNI, output_dir, values_dir):
+    """
+    Return array length num studies by num of files.
+
+    Input:
+        regions: list of dictionaries, each dictionary contains the region name and the path to the region's data   
+        MICs: dictionary with the name of the MICs data and the path to the MICs data
+        PNI: dictionary with the name of the PNI data and the path to the PNI data 
+    """
+    import os
+    import numpy as np
+    from vrtx import zbFilePtrn
+
+    arr = []
+
+    for region in regions:
+    
+        region_name = region["region"]
+        
+        mics_name = MICs["name"]
+        pni_name = PNI["name"]
+
+        mics_path = "/".join([output_dir, values_dir, mics_name, region_name])
+        pni_path = "/".join([output_dir, values_dir, pni_name, region_name])
+
+        ptrn_lst = zbFilePtrn(region, extension=".csv")
+        
+        for ptrn in ptrn_lst:
+            # define file path
+            mics_file = mics_path + "/" + MICs["name"] + "_" + ptrn
+            pni_file = pni_path + "/" + PNI["name"] + "_" + ptrn
+            #print(mics_file)
+            #print(pni_file)
+
+            arr.append([mics_file, pni_file])
+    
+    return arr
+
+def get_missingPths(paths):
+    """
+    Check what paths in a list are missing.
+
+    Input:
+        paths: list of lists, each list contains the paths to the MICs and PNI files for a region
+    
+    Return:
+        missing: list of lists, each list contains the paths to the MICs and PNI files that are missing
+    """
+    import os
+
+    missing = []
+
+    for path in paths:
+        path_0_missing = not os.path.exists(path[0])
+        path_1_missing = not os.path.exists(path[1])
+
+        if path_0_missing or path_1_missing:
+            if path_0_missing and not path_1_missing:
+                print(f"[missingPth] Path in index 0 is missing:\n\t{path[0]}")
+                missing.append([path[0]])  # Store as list for consistency
+            elif path_1_missing and not path_0_missing:
+                print(f"[missingPth] Path in index 1 is missing:\n\t{path[1]}")
+                missing.append([path[1]])
+            else:
+                print(f"[missingPth] Paths for both studies are missing:\n\t{path[0]}\n\t{path[1]}")
+                missing.append(path)  # Store both missing paths
+
+    return missing
+
 def histStack(df):
     """
     Return a stacked histogram of the data in the input dataframe.
@@ -9,7 +78,7 @@ def histStack(df):
             e.g.: each column is a single participant; or each column is a different smoothing kernel in same participant; or each column is a different image resoltuion
     
     return:
-        fig: plotly figure object, a 3D stacked histogram of the input data
+        fig: plostly figure object, a 3D stacked histogram of the input data
 
     """
     
@@ -140,3 +209,35 @@ def ridge(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2.5), Xlab="zScore"
         plt.savefig(save_path, bbox_inches='tight', dpi=300)  # Save the plot if save_path is provided
     else:
         plt.show()  # Display the plot if save_path is not provided
+
+
+def group_hist(files, labels, bounds=[-3,3]):
+    """
+    Plot histogram from paths provided in list of files.
+
+    Input:
+        files (list) : list of paths to csv files
+        labels (list) : list of labels for each file, to be present on plot
+        bounds (list) <optional, default [-3,3]>: list of bounds for x-axis
+    Return:
+        fig (plotly figure) : plotly figure object of histogram
+    """
+
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    df_0 = pd.read_csv(files[0])
+    df_1 = pd.read_csv(files[1])
+
+    df_0 = df_0.values.flatten()
+    df_1 = df_1.values.flatten()
+
+    # Plot histograms
+    plt.figure(figsize=(10, 6))
+    plt.hist(df_0, bins=5000, alpha=0.5, label=labels[0], color='blue', density=True)
+    plt.hist(df_1, bins=5000, alpha=0.5, label=labels[1], color='red', density=True)
+    plt.xlim(bounds[0], bounds[1])
+    # Labels and legend
+    plt.xlabel('zScore')
+    plt.legend()
+    plt.show()
