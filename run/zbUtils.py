@@ -1,4 +1,4 @@
-def runZBrain(study, zb_dir, ctx, hip, res, demo_ref, demo, score = "z", dir_software="/host/verges/tank/data/daniel/z-brains/zbrains"):
+def runZBrain(study, zb_dir, ctx, hip, res, demo_ref, demo, score = "z", run_arg="proc analysis",dir_software="/host/verges/tank/data/daniel/z-brains/zbrains"):
     """
     Call zBrains software.
     Supports z-score (default) or w-scores. 
