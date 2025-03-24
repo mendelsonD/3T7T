@@ -263,7 +263,7 @@ def search_files(directory, substrings):
     
     return matching_files         
     
-def zbFilePtrn(region, hemi=["L", "R"]):
+def zbFilePtrn(region, analysis="regional",extension=".func.gii", hemi=["L", "R"]):
     """
     Return zBrains output file pattern (excluding the ID and session)
 
@@ -274,6 +274,8 @@ def zbFilePtrn(region, hemi=["L", "R"]):
             'resolution' : resolution
             'features' : MRI features
             'smoothing' : smoothing kernel size
+        extension (str) < optional, default ".func.gii" > : file extension
+        analysis (str) < optional, default "regional" > : type of analysis. Options "regional", "asymmetry"
         hemi (list) < optional, default ['L','R'] > : hemisphere(s) of interest
 
     return:
@@ -283,7 +285,7 @@ def zbFilePtrn(region, hemi=["L", "R"]):
 
     if region["region"] == "subcortex":
         for feat in region["features"]:
-            ptrn =  f"feature-{feat}" + ".csv"
+            ptrn =  f"feature-{feat}" + f"analysis-{analysis}" + ".csv"
             ptrn_list.append(ptrn)
     else:
         res = region["resolution"]
@@ -295,14 +297,14 @@ def zbFilePtrn(region, hemi=["L", "R"]):
                             
                             if region["region"] == "cortex":
 
-                                ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
-                                ptrn = ptrn + ".func.gii"
+                                ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm", f"analysis-{analysis}"])
+                                ptrn = ptrn + extension
                                 ptrn_list.append(ptrn)
                             
                             elif region["region"] == "hippocampus":
                                 
-                                ptrn = "_".join([f"hemi-{h}", f"den-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
-                                ptrn = ptrn + ".func.gii"
+                                ptrn = "_".join([f"hemi-{h}", f"den-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm", f"analysis-{analysis}"])
+                                ptrn = ptrn + extension
                                 ptrn_list.append(ptrn)
     
     return ptrn_list
