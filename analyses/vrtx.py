@@ -211,7 +211,7 @@ def get_ID_SES(path):
     import re
 
     # Regular expressions to extract ID and session
-    match = re.search(r"sub-([^/]+)/ses-([^/]+)", eg_dir)
+    match = re.search(r"sub-([^/]+)/ses-([^/]+)", path)
 
     if match:
         ID = match.group(1)
