@@ -341,8 +341,10 @@ def summaryStats(pth):
     out["mean"] = df_flat.mean()
     out["std"] = df_flat.std()
     out["mdn"] = np.median(df_flat)
+    out["1perc"] = np.quantile(df_flat, 0.01)
     out["25perc"] = np.quantile(df_flat, 0.25)
     out["75perc"] = np.quantile(df_flat, 0.75)
+    out["99perc"] = np.quantile(df_flat, 0.99)
     out["max"] = df_flat.max()
     out["min"] = df_flat.min()
     
@@ -350,6 +352,28 @@ def summaryStats(pth):
     out["mode"] = mode_vals.iloc[0] if not mode_vals.empty else None
 
     return out
+
+def clamp(pth, bound=10):
+    """
+    Clamp values in a dataframe to a range of -3 to 3
+
+    Input:
+        pth (str): path to csv file with aggregated z-scores
+        method <optional, default 10,-10>: value to clamp values to
+    Output:
+        df (pd.DataFrame): dataframe with clamped values
+    """
+    from Utils import gen as gen
+    import pandas as pd
+    
+    df = gen.read(pth)
+    # make all values numeric
+    df = df.apply(pd.to_numeric, errors='coerce')
+
+    #print(type(bound))
+    df_clamped = df.clip(lower=-bound, upper=bound)
+
+    return df_clamped
 
 def get_study(pth):
     """

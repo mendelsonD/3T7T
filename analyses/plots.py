@@ -38,36 +38,6 @@ def corresp_paths(regions, MICs, PNI, output_dir, values_dir):
     
     return arr
 
-def get_missingPths(paths):
-    """
-    Check what paths in a list are missing.
-
-    Input:
-        paths: list of lists, each list contains the paths to the MICs and PNI files for a region
-    
-    Return:
-        missing: list of lists, each list contains the paths to the MICs and PNI files that are missing
-    """
-    import os
-
-    missing = []
-
-    for path in paths:
-        path_0_missing = not os.path.exists(path[0])
-        path_1_missing = not os.path.exists(path[1])
-
-        if path_0_missing or path_1_missing:
-            if path_0_missing and not path_1_missing:
-                print(f"[missingPth] Path in index 0 is missing:\n\t{path[0]}")
-                missing.append([path[0]])  # Store as list for consistency
-            elif path_1_missing and not path_0_missing:
-                print(f"[missingPth] Path in index 1 is missing:\n\t{path[1]}")
-                missing.append([path[1]])
-            else:
-                print(f"[missingPth] Paths for both studies are missing:\n\t{path[0]}\n\t{path[1]}")
-                missing.append(path)  # Store both missing paths
-
-    return missing
 
 def histStack(df):
     """
@@ -211,13 +181,16 @@ def ridge(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2.5), Xlab="zScore"
         plt.show()  # Display the plot if save_path is not provided
 
 
-def group_hist(files, labels, bounds=[-3,3]):
+def group_hist(df_pths, labels, bounds=[-10,10], save_path=None):
     """
     Plot histogram from paths provided in list of files.
 
     Input:
-        files (list) : list of paths to csv files
-        labels (list) : list of labels for each file, to be present on plot
+        df_pths (list of str) : list of path to csv file (by convention MICs)
+        labels (list): list of strings with format:
+            [0]: Title of histogram
+            [1]: df1 name
+            [2]: df2 name
         bounds (list) <optional, default [-3,3]>: list of bounds for x-axis
     Return:
         fig (plotly figure) : plotly figure object of histogram
@@ -226,18 +199,28 @@ def group_hist(files, labels, bounds=[-3,3]):
     import pandas as pd
     import matplotlib.pyplot as plt
 
-    df_0 = pd.read_csv(files[0])
-    df_1 = pd.read_csv(files[1])
+    df_0 = pd.read_csv(df_pths[0])
+    df_1 = pd.read_csv(df_pths[1])
 
     df_0 = df_0.values.flatten()
     df_1 = df_1.values.flatten()
 
     # Plot histograms
     plt.figure(figsize=(10, 6))
-    plt.hist(df_0, bins=5000, alpha=0.5, label=labels[0], color='blue', density=True)
-    plt.hist(df_1, bins=5000, alpha=0.5, label=labels[1], color='red', density=True)
+    plt.hist(df_0, bins=500, alpha=0.5, label=labels[1], color='blue', density=True)
+    plt.hist(df_1, bins=500, alpha=0.5, label=labels[2], color='red', density=True)
     plt.xlim(bounds[0], bounds[1])
+    plt.ylim(0,.4)
+    plt.yticks()
+    plt.xticks([-10, -5, -2, 0, 2, 5, 10])
     # Labels and legend
-    plt.xlabel('zScore')
+    plt.title(labels[0])
+    plt.xlabel('z-Score')
     plt.legend()
-    plt.show()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+        print(f"[grpHist] Saved: {save_path}")
+    else:
+        plt.show()
