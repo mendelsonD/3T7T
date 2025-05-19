@@ -33,7 +33,11 @@ def load_gifti(path_gii, extract = "vertices"):
     """
 
     import nibabel as nib
-    
+    import os
+    # check that file exists
+    if not os.path.exists(path_gii):
+        print("[load_gifti] WARNING. Provided file does not exist: %s" %path_gii)
+        return None
     gii = nib.load(path_gii)
 
     if path_gii.endswith(".func.gii"):
@@ -207,7 +211,7 @@ def get_ID_SES(path):
     import re
 
     # Regular expressions to extract ID and session
-    match = re.search(r"sub-([^/]+)/ses-([^/]+)", eg_dir)
+    match = re.search(r"sub-([^/]+)/ses-([^/]+)", path)
 
     if match:
         ID = match.group(1)
@@ -239,7 +243,7 @@ def get_vrtxVals(dir):
         raise ValueError("[get_vrtxVals] Provided directory does not exist: %s" %dir)
     
 
-    values = get_giiVals(dir)
+    values = load_gifti(dir)
     # search for sub- and ses- in dir, take characters between this pattern and /
     
     
@@ -248,9 +252,18 @@ def get_vrtxVals(dir):
     df[col_name] = values
 
 
-            
+def search_files(directory, substrings):
+    # Get the list of all files in the directory
+    import os
+
+    files = os.listdir(directory)
     
-def zbFilePtrn(region, hemi=["L", "R"]):
+    # Filter files based on substrings
+    matching_files = [f for f in files if any(sub in f for sub in substrings)]
+    
+    return matching_files         
+    
+def zbFilePtrn(region, analysis="regional",extension=".func.gii", hemi=["L", "R"]):
     """
     Return zBrains output file pattern (excluding the ID and session)
 
@@ -261,15 +274,19 @@ def zbFilePtrn(region, hemi=["L", "R"]):
             'resolution' : resolution
             'features' : MRI features
             'smoothing' : smoothing kernel size
+        extension (str) < optional, default ".func.gii" > : file extension
+        analysis (str) < optional, default "regional" > : type of analysis. Options "regional", "asymmetry"
         hemi (list) < optional, default ['L','R'] > : hemisphere(s) of interest
 
     return:
         ptrn (list): zBrains output file pattern
     """
     ptrn_list = []
+
     if region["region"] == "subcortex":
+        #print("[zbFilePtrn] Subcortex")
         for feat in region["features"]:
-            ptrn =  f"feature-{feat}" + ".csv"
+            ptrn =  f"feature-{feat}_analysis-{analysis}.csv"
             ptrn_list.append(ptrn)
     else:
         res = region["resolution"]
@@ -280,17 +297,98 @@ def zbFilePtrn(region, hemi=["L", "R"]):
                         for feat in region["features"]:
                             
                             if region["region"] == "cortex":
-                                
-                                ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
-                                ptrn = ptrn + ".func.gii"
+
+                                ptrn = "_".join([f"hemi-{h}",f"surf-fsLR-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm", f"analysis-{analysis}"])
+                                ptrn = ptrn + extension
                                 ptrn_list.append(ptrn)
                             
                             elif region["region"] == "hippocampus":
-                            
-                                ptrn = "_".join([f"hemi-{h}", f"den-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm"])
-                                ptrn = ptrn + ".func.gii"
+                                
+                                ptrn = "_".join([f"hemi-{h}", f"den-{res}", f"label-{surf}", f"feature-{feat}", f"smooth-{str(smth)}mm", f"analysis-{analysis}"])
+                                ptrn = ptrn + extension
                                 ptrn_list.append(ptrn)
     
     return ptrn_list
 
-#def zbFilePatternList(regions, surf)
+
+def summaryStats(pth):
+    """
+    Return summary stats of an aggregated z-score file
+
+    Input:
+        pth (str): path to csv file with aggregated z-scores
+    Output:
+        df (pd.DataFrame): dataframe with summary stats
+
+
+    Note: Assumes NaN is only in columns that are fully NaN
+    """
+
+    import pandas as pd
+    import numpy as np
+
+    df = pd.read_csv(pth, index_col=False)
+    out = get_pathInfo(pth)
+    
+    out["n_rows"] = len(df)
+    out["n_cols_all"] = len(df.columns)
+    out["n_cols_NA"] = df.isna().any().sum()
+
+    df = df.dropna(axis=1, how='all') # drop na
+
+    df_flat = df.values.flatten() # drop columns with all NaNs
+
+    out["mean"] = df_flat.mean()
+    out["std"] = df_flat.std()
+    out["mdn"] = np.median(df_flat)
+    out["25perc"] = np.quantile(df_flat, 0.25)
+    out["75perc"] = np.quantile(df_flat, 0.75)
+    out["max"] = df_flat.max()
+    out["min"] = df_flat.min()
+    
+    mode_vals = pd.Series(df_flat).mode()  # Use pd.Series for mode calculation
+    out["mode"] = mode_vals.iloc[0] if not mode_vals.empty else None
+
+    return out
+
+def get_study(pth):
+    """
+    Return the study name from the path
+    """
+    import os
+
+    path = os.getcwd()
+    study = os.path.basename(path).split('/')[-1]
+
+    return study
+
+def get_pathInfo(pth):
+    """
+    From path, extract the following info: 
+        Study
+        Hemi
+        Smooth
+        Feature
+        Resolution
+        Label
+        Analysis
+    """
+    import os
+    import pandas as pd
+
+    base = os.path.basename(pth)
+    base = base.split('.')[0]
+    base_parts = base.split('_')
+
+    # Create a DataFrame with one row of data
+    out = pd.DataFrame({
+        "study": [base_parts[0]],
+        "hemi": [base_parts[1].split('-')[-1]],
+        "surf": [base_parts[2].split('-')[-1]],
+        "label": [base_parts[3].split('-')[-1]],
+        "feat": [base_parts[4].split('-')[-1]],
+        "smooth": [base_parts[5].split('-')[-1]],
+        "analysis": [base_parts[6].split('-')[-1]],
+    })
+
+    return out
