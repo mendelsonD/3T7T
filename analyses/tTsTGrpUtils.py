@@ -669,7 +669,7 @@ def print_dict(dict, df_print=False):
         print(f"  Keys: {list(d.keys())}")
 
         for k, v in d.items():
-            if isinstance(v, pd.DataFrame):
+            if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
                 print(f"  {k}: <DataFrame shape={v.shape}>")
                 if df_print == True: print(f"  {k}: {v}")
             else:
@@ -717,6 +717,41 @@ def find_paired_TLE_index(maps, idx):
             return j
     return None  # Not found
 
+
+def ipsi_contra(df, hemi_ipsi='L'):
+    """
+    Given a dictionary item, with vertex-wise dataframes, relabel columns to ipsi and contra. Put ipsi before contra in the output and rename the column names accordingly.
+
+    Input: 
+        df: vertex-wise dataframe with vertex in columns, pts in rows. 
+        hemi_ipsi: what side is ipsi ('L' or 'R'). <default is 'L'>.
+
+    Returns:
+        df: vertex-wise dataframe with columns renamed to ipsi and contra, and ipsi columns placed before contra columns.
+        hemi_ipsi: string indicating which hemisphere is ipsi ('L' or 'R').
+    """
+
+    if hemi_ipsi == "L":
+        
+        # should rename all columns with '_L' to '_ipsi' and '_R' to '_contra'
+        df.columns = [col.replace('_L', '_ipsi').replace('_R', '_contra') for col in df.columns]
+    
+    elif hemi_ipsi == "R":
+        
+        # should rename all columns with '_L' to '_contra' and '_R' to '_ipsi'
+        df.columns = [col.replace('_L', '_contra').replace('_R', '_ipsi') for col in df.columns]
+    
+    else:
+        raise ValueError("Invalid hemi_ipsi value. Choose 'L' or 'R'.")
+    
+    # Identify columns
+    ipsi_cols = [col for col in df.columns if '_ipsi' in col]
+    contra_cols = [col for col in df.columns if '_contra' in col]
+    other_cols = [col for col in df.columns if col not in ipsi_cols + contra_cols]
+    # Reorder: other columns first, then ipsi, then contra
+    df_ic = df[other_cols + ipsi_cols + contra_cols]
+
+    return df_ic, hemi_ipsi
 
 def ctrl_index(maps, comp_idx, ctrl_code='ctrl'):
     """
