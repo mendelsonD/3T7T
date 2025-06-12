@@ -652,28 +652,44 @@ def get_finalSES(dl, demo, save_pth=None, long=False, silent=True):
     return out
 
 # support print functions
-def print_dict(dict, df_print=False):
+def print_dict(dict, df_print=False, idx=None):
     """
     Print the contents of a dictionary with DataFrames in a readable format.
     Input:
         List of dict items.
         df_print: if True, prints DataFrame contents; if False, only print the shape of the DF keys
-
+        df_idx: if provided, only print the items at these indices in the dict list.
     Output:
         Prints the keys and values of each dictionary item.
     """
     import pandas as pd
-    print(f"\n dict: ({len(dict)} items):")
-    for i, d in enumerate(dict):
-        print(f"\nItem {i}:")
-        print(f"  Keys: {list(d.keys())}")
+    
+    if idx is not None:
+        print(f"\n Printing the following {len(idx)} indices: {idx}")
+        for i in idx:
+            d = dict[i]
+            print(f"\n[{i}]")
+            print(f"\tKeys: {list(d.keys())}")
+            for k, v in d.items():
+                if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
+                    print(f"\t{k}: <DataFrame shape={v.shape}>")
+                    if df_print: print(f"\t{k}: {v}")
+                else:
+                    print(f"\t{k}: {v}")
+        return
+    else:
+        print(f"\n Dict list length ({len(dict)} items)")
+        for i, item in enumerate(dict):
+            d = item
+            print(f"\n[{i}]")
+            print(f"\tKeys: {list(d.keys())}")
 
-        for k, v in d.items():
-            if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
-                print(f"  {k}: <DataFrame shape={v.shape}>")
-                if df_print == True: print(f"  {k}: {v}")
-            else:
-                print(f" {k}: {v}")
+            for k, v in d.items():
+                if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
+                    print(f"\t{k}: <DataFrame shape={v.shape}>")
+                    if df_print == True: print(f"\t{k}: {v}")
+                else:
+                    print(f"\t{k}: {v}")
 
 def print_grpDF(dict, grp, study, hipp=False, df="pth"):
     # hipp option: only print items where 'hippocampal'==True
@@ -695,63 +711,6 @@ def print_grpDF(dict, grp, study, hipp=False, df="pth"):
                 for k in df_keys:
                     print(item[k])
             break
-
-def find_paired_TLE_index(maps, idx):
-    """
-    Given the index of a TLE_L or TLE_R item in maps, find the index of the paired item
-    (same study, label, feature, but opposite group).
-    """
-    item = maps[idx]
-    grp = item['grp']
-    if grp not in ['TLE_L', 'TLE_R']:
-        raise ValueError("Item at idx is not TLE_L or TLE_R")
-    paired_grp = 'TLE_R' if grp == 'TLE_L' else 'TLE_L'
-    for j, other in enumerate(maps):
-        if (
-            j != idx and
-            other['study'] == item['study'] and
-            other['grp'] == paired_grp and
-            other['label'] == item['label'] and
-            other['feature'] == item['feature']
-        ):
-            return j
-    return None  # Not found
-
-
-def ipsi_contra(df, hemi_ipsi='L'):
-    """
-    Given a dictionary item, with vertex-wise dataframes, relabel columns to ipsi and contra. Put ipsi before contra in the output and rename the column names accordingly.
-
-    Input: 
-        df: vertex-wise dataframe with vertex in columns, pts in rows. 
-        hemi_ipsi: what side is ipsi ('L' or 'R'). <default is 'L'>.
-
-    Returns:
-        df: vertex-wise dataframe with columns renamed to ipsi and contra, and ipsi columns placed before contra columns.
-        hemi_ipsi: string indicating which hemisphere is ipsi ('L' or 'R').
-    """
-
-    if hemi_ipsi == "L":
-        
-        # should rename all columns with '_L' to '_ipsi' and '_R' to '_contra'
-        df.columns = [col.replace('_L', '_ipsi').replace('_R', '_contra') for col in df.columns]
-    
-    elif hemi_ipsi == "R":
-        
-        # should rename all columns with '_L' to '_contra' and '_R' to '_ipsi'
-        df.columns = [col.replace('_L', '_contra').replace('_R', '_ipsi') for col in df.columns]
-    
-    else:
-        raise ValueError("Invalid hemi_ipsi value. Choose 'L' or 'R'.")
-    
-    # Identify columns
-    ipsi_cols = [col for col in df.columns if '_ipsi' in col]
-    contra_cols = [col for col in df.columns if '_contra' in col]
-    other_cols = [col for col in df.columns if col not in ipsi_cols + contra_cols]
-    # Reorder: other columns first, then ipsi, then contra
-    df_ic = df[other_cols + ipsi_cols + contra_cols]
-
-    return df_ic, hemi_ipsi
 
 def ctrl_index(maps, comp_idx, ctrl_code='ctrl'):
     """
@@ -787,6 +746,90 @@ def ctrl_index(maps, comp_idx, ctrl_code='ctrl'):
             return i
     return None  # Not found
 
+def find_paired_TLE_index(dl, idx, mtch=['study','label']):
+    """
+    Given the index of a TLE_L or TLE_R item in dict, find the index of the paired item
+    (same study, label, feature, but opposite group).
+
+    Input:
+        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature'
+        idx: index of the item to find the pair for
+        mtch: list of keys to match on. NOTE: the key 'grp' is always matched on.
+    """
+    item = dl[idx]
+    grp = item['grp']
+    if grp not in ['TLE_L', 'TLE_R']:
+        raise ValueError("Item at idx is not TLE_L or TLE_R")
+    paired_grp = 'TLE_R' if grp == 'TLE_L' else 'TLE_L'
+    
+    for j, other in enumerate(dl):
+        if j != idx and other['grp'] == paired_grp:
+            match = True
+            for key in mtch:
+                if other.get(key) != item.get(key):
+                    match = False
+                    break
+            if match:
+                return j
+    return None  # Not found
+
+def get_pair(dl, idx, mtch=['study', 'grp', 'label']):
+    """
+    Get corresponding idx for item in dictionary list.
+
+    Input:
+        dl: list of dictionary items with keys found in mtch
+        idx: index of the item to find the pair for
+        mtch: list of keys to match on.
+    """
+
+    item = dl[idx]
+    for j, other in enumerate(dl):
+        if j != idx:
+            match = True
+            for key in mtch:
+                if other.get(key) != item.get(key):
+                    match = False
+                    break
+            if match:
+                return j
+    return None  # Not found
+
+def ipsi_contra(df, hemi_ipsi='L', rename_cols = True):
+    """
+    Given a dictionary item, with vertex-wise dataframes, relabel columns to ipsi and contra. Put ipsi before contra in the output and rename the column names accordingly.
+
+    Input: 
+        df: vertex-wise dataframe with vertex in columns, pts in rows. 
+        hemi_ipsi: what side is ipsi ('L' or 'R'). <default is 'L'>.
+
+    Returns:
+        df: vertex-wise dataframe with columns renamed to ipsi and contra, and ipsi columns placed before contra columns.
+        hemi_ipsi: string indicating which hemisphere is ipsi ('L' or 'R').
+    """
+    df = df.copy()  # Avoid modifying the original dataframe
+    if hemi_ipsi == "L":
+        if rename_cols:
+            # should rename all columns with '_L' to '_ipsi' and '_R' to '_contra'
+            df.columns = [col.replace('_L', '_ipsi').replace('_R', '_contra') for col in df.columns]
+    
+    elif hemi_ipsi == "R":
+        if rename_cols:
+            # should rename all columns with '_L' to '_contra' and '_R' to '_ipsi'
+            df.columns = [col.replace('_L', '_contra').replace('_R', '_ipsi') for col in df.columns]
+    
+    else:
+        raise ValueError("Invalid hemi_ipsi value. Choose 'L' or 'R'.")
+    
+    # Identify columns
+    ipsi_cols = [col for col in df.columns if '_ipsi' in col]
+    contra_cols = [col for col in df.columns if '_contra' in col]
+    other_cols = [col for col in df.columns if col not in ipsi_cols + contra_cols]
+    # Reorder: other columns first, then ipsi, then contra
+    df_ic = df[other_cols + ipsi_cols + contra_cols]
+
+    return df_ic, hemi_ipsi
+
 def get_z(x, col_ctrl):
     """
     Calculate z-scores for a given value in a DataFrame, using the control group as the reference.
@@ -804,3 +847,157 @@ def get_z(x, col_ctrl):
     ctrl_std = col_ctrl.std()
     
     return (x - ctrl_mean) / ctrl_std
+
+######################### VISUALIZATION FUNCTIONS #########################
+
+def visMean(dl, df_name='df_z_mean', indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
+    """
+    Create brain figures from a list of dictionary items with vertex-wise dataframes.
+    Input:
+        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', 'df_z_mean'
+        df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
+        indices: list of indices to visualize. If None, visualize all items in the list.
+        ipsiTo: hemisphere to use for ipsilateral visualization ('L' or 'R').
+    """
+    from IPython.display import display
+
+    for i, item in enumerate(dl):
+        print(f"[visMean] [{i}] ({item.get('study','')} {item.get('grp','')} {item.get('label','')})")
+        
+        if indices is not None and i not in indices:
+            continue
+        if df_name not in item:
+            print(f"[visMean] WARNING: {df_name} not found in item {i}. Skipping.")
+            continue
+        df = item[df_name]
+        #print(f"\tdf of interest: {df.shape}")
+
+        # remove SES or ID columns if they exist
+        df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
+        #print(f"\tdf after removing ID/SES: {df.shape}")
+        
+        # surface from size of df
+        if item['grp'].endswith('_ic'):
+            if ipsiTo == "L":
+                lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+                rh_cols = [col for col in df.columns if col.endswith('_contra')]
+            else:
+                # if ipsiTo is not L, then assume it is R
+                lh_cols = [col for col in df.columns if col.endswith('_contra')]
+                rh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+        else:
+            #print(df.columns)
+            lh_cols = [col for col in df.columns if col.endswith('_L')]
+            rh_cols = [col for col in df.columns if col.endswith('_R')]
+        #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
+        assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
+        if len(lh_cols) == 32492:
+            surface = 'fsLR-32k'
+        else: 
+            surface = 'fsLR-5k'
+
+        lh = df[lh_cols]
+        rh = df[rh_cols]
+        #print(f"\tL: {lh.shape}, R: {rh.shape}")
+        fig = showBrains(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
+        display(fig)
+
+def showBrains(lh, rh, surface='fsLR-5k', ipsiTo=None, title=None, min=-2.5, max=2.5, inflated=True, save_name=None, save_pth=None, cmap="seismic"):
+    """
+    Returns brain figures
+
+    inputs:
+        lh: column with values for left hemisphere surface (each row represents a vertex and is properly indexed) 
+        rh: column right hemisphere surface (each row represents a vertex and is properly indexed) 
+        surface: surface type (default is 'fsLR-5k')
+        inflated: whether to use inflated surfaces (default is False)
+        title: title for the plot (default is None)
+        save_name: name to save the figure (default is None)
+        save_pth: path to save the figure (default is None)
+
+    """    
+    
+    import os
+    import glob
+    import numpy as np
+    import nibabel as nib
+    import seaborn as sns
+    from brainspace.plotting import plot_hemispheres
+    from brainspace.mesh.mesh_io import read_surface
+    from brainspace.datasets import load_conte69
+    import datetime
+
+    micapipe=os.popen("echo $MICAPIPE").read()[:-1]
+    
+    # set wd to save_pth
+    if save_pth is not None:
+        if not os.path.exists(save_pth):
+            os.makedirs(save_pth)
+        os.chdir(save_pth)
+
+    if surface == 'fsLR-5k':
+        if inflated == True:
+            # Load fsLR 5k inflated
+            surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.inflated.surf.gii', itype='gii')
+            surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.inflated.surf.gii', itype='gii')
+        else:
+            # Load Load fsLR 5k
+            surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.surf.gii', itype='gii')
+            surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.surf.gii', itype='gii')
+    elif surface == 'fsLR-32k':
+        if inflated == True:
+            # Load fsLR 32k inflated
+            surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.inflated.surf.gii', itype='gii')
+            surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.inflated.surf.gii', itype='gii')
+        else:
+            # Load fsLR 32k
+            surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.surf.gii', itype='gii')
+            surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.surf.gii', itype='gii')
+    else:
+        raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
+
+    #print(f"L: {lh.shape}, R: {rh.shape}")
+    data = np.hstack(np.concatenate([lh, rh], axis=0))
+    #print(data.shape)
+
+    lbl_text = {'top': title}
+    
+    if ipsiTo is not None and ipsiTo == "L":
+        lbl_text = {
+            'left': 'ipsi',
+            'right': 'contra'
+        }    
+    elif ipsiTo is not None and ipsiTo == "R":
+        lbl_text = {
+            'left': 'contra',
+            'right': 'ipsi'
+        }
+    else:
+        lbl_text = {
+            'left': 'L',
+            'right': 'R'
+        }
+
+    # Ensure all values are strings (robust against accidental lists/arrays)
+    lbl_text = {k: str(v) for k, v in lbl_text.items()}
+
+    date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
+    filename = f"{save_name}_{surface}_{date}.png" if save_name and save_pth else None
+    
+    # Plot the surface with a title
+    if filename : 
+        print(f"[showBrains] Plot saved to {filename}")
+        return plot_hemispheres(
+                surf_lh, surf_rh, array_name=data, 
+                size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
+                nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+                screenshot=True, filename=filename,
+                #, label_text = lbl_text
+            )
+    else:
+        return plot_hemispheres(
+                surf_lh, surf_rh, array_name=data, 
+                size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
+                nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+                #, label_text = lbl_text
+            )
