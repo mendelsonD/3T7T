@@ -451,7 +451,7 @@ def clean_pths(dl, method="newest", silent=True):
     return dl_out
 
 
-def ses_clean(df, ID_col, method="newest", silent=True):
+def ses_clean(df_in, ID_col, method="newest", silent=True):
     """
     Choose the session to use for each subject.
         If subject has multiple sessions with map path should only be using one of these sessions.
@@ -470,50 +470,39 @@ def ses_clean(df, ID_col, method="newest", silent=True):
     import datetime
 
     # check if the dataframe is empty
-    if df.empty:
+    if df_in.empty:
         print(f"[ses_clean] WARNING: Empty dataframe. Skipping.")
         return
 
     if not silent: print(f"[ses_clean] Choosing session according to method: {method}")
     
-    
-    df = df.copy()  # Avoid modifying the original dataframe
-
-    # remove rows whose path col is empty or starts with "ERROR:"
-    path_cols = [col for col in df.columns if col.startswith('pth_') or col.startswith('surf_') or col.startswith('map_')]
-    df_clean = df.dropna(subset=path_cols, how='all')  # Keep rows where at least one path column is not NaN
-    df_clean = df_clean[~df_clean[path_cols].apply(lambda x: x.str.startswith("ERROR:")).any(axis=1)]  # Remove rows where any path column starts with "ERROR:"
-    if df_clean.empty:
-        if not silent:
-            print(f"[ses_clean] WARNING: All rows removed due to empty or ERROR paths. Returning empty dataframe.")
-        return pd.DataFrame()
-    
     # Find repeated IDs (i.e., subjects with multiple sessions)
-    repeated_ids = df_clean[df_clean.duplicated(subset=ID_col, keep=False)][ID_col].unique()
+    # sort df by ID_col
+    df = df_in.sort_values(by=[ID_col]).copy()
+    repeated_ids = df[df.duplicated(subset=ID_col, keep=False)][ID_col].unique()
     
     if not silent:
-        if len(repeated_ids) > 0:
-            print(f"\tIDs with multiple sessions: {repeated_ids}")
-        else:
+        if len(repeated_ids) == 0:
             print(f"\tNo repeated IDs found")
 
     rows_to_remove = []
     
     # Convert 'Date' column to datetime for comparison
-    df_clean['Date_dt'] = pd.to_datetime(df_clean['Date'], format='%d.%m.%Y', errors='coerce')
+    df['Date_dt'] = pd.to_datetime(df['Date'], format='%d.%m.%Y', errors='coerce')
     today = pd.to_datetime('today').normalize()
 
     if len(repeated_ids) > 0:
+        if not silent: print(f"\t{len(repeated_ids)} IDs with multiple sessions found. Processing...")
         if method == "newest":
             for id in repeated_ids:
-                sub_df = df_clean[df_clean[ID_col] == id]
+                sub_df = df[df[ID_col] == id]
                 if sub_df.shape[0] > 1:
                     idx_to_keep = sub_df['Date_dt'].idxmax()
                     idx_to_remove = sub_df.index.difference([idx_to_keep])
                     rows_to_remove.extend(idx_to_remove)
         elif method == "oldest":
             for id in repeated_ids:
-                sub_df = df_clean[df_clean[ID_col] == id]
+                sub_df = df[df[ID_col] == id]
                 if sub_df.shape[0] > 1:
                     idx_to_keep = sub_df['Date_dt'].idxmin()
                     idx_to_remove = sub_df.index.difference([idx_to_keep])
@@ -521,25 +510,25 @@ def ses_clean(df, ID_col, method="newest", silent=True):
         else:
             # Assume method is a session code (e.g., '01', 'a1', etc)
             for id in repeated_ids:
-                sub_df = df_clean[df_clean[ID_col] == id]
+                sub_df = df[df[ID_col] == id]
                 if sub_df.shape[0] > 1:
                     idx_to_remove = sub_df[sub_df['SES'] != method].index
                     rows_to_remove.extend(idx_to_remove)
 
     # Remove the rows marked for removal
-    df_clean = df_clean.drop(rows_to_remove)
+    df = df.drop(rows_to_remove)
     #if not silent: print(df_clean[[ID_col, 'SES']].sort_values(by=ID_col))
 
     # if num rows =/= to num unique IDs then write warning
-    if df_clean.shape[0] != df_clean[ID_col].nunique():
-        print(f"[ses_clean] WARNING: Number of rows ({df_clean.shape[0]}) not equal to num unique IDs ({df_clean[ID_col].nunique()})")
-        print(f"\tMultiple sessions for IDs: {df_clean[df_clean.duplicated(subset=ID_col, keep=False)][ID_col].unique()}")
+    if df.shape[0] != df[ID_col].nunique():
+        print(f"[ses_clean] WARNING: Number of rows ({df.shape[0]}) not equal to num unique IDs ({df[ID_col].nunique()})")
+        print(f"\tMultiple sessions for IDs: {df[df.duplicated(subset=ID_col, keep=False)][ID_col].unique()}")
 
     if not silent: 
-        print(f"\t{df.shape[0] - df_clean.shape[0]} rows removed, Change in unique IDs: {df_clean[ID_col].nunique() - df[ID_col].nunique()}")
-        print(f"\t{df_clean.shape[0]} rows remaining")
+        print(f"\t{df_in.shape[0] - df.shape[0]} rows removed, Change in unique IDs: {df_in[ID_col].nunique() - df[ID_col].nunique()}")
+        print(f"\t{df.shape[0]} rows remaining")
 
-    return df_clean
+    return df
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
     """
@@ -848,7 +837,252 @@ def get_z(x, col_ctrl):
     
     return (x - ctrl_mean) / ctrl_std
 
+def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
+    """
+    Take df with columns '{idx}_{hemi}' and rename to just contain an index. By convention, L hemi then R hemi. 
+    ipsiTo provides correspondence between ipsi suffix and hemisphere. ipsiTo also indicates if the columns are ipsi/contra flipped.
+
+    Input:
+        df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
+            Number of columns per hemisphere should be 32492 for fsLR-32k
+        n_vertices: number of vertices per hemisphere (default is 32492 for fsLR-32k)
+        ipsiTo: if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
+    """
+      
+    new_cols = []
+    for col in df.columns:
+        if ipsiTo is not None:
+            if col.endswith('_ipsi'):
+                idx = int(col.replace('_ipsi', ''))
+                if ipsiTo == 'L':
+                    new_cols.append(idx)
+                elif ipsiTo == 'R':
+                    new_cols.append(idx + n_vertices)
+            elif col.endswith('_contra'):
+                idx = int(col.replace('_contra', ''))
+                if ipsiTo == 'L':
+                    new_cols.append(idx + n_vertices)
+                elif ipsiTo == 'R':
+                    new_cols.append(idx)
+        
+        else: # columns are in the format '{idx}_L' and '{idx}_R'
+            if col.endswith('_L'):
+                idx = int(col.replace('_L', ''))
+                new_cols.append(idx)
+            elif col.endswith('_R'):
+                idx = int(col.replace('_R', '')) + n_vertices
+                new_cols.append(idx)
+            else:
+                new_cols.append(col)  # keep as is if not a vertex column
+    
+    # Create a mapping of old to new columns
+    col_map = dict(zip(df.columns, new_cols))
+    
+    # Sort column
+    sorted_cols = sorted([c for c in new_cols if isinstance(c, int)]) + [c for c in new_cols if not isinstance(c, int)]
+    
+    # Reindex dataframe columns
+    df_renamed = df.rename(columns=col_map)
+    df_renamed = df_renamed[sorted_cols]
+    return df_renamed
+
+def apply_glasser(df, ipsiTo=None, labelType='glasser_int'):
+    """
+    Input:
+        df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
+            Number of columns per hemisphere should be 32492 for fsLR-32k
+        labelType: final label to return. options:
+            - 'glasser_int': integer [0:360] indicating glasser region
+            - 'glasser_str': string with glasser region name
+            - 'glasser_long': string with long glasser region name (e.g. 'V1d', 'V1v', etc)
+            - 'lobe': string with lobe name (e.g. 'frontal', 'parietal', etc)
+    Returns:
+        df_glasser: mean values per region for the glasser atlas.
+       
+    """
+    import pandas as pd
+
+    glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+    df_relbl = relabel_vertex_cols(df, ipsiTo) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
+    
+    df_relbl.columns = glasser_df['glasser'].values[df_relbl.columns.astype(int)]
+
+    if labelType != 'glasser_int':
+        glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser_details.csv")
+        if labelType == 'glasser_str':
+            gd_col  = 'RegionName'
+        elif labelType == 'glasser_long':
+            gd_col = 'regionLongName'
+        elif labelType == 'lobe':
+            gd_col = 'Lobe'
+        elif labelType == 'cortex':
+            gd_col = 'cortex'
+        elif labelType == 'LobeLong':
+            gd_col = 'LobeLong'
+        elif labelType == 'Lobe_hemi':
+            gd_col = 'Lobe_hemi'
+    
+        df_relbl.columns = df_relbl.columns.map(
+            lambda x: glasser_details.loc[glasser_details['regionID'] == x, gd_col].values[0]
+            if x in glasser_details['regionID'].values else x
+        )
+
+    return df_relbl
+            
+
+def glasser_mean(df_glasserLbl):
+    """
+    Calculate the mean values per region for the glasser atlas.
+    Input:
+        glasser_df: vertex-wise dataframe with vertex in columns, pts in rows.
+
+    Returns:
+        df_glasser_mean: dataframe with mean values per region for the glasser atlas.    
+    """
+    df_glasser_mean = df_glasserLbl.groupby(df_glasserLbl.columns, axis=1).mean().reset_index(drop=True)
+
+
+
 ######################### VISUALIZATION FUNCTIONS #########################
+
+def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
+    """
+    Given a dict item and a list of dicts, return a list of indices in dictlist
+    where all mtch keys match the values in item.
+
+    Args:
+        item (dict): The reference dictionary.
+        dictlist (list): List of dictionaries to search.
+        mtch (list): List of keys to match on.
+
+    Returns:
+        list: List of indices in dictlist where all mtch keys match item.
+    """
+    matched_indices = []
+    for i, d in enumerate(dictlist):
+        if all(item.get(key) == d.get(key) for key in mtch):
+            matched_indices.append(i)
+    return matched_indices
+
+def h_bar(item, df_name, ipsiTo=None, title=False):
+    """
+    Plot horizontal bar chart showing mean statistic by parcellated region.
+
+    Input:
+        item: dictionary item containing 'grp', 'label', 'study', and DataFrame with parcellated regions.
+        df_name: name of the DataFrame key in item to use for plotting.
+        ipsiTo: hemisphere to use for ipsi/contra labeling ('L' or 'R'). If None, uses both hemispheres.
+        title: if True, adds a title to the plot.
+
+    Output:
+        figure object
+    """
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import numpy as np
+
+    # Use correct DataFrame
+    df = item.get(df_name, None)
+    if df is None or df.empty:
+        print(f"[h_bar] WARNING: No data found for {df_name} in item {item['label']}. Skipping horizontal bar chart.")
+        return
+
+    grp = item['grp']
+    lbl = item['label']
+    study = item.get('study', "comp")
+
+    # Prepare data
+    df_long = df.melt(var_name='Parcel', value_name='MeanZ')
+    df_long['Hemisphere'] = df_long['Parcel'].apply(lambda x: 'L' if str(x).endswith('_left') else ('R' if str(x).endswith('_right') else ''))
+    df_long['Lobe'] = df_long['Parcel'].apply(lambda x: str(x).split('_')[0] if '_' in str(x) else str(x))
+
+    # Split into L and R
+    df_L = df_long[df_long['Hemisphere'] == 'L'].copy()
+    df_R = df_long[df_long['Hemisphere'] == 'R'].copy()
+    df_L['Lobe_clean'] = df_L['Parcel'].str.replace('_left$', '', regex=True)
+    df_R['Lobe_clean'] = df_R['Parcel'].str.replace('_right$', '', regex=True)
+    df_merged = pd.merge(df_L, df_R, on='Lobe_clean', suffixes=('_L', '_R'))
+    df_merged['absmax'] = df_merged[['MeanZ_L', 'MeanZ_R']].abs().max(axis=1)
+    df_merged = df_merged.sort_values('absmax', ascending=True).reset_index(drop=True)
+    y_pos = np.arange(len(df_merged))
+
+    # Find the largest absolute value for xlim and color scaling
+    max_abs = np.nanmax(df_merged[['MeanZ_L', 'MeanZ_R']].abs().values)
+    if max_abs == 0 or np.isnan(max_abs):
+        max_abs = 1
+
+    norm = plt.Normalize(-max_abs, max_abs)
+    cmap = plt.cm.seismic
+    colors_L = ['#fca9a9' if v > 0 else '#a9c6fc' for v in df_merged['MeanZ_L']]
+    colors_R = ['#fca9a9' if v > 0 else '#a9c6fc' for v in df_merged['MeanZ_R']]
+
+    fig, ax = plt.subplots(figsize=(13, max(6, int(len(df_merged)/2.5))))
+
+    # Plot L as negative, R as positive
+    bars_L = ax.barh(
+        y=y_pos,
+        width=-abs(df_merged['MeanZ_L']),
+        color=colors_L,
+        edgecolor='k',
+        align='center',
+        label='Left'
+    )
+    bars_R = ax.barh(
+        y=y_pos,
+        width=abs(df_merged['MeanZ_R']),
+        color=colors_R,
+        edgecolor='k',
+        align='center',
+        label='Right'
+    )
+
+    # Annotate bars: label inside, value outside with color
+    for bar, label, val in zip(bars_L, df_merged['Lobe_clean'], df_merged['MeanZ_L']):
+        xpos_label = bar.get_x() + bar.get_width() / 2
+        ax.text(xpos_label, bar.get_y() + bar.get_height()/2, f"L {label.upper()}",
+                va='center', ha='center', color='black', fontsize=14)
+        xpos_val = bar.get_x() + bar.get_width() - 0.02 * max_abs
+        ax.text(xpos_val, bar.get_y() + bar.get_height()/2, f"{val:.2f}",
+                va='center', ha='right', color='black', fontsize=14, fontweight='bold')
+
+    for bar, label, val in zip(bars_R, df_merged['Lobe_clean'], df_merged['MeanZ_R']):
+        xpos_label = bar.get_x() + bar.get_width() / 2
+        ax.text(xpos_label, bar.get_y() + bar.get_height()/2, f"R {label.upper()}",
+                va='center', ha='center', color='black', fontsize=14)
+        xpos_val = bar.get_x() + bar.get_width() + 0.02 * max_abs
+        ax.text(xpos_val, bar.get_y() + bar.get_height()/2, f"{val:.2f}",
+                va='center', ha='left', color='black', fontsize=14, fontweight='bold')
+    
+    ax.set_yticks([])
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.grid(False)
+    ax.axvline(0, color='k', linewidth=1)
+    # Set x-axis to -max_abs to +max_abs
+    ax.set_xlim(-max_abs * 1.1, max_abs * 1.1)
+    xticks = np.linspace(-max_abs, max_abs, num=5)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([f"{abs(x):.1f}" if x != 0 else "0" for x in xticks], fontsize=16)
+    # Label axis as absolute value
+    if study != "comp":
+        ax.set_xlabel('mean z-score', fontsize=16)
+    elif study == "comp":
+        ax.set_xlabel('z dif (7T-3T/3T)', fontsize=16)
+    if title:
+        ax.set_title(f'$\mathbf{{[{study}]\, {grp}\, {lbl}\ mean\ z}}$', fontsize=20)
+
+    # Annotate hemispheres
+    mid_y = len(y_pos) // 2
+    fig.tight_layout()
+    ax.annotate("L", xy=(ax.get_xlim()[0], mid_y), xytext=(ax.get_xlim()[0] - 0.05*max_abs, mid_y),
+                 ha='left', va='center', fontsize=22, fontweight='bold', color='black')
+    ax.annotate("R", xy=(ax.get_xlim()[1], mid_y), xytext=(ax.get_xlim()[1] + 0.05*max_abs, mid_y),
+                 ha='right', va='center', fontsize=22, fontweight='bold', color='black')
+
+    ax.legend(loc='lower right')
+    # Do not show the plot, just return the figure object
+    return fig
 
 def visMean(dl, df_name='df_z_mean', indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
     """
@@ -900,9 +1134,64 @@ def visMean(dl, df_name='df_z_mean', indices=None, ipsiTo="L", title=None, save_
         rh = df[rh_cols]
         #print(f"\tL: {lh.shape}, R: {rh.shape}")
         fig = showBrains(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
-        display(fig)
 
-def showBrains(lh, rh, surface='fsLR-5k', ipsiTo=None, title=None, min=-2.5, max=2.5, inflated=True, save_name=None, save_pth=None, cmap="seismic"):
+        return fig
+
+def itmToVisual(item, df_name='df_z_mean', metric_lbl = None, ipsiTo=None, save_name=None, save_pth=None, title=None, max_val=2):
+    """
+    Convert a dictionary item to format to visualize.
+    
+    Input:
+        dict: dictionary item with keys 'study', 'grp', 'label', 'feature', 'df_z_mean'
+        df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
+        ipsiTo: only define if TLE_ic: hemisphere to use for ipsilateral visualization ('L' or 'R').
+        save_name: name to save the figure (default is None)
+        save_pth: path to save the figure (default is None)
+        title: title for the plot (default is None)
+        max_val: maximum value for the color scale (default is 2)
+    Output:
+        fig: figure object for visualization
+    """
+
+    df = item[df_name]
+    #print(f"\tdf of interest: {df.shape}")
+
+    # remove SES or ID columns if they exist
+    df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
+    #print(f"\tdf after removing ID/SES: {df.shape}")
+    
+    if item['grp'].endswith('_ic'):
+        if ipsiTo == "L":
+            lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+            rh_cols = [col for col in df.columns if col.endswith('_contra')]
+        else:
+            # if ipsiTo is not L, then assume it is R
+            lh_cols = [col for col in df.columns if col.endswith('_contra')]
+            rh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+    else:
+        #print(df.columns)
+        lh_cols = [col for col in df.columns if col.endswith('_L')]
+        rh_cols = [col for col in df.columns if col.endswith('_R')]
+    
+    #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
+    assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
+    
+    if len(lh_cols) == 32492:
+        surface = 'fsLR-32k'
+    else: 
+        surface = 'fsLR-5k'
+
+    lh = df[lh_cols]
+    rh = df[rh_cols]
+    #print(f"\tL: {lh.shape}, R: {rh.shape}")
+
+    title = title or f"{item.get('study', '3T-7T comp')} {item['grp']} {item['label']}"
+
+    fig = showBrains(lh, rh, surface, metric_lbl = metric_lbl, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_pth, title=title, min=-max_val, max=max_val, inflated=True)
+
+    return fig
+
+def showBrains(lh, rh, surface='fsLR-5k', metric_lbl=None, ipsiTo=None, title=None, min=-2.5, max=2.5, inflated=True, save_name=None, save_pth=None, cmap="seismic"):
     """
     Returns brain figures
 
@@ -995,9 +1284,100 @@ def showBrains(lh, rh, surface='fsLR-5k', ipsiTo=None, title=None, min=-2.5, max
                 #, label_text = lbl_text
             )
     else:
-        return plot_hemispheres(
-                surf_lh, surf_rh, array_name=data, 
-                size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
-                nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
-                #, label_text = lbl_text
-            )
+        fig = plot_hemispheres(
+            surf_lh, surf_rh, array_name=data, 
+            size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
+            nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+            #, label_text = lbl_text
+        )
+
+    return fig
+
+def vis_item(item, save_pth=None):
+    """ 
+    Visualize outputs of an item.
+        [1] hippocampal map - folded and unfolded < TO COME >
+        [2] mean z-score (or z-score difference if item is 3T-7T comparison)
+        [3] bar graph: mean z-score by lobe
+
+    Input:
+        item: dictionary item with keys:
+            grp
+            df_{stat}
+            df_{stat}_glasser_{labelType}
+        save_pth: path to save the figure, if None, will not save
+    Output:
+        figure object with all three figures
+    """
+    import datetime
+    from IPython.display import Image
+    from PIL import Image as PILImage
+    import io
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if item['grp'] == 'TLE_ic':
+        ipsiTo= "L"
+    else:
+        ipsiTo = None
+    study = item.get('study', 'comp')
+
+    if study == "comp":
+        title = f"7T-3T comparison: {item['grp']} ({item['label']})\nz difference (7T-3T / 3T)"
+        df_crtx_plt = "df_z_dif"
+        df_barplot = "df_zDifMean_glsr_Lobe_hemi"
+        metric_lbl = "mean z-score difference (7T-3T/3T)"
+        if ipsiTo is not None:
+            title += f"\n(ipsi to {ipsiTo} hemi)"
+        if save_pth is not None: 
+            save_name = f"{save_pth}/crtxParc_3T7T_{item['grp']}_{item['label']}_zDif"
+    else:
+        title = f"{study} {item['grp']} ({item['label']})\nz mean (compared to ctrls)"
+        df_crtx_plt = "df_z_mean"
+        df_barplot = "df_zmean_glsr_Lobe_hemi"
+        metric_lbl = "mean z"
+        if ipsiTo is not None:
+            title += f"\n(ipsi to {ipsiTo} hemi)"
+        if save_pth is not None: 
+            save_name = f"{save_pth}/crtxParc_{study}_{item['grp']}_{item['label']}_zMean"
+
+    # hippocampus visual -- TO COME
+
+    # Cortex visual
+    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric_lbl = metric_lbl, ipsiTo=ipsiTo)
+    #print(type(crtx_img))
+    img_bytes = crtx_img.data  # This is the raw PNG bytes
+    img = PILImage.open(io.BytesIO(img_bytes))
+    img_arr = np.array(img)
+
+    # --- Barplot as image ---
+    barplot_fig = h_bar(item, df_name=df_barplot, ipsiTo=ipsiTo)
+    buf = io.BytesIO()
+    barplot_fig.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    bar_img = PILImage.open(buf)
+    bar_img_arr = np.array(bar_img)
+
+    # Now, create a new matplotlib figure and add both the image and your other figure
+    fig, axs = plt.subplots(2, 1, figsize=(8, 10))
+
+    # Show the image in the first subplot
+    axs[0].imshow(img_arr)
+    axs[0].axis('off')
+
+    # Show the matplotlib Figure as an image in the second subplot
+    axs[1].imshow(bar_img_arr)
+    axs[1].axis('off')
+
+
+
+    fig.suptitle(title, fontsize=16)
+
+    plt.tight_layout()
+
+    if save_pth is not None:
+        date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
+        fig.savefig(f"{save_name}_{date}.png", dpi=200, bbox_inches='tight')
+        print(f"Saved visualization to {save_name}_{date}.png")
+
+    return fig
