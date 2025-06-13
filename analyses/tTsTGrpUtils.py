@@ -819,6 +819,30 @@ def ipsi_contra(df, hemi_ipsi='L', rename_cols = True):
 
     return df_ic, hemi_ipsi
 
+def get_d(col1, col2):
+    """
+    Given two columns, calculate cohen's D 
+    """
+    m1 = col1.mean()
+    m2 = col2.mean()
+    s1 = col1.std()
+    s2 = col2.std()
+    n1 = col1.count()
+    n2 = col2.count()
+    pooled_std = (((n1 - 1) * s1**2 + (n2 - 1) * s2**2) / (n1 + n2 - 2))**0.5
+    
+    if pooled_std == 0:
+        print("[get_d] WARNING: Pooled standard deviation is zero. Returning NaN for Cohen's D.")
+        return float('nan')  # Avoid division by zero
+    
+    d = (m1 - m2) / pooled_std
+    
+    if d == float('inf') or d == float('-inf'):
+        print("[get_d] WARNING: Cohen's D is infinite. Returning NaN.")
+        return float('nan')  # Avoid infinite values
+
+    return d   
+
 def get_z(x, col_ctrl):
     """
     Calculate z-scores for a given value in a DataFrame, using the control group as the reference.
@@ -1084,11 +1108,11 @@ def h_bar(item, df_name, ipsiTo=None, title=False):
     # Do not show the plot, just return the figure object
     return fig
 
-def visMean(dl, df_name='df_z_mean', indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
+def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
     """
     Create brain figures from a list of dictionary items with vertex-wise dataframes.
     Input:
-        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', 'df_z_mean'
+        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', {df_name}
         df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
         indices: list of indices to visualize. If None, visualize all items in the list.
         ipsiTo: hemisphere to use for ipsilateral visualization ('L' or 'R').
@@ -1098,12 +1122,16 @@ def visMean(dl, df_name='df_z_mean', indices=None, ipsiTo="L", title=None, save_
     for i, item in enumerate(dl):
         print(f"[visMean] [{i}] ({item.get('study','')} {item.get('grp','')} {item.get('label','')})")
         
-        if indices is not None and i not in indices:
+        if dl_indices is not None and i not in dl_indices:
             continue
         if df_name not in item:
             print(f"[visMean] WARNING: {df_name} not found in item {i}. Skipping.")
             continue
+        
         df = item[df_name]
+        if df_metric is not None:
+            df = df.loc[df_metric]
+
         #print(f"\tdf of interest: {df.shape}")
 
         # remove SES or ID columns if they exist
@@ -1111,7 +1139,7 @@ def visMean(dl, df_name='df_z_mean', indices=None, ipsiTo="L", title=None, save_
         #print(f"\tdf after removing ID/SES: {df.shape}")
         
         # surface from size of df
-        if item['grp'].endswith('_ic'):
+        if ipsiTo is not None:
             if ipsiTo == "L":
                 lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
                 rh_cols = [col for col in df.columns if col.endswith('_contra')]
