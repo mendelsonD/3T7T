@@ -988,7 +988,7 @@ def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
             matched_indices.append(i)
     return matched_indices
 
-def h_bar(item, df_name, ipsiTo=None, title=False):
+def h_bar(item, df_name, metric, ipsiTo=None, title=False):
     """
     Plot horizontal bar chart showing mean statistic by parcellated region.
 
@@ -1006,12 +1006,12 @@ def h_bar(item, df_name, ipsiTo=None, title=False):
     import numpy as np
 
     # Use correct DataFrame
-    df = item.get(df_name, None)
+    df = item[df_name].loc[[metric]]
+    
     if df is None or df.empty:
         print(f"[h_bar] WARNING: No data found for {df_name} in item {item['label']}. Skipping horizontal bar chart.")
         return
 
-    grp = item['grp']
     lbl = item['label']
     study = item.get('study', "comp")
 
@@ -1094,7 +1094,7 @@ def h_bar(item, df_name, ipsiTo=None, title=False):
     elif study == "comp":
         ax.set_xlabel('z dif (7T-3T/3T)', fontsize=16)
     if title:
-        ax.set_title(f'$\mathbf{{[{study}]\, {grp}\, {lbl}\ mean\ z}}$', fontsize=20)
+        ax.set_title(f'$\mathbf{{[{study}]\, {lbl}\ mean\ z}}$', fontsize=20)
 
     # Annotate hemispheres
     mid_y = len(y_pos) // 2
@@ -1117,6 +1117,7 @@ def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L"
         indices: list of indices to visualize. If None, visualize all items in the list.
         ipsiTo: hemisphere to use for ipsilateral visualization ('L' or 'R').
     """
+    import pandas as pd
     from IPython.display import display
 
     for i, item in enumerate(dl):
@@ -1130,11 +1131,13 @@ def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L"
         
         df = item[df_name]
         if df_metric is not None:
-            df = df.loc[df_metric]
+            df = df.loc[[df_metric]]
 
         #print(f"\tdf of interest: {df.shape}")
 
         # remove SES or ID columns if they exist
+        if isinstance(df, pd.Series):
+            df = df.to_frame().T  # Convert Series to single-row DataFrame
         df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
         #print(f"\tdf after removing ID/SES: {df.shape}")
         
@@ -1165,7 +1168,7 @@ def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L"
 
         return fig
 
-def itmToVisual(item, df_name='df_z_mean', metric_lbl = None, ipsiTo=None, save_name=None, save_pth=None, title=None, max_val=2):
+def itmToVisual(item, df_name='df_z_mean', metric = 'dD_by3T', metric_lbl = None, ipsiTo=None, save_name=None, save_pth=None, title=None, max_val=2):
     """
     Convert a dictionary item to format to visualize.
     
@@ -1180,15 +1183,18 @@ def itmToVisual(item, df_name='df_z_mean', metric_lbl = None, ipsiTo=None, save_
     Output:
         fig: figure object for visualization
     """
+    import pandas as pd
 
-    df = item[df_name]
+    df = item[df_name].loc[[metric]]
     #print(f"\tdf of interest: {df.shape}")
 
     # remove SES or ID columns if they exist
+    if isinstance(df, pd.Series):
+        df = df.to_frame().T  # Convert Series to single-row DataFrame
     df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
     #print(f"\tdf after removing ID/SES: {df.shape}")
     
-    if item['grp'].endswith('_ic'):
+    if ipsiTo is not None:
         if ipsiTo == "L":
             lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
             rh_cols = [col for col in df.columns if col.endswith('_contra')]
@@ -1213,7 +1219,7 @@ def itmToVisual(item, df_name='df_z_mean', metric_lbl = None, ipsiTo=None, save_
     rh = df[rh_cols]
     #print(f"\tL: {lh.shape}, R: {rh.shape}")
 
-    title = title or f"{item.get('study', '3T-7T comp')} {item['grp']} {item['label']}"
+    title = title or f"{item.get('study', '3T-7T comp')} {item['label']}"
 
     fig = showBrains(lh, rh, surface, metric_lbl = metric_lbl, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_pth, title=title, min=-max_val, max=max_val, inflated=True)
 
@@ -1321,7 +1327,7 @@ def showBrains(lh, rh, surface='fsLR-5k', metric_lbl=None, ipsiTo=None, title=No
 
     return fig
 
-def vis_item(item, save_pth=None):
+def vis_item(item, metric, ipsiTo=None, save_pth=None):
     """ 
     Visualize outputs of an item.
         [1] hippocampal map - folded and unfolded < TO COME >
@@ -1329,10 +1335,9 @@ def vis_item(item, save_pth=None):
         [3] bar graph: mean z-score by lobe
 
     Input:
-        item: dictionary item with keys:
-            grp
-            df_{stat}
-            df_{stat}_glasser_{labelType}
+        item: dictionary item with keys 'study', 'label', and relevant dataframes
+        metric: name of metric to visualize (this metric name should correspond to index name of dfs) 
+        ipsiTo: if ipsi/contra data, default is None
         save_pth: path to save the figure, if None, will not save
     Output:
         figure object with all three figures
@@ -1344,42 +1349,47 @@ def vis_item(item, save_pth=None):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    if item['grp'] == 'TLE_ic':
-        ipsiTo= "L"
+    if metric == 'dD':
+        metric_lbl = 'ΔD (7T - 3T)'
+    elif metric == 'dD_by3T':
+        metric_lbl = 'ΔD [(7T - 3T) / 3T]'
+    elif metric == 'dD_by7T':
+        metric_lbl = 'ΔD [(7T - 3T) / 7T]'
     else:
-        ipsiTo = None
-    study = item.get('study', 'comp')
+        metric_lbl = metric
 
-    if study == "comp":
-        title = f"7T-3T comparison: {item['grp']} ({item['label']})\nz difference (7T-3T / 3T)"
-        df_crtx_plt = "df_z_dif"
-        df_barplot = "df_zDifMean_glsr_Lobe_hemi"
-        metric_lbl = "mean z-score difference (7T-3T/3T)"
+    if item.get('study', 'comp') == "comp":
+        title = f"7T-3T comparison: ({item['label']})\n{metric_lbl}"
+        df_crtx_plt = "comps_crtx"
+        df_barplot = "comps_crtx_glsr_Lobe_hemi"
+        df_hipp = "comps_hipp"
         if ipsiTo is not None:
             title += f"\n(ipsi to {ipsiTo} hemi)"
+
         if save_pth is not None: 
             save_name = f"{save_pth}/crtxParc_3T7T_{item['grp']}_{item['label']}_zDif"
     else:
-        title = f"{study} {item['grp']} ({item['label']})\nz mean (compared to ctrls)"
-        df_crtx_plt = "df_z_mean"
-        df_barplot = "df_zmean_glsr_Lobe_hemi"
-        metric_lbl = "mean z"
+        title = f"{item['study']} ({item['label']})\n{metric_lbl}"
+        df_crtx_plt = "df_d_crtx_ic"
+        df_barplot = "df_d_crtx_ic_glsr_Lobe_hemi"
+        df_hipp = "df_d_hipp_ic"
         if ipsiTo is not None:
             title += f"\n(ipsi to {ipsiTo} hemi)"
         if save_pth is not None: 
-            save_name = f"{save_pth}/crtxParc_{study}_{item['grp']}_{item['label']}_zMean"
+            save_name = f"{save_pth}/crtxParc_{item['study']}_{item['label']}"
 
     # hippocampus visual -- TO COME
+    # 
 
     # Cortex visual
-    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric_lbl = metric_lbl, ipsiTo=ipsiTo)
+    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric=metric, metric_lbl = metric_lbl, ipsiTo=ipsiTo)
     #print(type(crtx_img))
     img_bytes = crtx_img.data  # This is the raw PNG bytes
     img = PILImage.open(io.BytesIO(img_bytes))
     img_arr = np.array(img)
 
     # --- Barplot as image ---
-    barplot_fig = h_bar(item, df_name=df_barplot, ipsiTo=ipsiTo)
+    barplot_fig = h_bar(item, df_name=df_barplot, metric=metric, ipsiTo=ipsiTo)
     buf = io.BytesIO()
     barplot_fig.savefig(buf, format='png', bbox_inches='tight')
     buf.seek(0)
@@ -1396,8 +1406,6 @@ def vis_item(item, save_pth=None):
     # Show the matplotlib Figure as an image in the second subplot
     axs[1].imshow(bar_img_arr)
     axs[1].axis('off')
-
-
 
     fig.suptitle(title, fontsize=16)
 
