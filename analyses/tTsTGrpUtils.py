@@ -292,7 +292,7 @@ def smooth_map(surf, map, out, kernel=10):
         return out_pth
 
 
-def create_dir(dir_path):
+def create_dir(dir_path, verbose=False):
     """
     Create a directory if it does not exist.
 
@@ -308,7 +308,9 @@ def create_dir(dir_path):
         os.makedirs(dir_path)
         print(f"\t[create_dir] Created directory: {dir_path}")
     else:
-        return
+        if verbose:
+            print(f"\t[create_dir] Directory at path `{dir_path}` exists. Skipping creation.")    
+    return
 
 def add_date(demo_pths, demo):
     """
