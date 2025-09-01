@@ -46,7 +46,7 @@ def get_surf_pth(root, sub, ses, lbl, surf="fsLR-32k"):
         rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-nativepro_surf-{surf}_label-{lbl}.surf.gii"
     elif "hippunfold" in root:
         #print("Hipp detected")
-        lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-T1w_den-{surf}_label-hipp_{lbl}.surf.gii"
+        lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-T1w_den-{surf}_label-hipp_{lbl}.surf.gii" # T1w space is the nativepro space (bc generated based on nativepro vols in the MICA workflow)
         rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-T1w_den-{surf}_label-hipp_{lbl}.surf.gii"
     else:
         raise ValueError("Invalid root directory. Choose from 'micapipe' or 'hippunfold'.")
@@ -143,7 +143,7 @@ def get_map_pth(root, deriv_fldr, sub, ses, feature, label="midthickness", surf=
     elif "hippunfold" in deriv_fldr.lower():
         raise ValueError("Hippunfold derivative not yet implemented. Need to create feature maps using hippunfold surfaces.")
         
-        # space usually: "T1w"
+        # space usually: "T1w" equivalent to nativepro
         # surf usually: "fsLR"
         # label options: "hipp_outer", "hipp_inner", "hipp_midthickness"
 
@@ -262,15 +262,15 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
 
 def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
     """
-    From demographic info, identify path to (and if needed compute) smoothed map for parameters of interest (surface, label, feature, smoothing kernel) provided in a dictionary item.
+    From demographic info, identify path to--and if needed compute--smoothed map for parameters of interest (surface, label, feature, smoothing kernel) provided in a dictionary item.
 
     Input:
         df_demo: DataFrame 
             containing demographic information. Each row is one participant at a unique session. 
                 Necessary columns: ID, SES
                 Optional columns: study (if multiple studies with different root directories). If this is present, then 'studies' must be provided.
-        studies: list of dicts
-            containing information about the studies to include. Each dict should have the following keys:
+        studies: list of dictionary items
+            Each dictionary should contain information about the studies to include. Each dict should have the following keys:
                 'study': study code (e.g., "3T", "7T")
                 'dir_root': root directory of the study
                 'dir_deriv': name of derivative folder containing the surface data (e.g., "micapipe", "hippunfold")
@@ -296,7 +296,8 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                     'smth_ctx': list of smoothing kernel sizes in mm to include (e.g., [5, 10, 15])
 
                     'hipp': whether to include hippocampal analyses (True/False)
-                    'lbl_hipp': list of hippocampal labels to include (e.g., ["hipp_inner", "hipp_outer", "hipp_midthickness"])
+                    'surf_ctx': list of surface types and resolutions to include (e.g., ['0p5mm','2mm'])
+                    'lbl_hipp': list of hippocampal labels to include (e.g., ["hipp_inner", "hipp_outer", "hipp_midthickness", "dentate_])
                     'ft_hipp': list of hippocampal features to include (e.g., ["thickness", "T1map", "FLAIR", "ADC", "FA"])
                     'smth_hipp': list of hippocampal smoothing kernel sizes in mm to include (e.g., [1, 2, 5])
         
@@ -445,13 +446,15 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                             surf=surf,
                             lbl=lbl
                         )
-
+                        # volume map path
+                        vol_pth = get_vol_pth(mp_root=root_mp, sub=sub, ses=ses, metric=ft)
+                        if
                         # apply surface to volume maps to create unsmoothed feature maps
                         # then smooth these maps using same procedure as above
 
     return df_demo
 
-def smooth_maps(pth_map_unsmth_L, pth_map_unsmth_R, surf_dir, out_dir, verbose=False):
+def smooth_maps(pth_map_unsmth_L, pth_map_unsmth_R, surf_dir, out_dir,  verbose=False):
     """
     Gets surface using get_surf, then passes these to smooth_map to apply smoothing to a feature map.
     """    
