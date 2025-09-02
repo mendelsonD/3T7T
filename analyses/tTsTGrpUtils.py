@@ -461,9 +461,15 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                             if ft == "thickness":
                                 print(f"\t\t\t[WARNING] Hippocampal thickness maps not currently available. [{study_code}] sub-{sub} ses-{ses} (surf: {surf}, label: {lbl}, feature: {ft}).")
                                 # vol_pth = None # may need to calculate distance between surfaces
+                                # in surf/xx_thickness.shape.gii
                                 continue
                             else:
                                 vol_pth = get_vol_pth(mp_root=root_mp, sub=sub, ses=ses, feature=ft)
+                                # can check if already exists
+                                # vol-to-surface-mapping (wb_command); pass volume and surf; trilinear interp, out (can save as smth_NA)
+                            
+                            # pass this to map_smth
+
                             
                             vol_pth = vol_pth if chk_pth(vol_pth) else None
                             if vol_pth is None:
