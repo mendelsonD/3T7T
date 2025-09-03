@@ -1,6 +1,10 @@
 __pycache__/
+<<<<<<< HEAD
 
 .ipynb_checkpointsé
+=======
+.ipynb_checkpoints/
+>>>>>>> 286ea84 (Logging for idToMap)
 *.pyc
 *.pyo
 *.pyd

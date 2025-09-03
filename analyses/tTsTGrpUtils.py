@@ -270,373 +270,392 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
     """
     From demographic info, identify path to--and if needed compute--smoothed map for parameters of interest (surface, label, feature, smoothing kernel) provided in a dictionary item.
 
-    Input:
-        df_demo: DataFrame 
-            containing demographic information. Each row is one participant at a unique session. 
-                Necessary columns: ID, SES
-                Optional columns: study (if multiple studies with different root directories). If this is present, then 'studies' must be provided.
-        studies: list of dictionary items
-            Each dictionary should contain information about the studies to include. Each dict should have the following keys:
-                'study': study code (e.g., "3T", "7T")
-                'dir_root': root directory of the study
-                'dir_deriv': name of derivative folder containing the surface data (e.g., "micapipe", "hippunfold")
-                'dir_mp': name of micapipe derivative folder (if applicable)
-                'dir_hu': name of hippunfold derivative folder (if applicable)
-            If multiple studies are provided, then 'study' column must be present in df_demo to indicate which study each row belongs to.
-        dict_demo: dict
-            containing column names for demographic information.
-                Required keys:
-                    'nStudies': whether multiple studies are included (True/False). If this is the case a column 'study' must be present in df_demo.
-                    <'ID'> or <'ID[_*study identifier*]'>: column name for subject ID in this study. If multiple studies: multiple ID keys must be present, each with a suffix identifying the study.
-                    'SES': column name for session ID
-        specs: dict
-            containing specifications for the maps to extract and compute. 
-                Required keys:
-                    'prjDir_root': root directory for saving smoothed maps
-                    'prjDir_maps': directory for saving smoothed maps (relative to prjDir_root)
-                    
-                    'ctx': whether to include cortical analyses (True/False)
-                    'surf_ctx': list of surface types and resolutions to include (e.g., ["fsLR-32k", "fsLR-5k"])
-                    'lbl_ctx': list of surface labels to include (e.g., ["pial", "white", "midthickness"])
-                    'ft_ctx': list of features to include (e.g., ["thickness", "T1map", "FLAIR", "ADC", "FA"])
-                    'smth_ctx': list of smoothing kernel sizes in mm to include (e.g., [5, 10, 15])
+    Parameters
+    ----------
+    df_demo : pd.DataFrame
+        DataFrame containing demographic information for each subject/session.
+    studies : list of dict
+        List of dictionaries, each containing study-specific directory and naming information.
+    dict_demo : dict
+        Dictionary with demographic column names and study info.
+    specs : dict
+        Dictionary specifying which maps to process (features, surfaces, smoothing, labels, etc).
+    verbose : bool, optional
+        If True, print detailed progress and warnings.
 
-                    'hipp': whether to include hippocampal analyses (True/False)
-                    'surf_ctx': list of surface types and resolutions to include (e.g., ['0p5mm','2mm'])
-                    'lbl_hipp': list of hippocampal labels to include (e.g., ["hipp_inner", "hipp_outer", "hipp_midthickness", "dentate_])
-                    'ft_hipp': list of hippocampal features to include (e.g., ["thickness", "T1map", "FLAIR", "ADC", "FA"])
-                    'smth_hipp': list of hippocampal smoothing kernel sizes in mm to include (e.g., [1, 2, 5])
-        
+    Returns
+    -------
+    df_demo : pd.DataFrame
+        Updated DataFrame with new columns for each map (smoothed/unsmoothed) found or computed.
+    log_contents : str
+        String containing all print/log output during function execution.
 
+    Notes
+    -----
+    - For each row in df_demo, determines the study and subject/session.
+    - For each combination of feature, surface, smoothing, and label in specs, attempts to find or compute the corresponding map.
+    - If map does not exist, attempts to compute it using wb_command or other mapping functions.
+    - Adds the resulting map paths to new columns in df_demo.
+    - Returns both the updated DataFrame and a string log of all output.
     """
     import os
     import re
+    import time
+    import sys
+    import io
 
-    def ctx_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
-        """
-        Get or compute cortical smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
-        """
+    class TeeLogger(io.StringIO):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._stdout = sys.stdout
 
-        print(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
-        root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
-        study_code = study['study']
+        def write(self, s):
+            self._stdout.write(s)
+            super().write(s)
 
-        # A. Find path to unsmoothed map
-        if ft == "thickness":
-            out_pth_L_filename = f"hemi-L_surf-{surf}_label-{ft}"
-            out_pth_R_filename = f"hemi-R_surf-{surf}_label-{ft}"
-        else:
-            out_pth_L_filename = f"hemi-L_surf-{surf}_label-{lbl}_{ft}"
-            out_pth_R_filename = f"hemi-R_surf-{surf}_label-{lbl}_{ft}"
-                                        
-        pth_map_unsmth_L = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_L_filename}.func.gii"
-        pth_map_unsmth_R = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_R_filename}.func.gii"
-        
-        if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R):
-            dir_surf = " ( " + os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) + " ) " if pth_map_unsmth_L and pth_map_unsmth_R else "" # Find the common directory of both pth_map_unsmth_L and pth_map_unsmth_R
-            dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) " # build rawdirectory (assumes BIDS format)
-            print(f"\t\t[WARNING] Unsmoothed map not found for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check rawdata{dir_raw} and/or micapipe processing{dir_surf}.\n")
-            pth_map_unsmth_L, pth_map_unsmth_R = None, None
-            return df
-        elif not chk_pth(pth_map_unsmth_L):
-            print(f"\t\t[WARNING] Unsmoothed map missing for L hemi ONLY [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_L)} ).")
-            pth_map_unsmth_L = None
-        elif not chk_pth(pth_map_unsmth_R):
-            print(f"\t\t[WARNING] Unsmoothed map missing for R hemi ONLY [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_R)} ).")
-            pth_map_unsmth_R = None    
-        else:
-            if verbose:
-                print(f"\t\tUnsmoothed maps:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
+        def flush(self):
+            self._stdout.flush()
+            super().flush()
 
-        # B. Smooth map and save to project directory
-        
-        out_pth_L  = os.path.join(
-            out_dir,
-            f"sub-{sub}_ses-{ses}_ctx_{out_pth_L_filename}_smth-{smth}mm.func.gii",
-        )
+    log_stream = TeeLogger()
+    old_stdout = sys.stdout
+    sys.stdout = log_stream
 
-        out_pth_R = os.path.join(
-            out_dir,
-            f"sub-{sub}_ses-{ses}_ctx_{out_pth_R_filename}_smth-{smth}mm.func.gii",
-        )
-        
-        col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
-        col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
-        
-        # Check if smoothed map already exists. If so, do not recompute. Assums would be saved under same naming convention.
-        if chk_pth(out_pth_L) and chk_pth(out_pth_R):
-            if verbose:
-                print(f"\t\tSmoothed maps exists, adding to df: {out_pth_L}\t{out_pth_R}\n")
-            df.loc[idx, col_base_L] = out_pth_L
-            df.loc[idx, col_base_R] = out_pth_R
-            return df
-        
-        # i. Get path to surface .func files
-        surf_L, surf_R = get_surf_pth(
-            root=root_mp,
-            sub=sub,
-            ses=ses,
-            surf=surf,
-            lbl=lbl
-        )
-        
-        if not chk_pth(surf_L) and not chk_pth(surf_R):
-            dir_surf = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
-            print(f"\t\t[WARNING] Nativepro surface not found for [{study_code}] {sub}-{ses}. Cannot continue to map smoothing. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
-            return df
-        elif not chk_pth(surf_L):
-            print(f"\t\t[WARNING] Nativepro surface missing for L hemi for [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check micapipe processing ( {os.path.dirname(surf_L)}). Missing: {surf_L}")
-            surf_L = None
-        elif not chk_pth(surf_R):
-            print(f"\t\t[WARNING] Nativepro surface missing for R hemi for [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check micapipe processing ( {os.path.dirname(surf_R)} ). Missing: {surf_R}")
-            surf_R = None
-        else:
-            if verbose:
-                print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
+    try:
+        def ctx_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
+            """
+            Get or compute cortical smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
+            """
 
-        # ii. Smooth
-        pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, out_pth_L, kernel=smth, verbose=False)
-        pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_R, out_pth_R, kernel=smth, verbose=False)
+            print(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
+            root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
+            study_code = study['study']
 
-        if pth_map_smth_L is None or pth_map_smth_R is None:
-            print(f"\t\t[WARNING] Smoothing failed for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check smoothing function output.\n")
-        else:
-            # Add paths to DataFrame
-            if verbose:
-                print(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
-                
-            df.loc[idx, col_base_L] = pth_map_smth_L
-            df.loc[idx, col_base_R] = pth_map_smth_R
+            # A. Find path to unsmoothed map
+            if ft == "thickness":
+                out_pth_L_filename = f"hemi-L_surf-{surf}_label-{ft}"
+                out_pth_R_filename = f"hemi-R_surf-{surf}_label-{ft}"
+            else:
+                out_pth_L_filename = f"hemi-L_surf-{surf}_label-{lbl}_{ft}"
+                out_pth_R_filename = f"hemi-R_surf-{surf}_label-{lbl}_{ft}"
+                                            
+            pth_map_unsmth_L = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_L_filename}.func.gii"
+            pth_map_unsmth_R = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_R_filename}.func.gii"
+            
+            if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R):
+                dir_surf = " ( " + os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) + " ) " if pth_map_unsmth_L and pth_map_unsmth_R else "" # Find the common directory of both pth_map_unsmth_L and pth_map_unsmth_R
+                dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) " # build rawdirectory (assumes BIDS format)
+                print(f"\t\t[WARNING] Unsmoothed map not found for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check rawdata{dir_raw} and/or micapipe processing{dir_surf}.\n")
+                pth_map_unsmth_L, pth_map_unsmth_R = None, None
+                return df
+            elif not chk_pth(pth_map_unsmth_L):
+                print(f"\t\t[WARNING] Unsmoothed map missing for L hemi ONLY [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_L)} ).")
+                pth_map_unsmth_L = None
+            elif not chk_pth(pth_map_unsmth_R):
+                print(f"\t\t[WARNING] Unsmoothed map missing for R hemi ONLY [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_R)} ).")
+                pth_map_unsmth_R = None    
+            else:
+                if verbose:
+                    print(f"\t\tUnsmoothed maps:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
 
-        return df
+            # B. Smooth map and save to project directory
+            
+            out_pth_L  = os.path.join(
+                out_dir,
+                f"sub-{sub}_ses-{ses}_ctx_{out_pth_L_filename}_smth-{smth}mm.func.gii",
+            )
 
-    def hipp_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
-        """
-        Get or compute hippocampal smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
-        """
-        import os 
-        
-        print(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
-        root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
-        root_hu = f"{study['dir_root']}{study['dir_deriv']}{study['dir_hu']}"
-        study_code = study['study']
-
-        skip_L, skip_R = False, False
-
-        # Define output paths                 
-        if ft == "thickness":
-            out_pth_L_filename = f"hemi-L_surf-{surf}_label-{ft}"
-            out_pth_R_filename = f"hemi-R_surf-{surf}_label-{ft}"
-        else:
-            out_pth_L_filename = f"hemi-L_surf-{surf}_label-{lbl}_{ft}"
-            out_pth_R_filename = f"hemi-R_surf-{surf}_label-{lbl}_{ft}"
-
-        out_pth_L  = os.path.join(
-            out_dir,
-            f"sub-{sub}_ses-{ses}_hipp_{out_pth_L_filename}_smth-{smth}mm.func.gii",
-        )
-
-        out_pth_R = os.path.join(
-            out_dir,
-            f"sub-{sub}_ses-{ses}_hipp_{out_pth_R_filename}_smth-{smth}mm.func.gii",
-        )
-        
-        col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
-        col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
-        
-        # do not recompute if smoothed path already exists
-        if chk_pth(out_pth_L) and chk_pth(out_pth_R):
-            if verbose:
-                print(f"\t\tSmoothed maps exist, adding paths to df:\t{out_pth_L}\t{out_pth_R}\n")
-            df.loc[idx, col_base_L] = out_pth_L
-            df.loc[idx, col_base_R] = out_pth_R
-            return df
-        elif chk_pth(out_pth_L):
-            if verbose:
-                print(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
-            df.loc[idx, col_base_L] = out_pth_L
-            skip_L = True
-        elif chk_pth(out_pth_R):
-            if verbose:
-                print(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
-            df.loc[idx, col_base_R] = out_pth_R
-            skip_R = True
-
-        # Path to surface segmentation triangles
-        surf_L, surf_R = get_surf_pth(
-                root=root_hu,
+            out_pth_R = os.path.join(
+                out_dir,
+                f"sub-{sub}_ses-{ses}_ctx_{out_pth_R_filename}_smth-{smth}mm.func.gii",
+            )
+            
+            col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
+            col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
+            
+            # Check if smoothed map already exists. If so, do not recompute. Assums would be saved under same naming convention.
+            if chk_pth(out_pth_L) and chk_pth(out_pth_R):
+                if verbose:
+                    print(f"\t\tSmoothed maps exists, adding to df: {out_pth_L}\t{out_pth_R}\n")
+                df.loc[idx, col_base_L] = out_pth_L
+                df.loc[idx, col_base_R] = out_pth_R
+                return df
+            
+            # i. Get path to surface .func files
+            surf_L, surf_R = get_surf_pth(
+                root=root_mp,
                 sub=sub,
                 ses=ses,
                 surf=surf,
-                lbl=lbl,
-                space="T1w"
+                lbl=lbl
             )
-        
-        # Check if surfaces exist
-        if not chk_pth(surf_L) and not chk_pth(surf_R):
-            surf_dir = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
-            print(f"\t\t[WARNING] Hippocampal surface missing for [{study_code}] {sub}-{ses}. Cannot continue to map smoothing. Check hippunfold processing ( {surf_dir} ). Missing: {surf_L}\t{surf_R}\n")
-            return df
-        elif not chk_pth(surf_L) and not skip_L:
-            print(f"\t\t[WARNING] Hippocampal surface missing for L hemi ONLY [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check hippunfold processing ( {os.path.dirname(surf_L)} ). Missing: {surf_L}")
-            if skip_R: 
+            
+            if not chk_pth(surf_L) and not chk_pth(surf_R):
+                dir_surf = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
+                print(f"\t\t[WARNING] Nativepro surface not found for [{study_code}] {sub}-{ses}. Cannot continue to map smoothing. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
                 return df
-            else: 
+            elif not chk_pth(surf_L):
+                print(f"\t\t[WARNING] Nativepro surface missing for L hemi for [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check micapipe processing ( {os.path.dirname(surf_L)}). Missing: {surf_L}")
                 surf_L = None
-                skip_L = True # cannot continue to smoothing for this hemi
-                if verbose: print(f"\t\tSurface (R only):\t{surf_R}")
-        elif not chk_pth(surf_R) and not skip_R:
-            print(f"\t\t[WARNING] Hippocampal surface missing for R hemi ONLY [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check hippunfold processing ( {os.path.dirname(surf_R)} ). Missing: {surf_R}")
-            if skip_L: 
-                return df
-            else: 
+            elif not chk_pth(surf_R):
+                print(f"\t\t[WARNING] Nativepro surface missing for R hemi for [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check micapipe processing ( {os.path.dirname(surf_R)} ). Missing: {surf_R}")
                 surf_R = None
-                skip_R = True # cannot continue to smoothing for this hemi
-                if verbose: print(f"\t\tSurface (L only):\t{surf_L}")
-        else:
-            if verbose:
-                print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
-        
-        # A. Get unsmoothed maps
-        if ft == "thickness": # get path to unsmoothed map from hippunfold outputs
-            pth_map_unsmth_L, pth_map_unsmth_R = get_surf_pth(root=root_hu, sub=sub, ses=ses, lbl="thickness", surf=surf, space="T1w")
-        
-        else: # generate feature map from volume and hippunfold surface
-            vol_pth = get_vol_pth(root=root_mp, sub=sub, ses=ses, feature=ft) # get the volume path from micapipe outputs
-
-            if not chk_pth(vol_pth):
-                dir_maps =  " ( " + os.path.dirname(vol_pth) + " )" # Get the directory of the volume
-                dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) " # build rawdirectory (assumes BIDS format)
-                print(f"\t\t[WARNING] Volume not found for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check rawdata{dir_raw} or micapipe processing{dir_maps}. Skipping.\n")
-                vol_pth = None
-                return df
-            
-            pth_save_map_unsmth_L = f"{out_dir}/sub-{sub}_ses-{ses}_hipp_{out_pth_L_filename}_smth-NA.func.gii"
-            pth_save_map_unsmth_R = f"{out_dir}/sub-{sub}_ses-{ses}_hipp_{out_pth_R_filename}_smth-NA.func.gii"
-            
-            if chk_pth(pth_save_map_unsmth_L): # if unsmoothed map already exists, do not recompute
-                pth_map_unsmth_L = pth_save_map_unsmth_L
-            else:
-                if not skip_L:
-                    pth_map_unsmth_L = map(vol=vol_pth, surf=surf_L, out=pth_save_map_unsmth_L, verbose=verbose)
-                else:
-                    pth_map_unsmth_L = None
-            
-            if chk_pth(pth_save_map_unsmth_R): 
-                pth_map_unsmth_R = pth_save_map_unsmth_R
-            else:
-                if not skip_R:
-                    pth_map_unsmth_R = map(vol=vol_pth, surf=surf_R, out=pth_save_map_unsmth_R, verbose=verbose)
-                else:
-                    pth_map_unsmth_R = None
-        
-        # B. Smooth
-        if verbose:
-            print(f"\t\tUnsmoothed map paths:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
-        
-        if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R):
-            dir_maps = " (" + os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) + ") " if pth_map_unsmth_L and pth_map_unsmth_R else ""
-            dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) " # build rawdirectory (assumes BIDS format)
-            print(f"\t\t[WARNING] Unsmoothed map missing for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check rawdata{dir_raw} and/or micapipe processing {dir_maps}.\n")
-            return df
-        elif pth_map_unsmth_L is None and not skip_L:
-            print(f"\t\t[WARNING] Unsmoothed map missing for L hemi [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_L)} ).")
-            if skip_R: 
-                return df
-            else:
-                skip_L = True
-        elif pth_map_unsmth_R is None and not skip_R:
-            print(f"\t\t[WARNING] Unsmoothed map missing for R hemi [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_R)} ).")
-            if skip_L:
-                return df
-            else:
-                skip_R = True
-        
-        if not skip_L:
-            pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, out_pth_L, kernel=smth, verbose=False)
-        else:
-            pth_map_smth_L = None
-        if not skip_R:
-            pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_L, out_pth_R, kernel=smth, verbose=False)
-        else:
-            pth_map_smth_R = None
-        
-        if pth_map_smth_L is None or pth_map_smth_R is None and not skip_L and not skip_R:
-            print(f"\t\t[WARNING] Smoothing failed [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check smoothing function output.")
-        
-        # Add paths to DataFrame
-        if verbose:
-            print(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
-        
-        if not skip_L:
-            df.loc[idx, col_base_L] = pth_map_smth_L
-        if not skip_R:
-            df.loc[idx, col_base_R] = pth_map_smth_R
-        
-        return df
-
-
-    print("\n[idToMap] Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...")
-
-    if dict_demo['nStudies']: # Check if 'study' column exists, else skip or set default
-        assert 'study' in df_demo.columns, "[idToMap] 'study' column not found in df_demo, but 'nStudies' is True in dict_demo."
-    else: 
-        if len(studies) > 1:
-            raise ValueError("[idToMap] 'study' column not found in df_demo, but multiple studies provided.\n\tEither a) provide a 'study' column to df_demo to indicate which study each row belongs to OR b) keep a single dictionary item with study directory information.")
-    
-    for idx, row in df_demo.iterrows(): # Iterate through rows and add map paths
-        study_code = row['study']
-        
-        if dict_demo['nStudies']: # determine study dictionary item
-            study_item = next((s for s in studies if s['study'] == study_code), None)
-            if study_item is None:
-                print(f"[idToMap] WARNING. Unknown study code `{study_code}`. Skipping row.")
-                continue
             else:
                 if verbose:
-                    print(f"[idToMap] Processing index {idx} of {df_demo.shape[0]-1}.")
-                ID_col = dict_demo['ID_' + study_item['study']]
-        else: # if no matches, then take first study
-            print(f"[idToMap] No 'study' column provided. Defaulting to first study in studies list: {studies[0]['study']}.")
-            study_item = studies[0]
-            ID_col = dict_demo['ID']
+                    print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
+
+            # ii. Smooth
+            pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, out_pth_L, kernel=smth, verbose=False)
+            pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_R, out_pth_R, kernel=smth, verbose=False)
+
+            if pth_map_smth_L is None or pth_map_smth_R is None:
+                print(f"\t\t[WARNING] Smoothing failed for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check smoothing function output.\n")
+            else:
+                # Add paths to DataFrame
+                if verbose:
+                    print(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
+                    
+                df.loc[idx, col_base_L] = pth_map_smth_L
+                df.loc[idx, col_base_R] = pth_map_smth_R
+
+            return df
+
+        def hipp_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
+            """
+            Get or compute hippocampal smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
+            """
+            import os 
+            
+            print(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
+            root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
+            root_hu = f"{study['dir_root']}{study['dir_deriv']}{study['dir_hu']}"
+            study_code = study['study']
+
+            skip_L, skip_R = False, False
+
+            # Define output paths                 
+            if ft == "thickness":
+                out_pth_L_filename = f"hemi-L_surf-{surf}_label-{ft}"
+                out_pth_R_filename = f"hemi-R_surf-{surf}_label-{ft}"
+            else:
+                out_pth_L_filename = f"hemi-L_surf-{surf}_label-{lbl}_{ft}"
+                out_pth_R_filename = f"hemi-R_surf-{surf}_label-{lbl}_{ft}"
+
+            out_pth_L  = os.path.join(
+                out_dir,
+                f"sub-{sub}_ses-{ses}_hipp_{out_pth_L_filename}_smth-{smth}mm.func.gii",
+            )
+
+            out_pth_R = os.path.join(
+                out_dir,
+                f"sub-{sub}_ses-{ses}_hipp_{out_pth_R_filename}_smth-{smth}mm.func.gii",
+            )
+            
+            col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
+            col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
+            
+            # do not recompute if smoothed path already exists
+            if chk_pth(out_pth_L) and chk_pth(out_pth_R):
+                if verbose:
+                    print(f"\t\tSmoothed maps exist, adding paths to df:\t{out_pth_L}\t{out_pth_R}\n")
+                df.loc[idx, col_base_L] = out_pth_L
+                df.loc[idx, col_base_R] = out_pth_R
+                return df
+            elif chk_pth(out_pth_L):
+                if verbose:
+                    print(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
+                df.loc[idx, col_base_L] = out_pth_L
+                skip_L = True
+            elif chk_pth(out_pth_R):
+                if verbose:
+                    print(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
+                df.loc[idx, col_base_R] = out_pth_R
+                skip_R = True
+
+            # Path to surface segmentation triangles
+            surf_L, surf_R = get_surf_pth(
+                    root=root_hu,
+                    sub=sub,
+                    ses=ses,
+                    surf=surf,
+                    lbl=lbl,
+                    space="T1w"
+                )
+            
+            # Check if surfaces exist
+            if not chk_pth(surf_L) and not chk_pth(surf_R):
+                surf_dir = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
+                print(f"\t\t[WARNING] Hippocampal surface missing for [{study_code}] {sub}-{ses}. Cannot continue to map smoothing. Check hippunfold processing ( {surf_dir} ). Missing: {surf_L}\t{surf_R}\n")
+                return df
+            elif not chk_pth(surf_L) and not skip_L:
+                print(f"\t\t[WARNING] Hippocampal surface missing for L hemi ONLY [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check hippunfold processing ( {os.path.dirname(surf_L)} ). Missing: {surf_L}")
+                if skip_R: 
+                    return df
+                else: 
+                    surf_L = None
+                    skip_L = True # cannot continue to smoothing for this hemi
+                    if verbose: print(f"\t\tSurface (R only):\t{surf_R}")
+            elif not chk_pth(surf_R) and not skip_R:
+                print(f"\t\t[WARNING] Hippocampal surface missing for R hemi ONLY [{study_code}] {sub}-{ses}. Skipping map smoothing for this hemi. Check hippunfold processing ( {os.path.dirname(surf_R)} ). Missing: {surf_R}")
+                if skip_L: 
+                    return df
+                else: 
+                    surf_R = None
+                    skip_R = True # cannot continue to smoothing for this hemi
+                    if verbose: print(f"\t\tSurface (L only):\t{surf_L}")
+            else:
+                if verbose:
+                    print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
+            
+            # A. Get unsmoothed maps
+            if ft == "thickness": # get path to unsmoothed map from hippunfold outputs
+                pth_map_unsmth_L, pth_map_unsmth_R = get_surf_pth(root=root_hu, sub=sub, ses=ses, lbl="thickness", surf=surf, space="T1w")
+            
+            else: # generate feature map from volume and hippunfold surface
+                vol_pth = get_vol_pth(root=root_mp, sub=sub, ses=ses, feature=ft) # get the volume path from micapipe outputs
+
+                if not chk_pth(vol_pth):
+                    dir_maps =  " ( " + os.path.dirname(vol_pth) + " )" # Get the directory of the volume
+                    dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) " # build rawdirectory (assumes BIDS format)
+                    print(f"\t\t[WARNING] Volume not found for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check rawdata{dir_raw} or micapipe processing{dir_maps}. Skipping.\n")
+                    vol_pth = None
+                    return df
+                
+                pth_save_map_unsmth_L = f"{out_dir}/sub-{sub}_ses-{ses}_hipp_{out_pth_L_filename}_smth-NA.func.gii"
+                pth_save_map_unsmth_R = f"{out_dir}/sub-{sub}_ses-{ses}_hipp_{out_pth_R_filename}_smth-NA.func.gii"
+                
+                if chk_pth(pth_save_map_unsmth_L): # if unsmoothed map already exists, do not recompute
+                    pth_map_unsmth_L = pth_save_map_unsmth_L
+                else:
+                    if not skip_L:
+                        pth_map_unsmth_L = map(vol=vol_pth, surf=surf_L, out=pth_save_map_unsmth_L, verbose=verbose)
+                    else:
+                        pth_map_unsmth_L = None
+                
+                if chk_pth(pth_save_map_unsmth_R): 
+                    pth_map_unsmth_R = pth_save_map_unsmth_R
+                else:
+                    if not skip_R:
+                        pth_map_unsmth_R = map(vol=vol_pth, surf=surf_R, out=pth_save_map_unsmth_R, verbose=verbose)
+                    else:
+                        pth_map_unsmth_R = None
+            
+            # B. Smooth
+            if verbose:
+                print(f"\t\tUnsmoothed map paths:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
+            
+            if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R):
+                dir_maps = " (" + os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) + ") " if pth_map_unsmth_L and pth_map_unsmth_R else ""
+                dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) " # build rawdirectory (assumes BIDS format)
+                print(f"\t\t[WARNING] Unsmoothed map missing for [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check rawdata{dir_raw} and/or micapipe processing {dir_maps}.\n")
+                return df
+            elif pth_map_unsmth_L is None and not skip_L:
+                print(f"\t\t[WARNING] Unsmoothed map missing for L hemi [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_L)} ).")
+                if skip_R: 
+                    return df
+                else:
+                    skip_L = True
+            elif pth_map_unsmth_R is None and not skip_R:
+                print(f"\t\t[WARNING] Unsmoothed map missing for R hemi [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check micapipe processing ( {os.path.dirname(pth_map_unsmth_R)} ).")
+                if skip_L:
+                    return df
+                else:
+                    skip_R = True
+            
+            if not skip_L:
+                pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, out_pth_L, kernel=smth, verbose=False)
+            else:
+                pth_map_smth_L = None
+            if not skip_R:
+                pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_L, out_pth_R, kernel=smth, verbose=False)
+            else:
+                pth_map_smth_R = None
+            
+            if pth_map_smth_L is None or pth_map_smth_R is None and not skip_L and not skip_R:
+                print(f"\t\t[WARNING] Smoothing failed [{study_code}] {sub}-{ses} ({ft}, {lbl}, {surf}). Check smoothing function output.")
+            
+            # Add paths to DataFrame
+            if verbose:
+                print(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
+            
+            if not skip_L:
+                df.loc[idx, col_base_L] = pth_map_smth_L
+            if not skip_R:
+                df.loc[idx, col_base_R] = pth_map_smth_R
+            
+            return df
+
         
-        sub = row[ID_col]
-        ses = row['SES']
+        start_time = time.time()
+        print(f"[idToMap] idToMap function start time: {time.strftime('%d-%b-%Y %H:%M:%S', time.localtime(start_time))}.")
+        print("\t Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...")
 
-        if idx % 10 == 0 and idx > 0:
-            percent_complete = 100 * idx / len(df_demo)
-            print(f"Progress: {percent_complete:.1f}% of rows completed ({idx}/{len(df_demo)})")
-
-        print(f"\n{study_code} sub-{sub} ses-{ses}")
-
-        out_dir = f"{specs['prjDir_root']}{specs['prjDir_maps']}/sub-{sub}_ses-{ses}" # for saving smoothed maps
-        create_dir(out_dir)
-
-        if specs['ctx']:
-            print(f"\n\tCORTICAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
+        if dict_demo['nStudies']: # Check if 'study' column exists, else skip or set default
+            assert 'study' in df_demo.columns, "[idToMap] 'study' column not found in df_demo, but 'nStudies' is True in dict_demo."
+        else: 
+            if len(studies) > 1:
+                raise ValueError("[idToMap] 'study' column not found in df_demo, but multiple studies provided.\n\tEither a) provide a 'study' column to df_demo to indicate which study each row belongs to OR b) keep a single dictionary item with study directory information.")
+        
+        for idx, row in df_demo.iterrows(): # Iterate through rows and add map paths
+            study_code = row['study']
             
-            for ft in specs['ft_ctx']:
-                for surf in specs['surf_ctx']:
-                    for smth in specs['smth_ctx']:
-                        for lbl in specs['lbl_ctx']:
-                            df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo, idx=idx, sub=sub, ses=ses, surf=surf, ft=ft, smth=smth, lbl=lbl, verbose=verbose)
-
-                            
-        if specs['hipp']:
-            print(f"\n\tHIPPOCAMPAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
+            if dict_demo['nStudies']: # determine study dictionary item
+                study_item = next((s for s in studies if s['study'] == study_code), None)
+                if study_item is None:
+                    print(f"[idToMap] WARNING. Unknown study code `{study_code}`. Skipping row.")
+                    continue
+                else:
+                    if verbose:
+                        print(f"[idToMap] Processing index {idx} of {df_demo.shape[0]-1}.")
+                    ID_col = dict_demo['ID_' + study_item['study']]
+            else: # if no matches, then take first study
+                print(f"[idToMap] No 'study' column provided. Defaulting to first study in studies list: {studies[0]['study']}.")
+                study_item = studies[0]
+                ID_col = dict_demo['ID']
             
-            for ft in specs['ft_hipp']:
-                for surf in specs['surf_hipp']:
-                    for smth in specs['smth_hipp']:
-                        for lbl in specs['lbl_hipp']:
-                            df_demo = hipp_maps(out_dir=out_dir, study=study_item, df=df_demo, idx=idx, sub=sub, ses=ses, surf=surf, ft=ft, smth=smth, lbl=lbl, verbose=verbose)
-                            
-      
-        print('-'*100)
+            sub = row[ID_col]
+            ses = row['SES']
+
+            if idx % 10 == 0 and idx > 0:
+                percent_complete = 100 * idx / len(df_demo)
+                print(f"Progress: {percent_complete:.1f}% of rows completed ({idx}/{len(df_demo)})")
+
+            print(f"\n{study_code} sub-{sub} ses-{ses}")
+
+            out_dir = f"{specs['prjDir_root']}{specs['prjDir_maps']}/sub-{sub}_ses-{ses}" # for saving smoothed maps
+            create_dir(out_dir)
+
+            if specs['ctx']:
+                print(f"\n\tCORTICAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
+                
+                for ft in specs['ft_ctx']:
+                    for surf in specs['surf_ctx']:
+                        for smth in specs['smth_ctx']:
+                            for lbl in specs['lbl_ctx']:
+                                df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo, idx=idx, sub=sub, ses=ses, surf=surf, ft=ft, smth=smth, lbl=lbl, verbose=verbose)
+
                                 
-    return df_demo
+            if specs['hipp']:
+                print(f"\n\tHIPPOCAMPAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
+                
+                for ft in specs['ft_hipp']:
+                    for surf in specs['surf_hipp']:
+                        for smth in specs['smth_hipp']:
+                            for lbl in specs['lbl_hipp']:
+                                df_demo = hipp_maps(out_dir=out_dir, study=study_item, df=df_demo, idx=idx, sub=sub, ses=ses, surf=surf, ft=ft, smth=smth, lbl=lbl, verbose=verbose)
+                                
+          
+            print('-'*100)
+        
+        end_time = time.time()
+        elapsed = end_time - start_time
+        mins, secs = divmod(elapsed, 60)
+        print(f"\n[idToMap] idToMap completed at {time.strftime('%d-%b-%Y %H:%M:%S', time.localtime(end_time))} (run duration: {int(mins)}m:{int(secs):02d}s).")
+        log_contents = log_stream.getvalue()
+        return df_demo, log_contents
 
+    finally:
+        sys.stdout = old_stdout
 
 def map(vol, surf, out, method="trilinear", verbose=True):
     """
