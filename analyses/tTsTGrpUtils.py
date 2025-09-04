@@ -1023,12 +1023,14 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
     import numpy as np
     import pandas as pd
     
+    uniqueIDs = df[['MICS_ID']].drop_duplicates()
+    print(f"[clean_demoPths] df has {df.shape[0]} rows with {len(uniqueIDs)} unique IDs")
     # Determine columns refering to L/R hemi of the same ft-lbl-surf-smth combination. 
     cols_L = [col for col in df.columns if 'hemi-L' in col]
     cols_R = [col for col in df.columns if 'hemi-R' in col]
-    print(f"cols_L: {cols_L}")
-    print(f"cols_R: {cols_R}")
-    
+    #print(f"cols_L: {cols_L}")
+    #print(f"cols_R: {cols_R}")
+
     pairs = []
     for col_L in cols_L: # Determine pairs
         col_R = col_L.replace('hemi-L', 'hemi-R') # check if hemi-R col exists
@@ -1036,12 +1038,13 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
             pairs.append((col_L, col_R))
         else:
             print(f"[clean_demoPths] WARNING: No matching hemi-R column found for {col_L}.")
-    
+
     assert len(pairs) == len(cols_L) == len(cols_R), "[clean_demoPths] Mismatch in number of L/R hemisphere columns or pairs."
-    # flatten list of pairs to a simple list of strings
-    cols = [col for pair in pairs for col in pair]
-    print(f"Cols ({len(cols)}): {cols}")
-    
+
+    cols = [col for pair in pairs for col in pair] # flatten list of pairs to a simple list of strings
+    if verbose:
+        print(f"Cols ({len(cols)}): {cols}")
+
     # Select only the relevant columns for map processing
     df_maps = df.copy()
     if verbose:
@@ -1054,21 +1057,19 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
 
     # Standardize missing value names
     unique_na_values = uniqueNAvals(df_maps)
-    print(f"Unique NA vals {len(unique_na_values)}: {unique_na_values}")
-    
+    #print(f"Unique NA vals {len(unique_na_values)}: {unique_na_values}")
+
     for na_val in unique_na_values: # replace all these with np.nan
-        check_val = "" if na_val == "BLANK" else na_val
+        check_val = np.nan if na_val == "BLANK" else na_val
         df_maps.replace(check_val, np.nan, inplace=True)
 
     # 1. [Ammend] unbalanced maps (ie. if missing one hemi, make map for corresponding map NA)
     for pair in pairs:
         col_L, col_R = pair
-        if verbose:
-            print(f"[clean_demoPths] Checking pair: ({col_L}, {col_R})")
         
         # Find rows where one hemi is missing and the other is present
         unbalanced = df_maps[(df_maps[col_L].isnull() & df_maps[col_R].notnull()) | 
-                              (df_maps[col_L].notnull() & df_maps[col_R].isnull())]
+                                (df_maps[col_L].notnull() & df_maps[col_R].isnull())]
         
         if not unbalanced.empty:
             if verbose:
@@ -1082,10 +1083,9 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
                     df_maps.at[idx, col_L] = np.nan
 
     # 2. [Remove] NA for all maps    
-    print(f"[clean_demoPths] Removing rows with NA across all maps.")
-
     missingAll = df_maps[cols].isnull().all(axis=1)  # check if all columns are missing all paired values
     id_missingAll = df_maps[missingAll][['MICS_ID', 'PNI_ID', 'SES', 'study']]
+
     if not id_missingAll.empty:
         # Add to df_rmv with reason
         to_add = df_maps[missingAll].copy()
@@ -1096,41 +1096,42 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
 
     if missingAll.sum() > 0:
         df_clean = df_maps[~missingAll]
-        print(f"{missingAll.sum()} rows missing all columns: {id_missingAll}")
+        # Extract only ID-SES-Study combinations and format: [study] ID-SES
+        id_ses_study = id_missingAll.apply(lambda row: f"[{row['study']}] {row['MICS_ID']}-{row['SES']}", axis=1).tolist()
     else:
         df_clean = df_maps.copy()
-        print("0 rows removed for missing all columns.")
+        if verbose:
+            print("\tNo rows missing all columns.")
+    
+    print(f"[clean_demoPths] Removed {missingAll.sum()} rows for NA across all maps.")
+    if missingAll.sum() > 0:
+        print(f"\t{df_clean.shape[0]} rows remain with {df_clean['MICS_ID'].nunique()} unique IDs.")
+        if verbose:
+            print(f"Participants removed: {id_ses_study}")
 
-    
-    # 3. remove participants with missing 3T-7T pairs
-    id_ses_counts = df_clean.groupby(['MICS_ID', 'PNI_ID', 'SES']).size()
-    
-    missingStudy = []
-    for idx, count in id_ses_counts.items():
-        rows = df_clean[(df_clean['MICS_ID'] == idx[0]) & (df_clean['PNI_ID'] == idx[1]) & (df_clean['SES'] == idx[2])]
-        unique_studies = rows['study'].nunique()
-        if count < nStudies or unique_studies < nStudies:
-            missingStudy.append(idx)
-    
-    if len(missingStudy) > 0:
-        # Create a mask for rows that have missing studies
-        missing_mask = df_clean.set_index(['MICS_ID', 'PNI_ID', 'SES']).index.isin(missingStudy)
-        
-        # Append to df_rmv
-        to_add = df_clean[missing_mask].copy()
-        for col in cols:
-            to_add[col] = df.loc[to_add.index, col].values
+    # 3. Ensure that at least one session per ID for each study. If not, remove the participant completely.
+    # list of unique IDs
+    # for each ID, check how many unique values are in the study column. If < nStudies, remove the participant completely.
+    for id in uniqueIDs['MICS_ID'].values:
+        studies_for_id = df_clean[df_clean['MICS_ID'] == id]['study']
+        if studies_for_id.nunique() < nStudies:
+            
+            # Add to df_rmv with reason
+            to_add = df_clean[df_clean['MICS_ID'] == id].copy()
+            for col in cols:
+                to_add[col] = df.loc[to_add.index, col].values
+            to_add['rmv_reason'] = 'missingStudy'
+            df_rmv = pd.concat([df_rmv, to_add], ignore_index=True)
+            # Remove from df_clean
+            df_clean = df_clean[df_clean['MICS_ID'] != id]
 
-        to_add['rmv_reason'] = 'missingStudy'
-        df_rmv = pd.concat([df_rmv, to_add], ignore_index=True)
-        
-        # Remove rows with missing studies
-        df_clean = df_clean[~missing_mask]
-    else:
-        print("0 participants removed for missing data from complementary study.")
-    
-    print(f"Original shape: {df.shape}; final cleaned shape: {df_clean.shape}")
-    print(f"Shape of removed cases df: {df_rmv.shape}")
+    print(f"[clean_demoPths] {df_rmv[df_rmv['rmv_reason'] == 'missingStudy']['MICS_ID'].nunique()} cases removed for missing study pair.")
+    if verbose:
+        print(f"\tParticipants removed for missing study pair: {df_rmv[df_rmv['rmv_reason'] == 'missingStudy']['MICS_ID'].unique().tolist()}")
+
+    # Print number of unique participants in MICS_ID before and after cleaning
+    print(f"\t{df_clean.shape[0]} rows remain with {df_clean['MICS_ID'].nunique()} unique IDs (total sessions: 3T={len(df_clean[df_clean['study'] == '3T']['MICS_ID'])}, 7T={len(df_clean[df_clean['study'] == '7T']['PNI_ID'])}).")
+    print(f"\t{df_rmv.shape[0]} rows removed.")
 
     if save is not None:
         date = pd.Timestamp.now().strftime("%d%b%Y-%H%M%S")
@@ -1175,7 +1176,7 @@ def clean_pths(dl, method="newest", silent=True):
             print(f"\t[clean_pths] WARNING: Empty dataframe for {d['study']} {d['grp']}")
             continue
         else:
-            df_clean = clean_ses(df, ID_col, method=method, silent=True)
+            df_clean = clean_ses(df, ID_col, method=method, verbose=True)
             #dl[i]['map_pths'] = df_clean
 
         if df_clean.empty:  # check if the cleaned dataframe is empty
@@ -1193,7 +1194,7 @@ def clean_pths(dl, method="newest", silent=True):
 
     return dl_out
 
-def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
+def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose=False):
     """
     Choose the session to use for each subject.
         If subject has multiple sessions with map path should only be using one of these sessions.
@@ -1216,7 +1217,7 @@ def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
         print(f"[ses_clean] WARNING: Empty dataframe. Skipping.")
         return
 
-    if not silent: print(f"[ses_clean] Choosing session according to method: {method}")
+    if verbose: print(f"[ses_clean] Choosing session according to method: {method}")
     
     # Find repeated IDs (i.e., subjects with multiple sessions)
     # sort df by col_ID
@@ -1228,7 +1229,7 @@ def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
     else:
         repeated_ids = df[df.duplicated(subset=col_ID, keep=False)][col_ID].unique()
     
-    if not silent:
+    if verbose:
         if len(repeated_ids) == 0:
             print(f"\tNo repeated IDs found")
 
@@ -1245,7 +1246,7 @@ def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
             sub_df = df[df[col_study] == study]
             repeated_ids_study = sub_df[sub_df.duplicated(subset=col_ID, keep=False)][col_ID].unique()
             if len(repeated_ids_study) > 0:
-                if not silent: print(f"\t{len(repeated_ids_study)} IDs with multiple sessions found in study {study}. Processing...")
+                if verbose: print(f"\t[study] {len(repeated_ids_study)} IDs with multiple sessions found. Processing...")
                 if method == "newest":
                     for id in repeated_ids_study:
                         sub_sub_df = sub_df[sub_df[col_ID] == id]
@@ -1267,8 +1268,16 @@ def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
                         if sub_sub_df.shape[0] > 1:
                             idx_to_remove = sub_sub_df[sub_sub_df['SES'] != method].index
                             rows_to_remove.extend(idx_to_remove)
+            # check that for each study there are only as many rows as unique IDs
+            
+            # count all rows for this study
+            rowsInStudy = df[df[col_study] == study].shape[0]
+            uniqueIDsInStudy = df[df[col_study] == study][col_ID].nunique()
+            if rowsInStudy != uniqueIDsInStudy:
+                print(f"[ses_clean] [WARNING] [{study}] there remain more rows ({rowsInStudy}) than unique IDs ({uniqueIDsInStudy}) in this study. Check output and code to ensure unique sessions per ID")
     elif len(repeated_ids) > 0:
-        if not silent: print(f"\t{len(repeated_ids)} IDs with multiple sessions found. Processing...")
+        if verbose: 
+            print(f"\t{len(repeated_ids)} IDs with multiple sessions found. Processing...")
         if method == "newest":
             for id in repeated_ids:
                 sub_df = df[df[col_ID] == id]
@@ -1290,20 +1299,24 @@ def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
                 if sub_df.shape[0] > 1:
                     idx_to_remove = sub_df[sub_df['SES'] != method].index
                     rows_to_remove.extend(idx_to_remove)
+        if df.shape[0] != df[col_ID].nunique():
+            print(f"[ses_clean] [WARNING] There remain more rows ({df.shape[0]}) than unique IDs ({df[col_ID].nunique()}) for this study. Check output and code to ensure unique sessions per ID")
+        if verbose:
+            print(f"\tMultiple sessions for IDs: {df[df.duplicated(subset=col_ID, keep=False)][col_ID].unique()}")
 
     # Remove the rows marked for removal
     df = df.drop(rows_to_remove)
-    #if not silent: print(df_clean[[ID_col, 'SES']].sort_values(by=ID_col))
 
-    # if num rows =/= to num unique IDs then write warning
-    if df.shape[0] != df[col_ID].nunique():
-        print(f"[ses_clean] WARNING: Number of rows ({df.shape[0]}) not equal to num unique IDs ({df[col_ID].nunique()})")
-        print(f"\tMultiple sessions for IDs: {df[df.duplicated(subset=col_ID, keep=False)][col_ID].unique()}")
-
-    if not silent: 
+    if not verbose: 
         print(f"\t{df_in.shape[0] - df.shape[0]} rows removed, Change in unique IDs: {df_in[col_ID].nunique() - df[col_ID].nunique()}")
         print(f"\t{df.shape[0]} rows remaining")
 
+    if save is not None:
+        date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+        save_pth = f"{save}/ses_clean_{date}.csv"
+        df.to_csv(save_pth, index=False)
+        print(f"[ses_clean] Saved cleaned dataframe to {save_pth}")
+        
     return df
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
