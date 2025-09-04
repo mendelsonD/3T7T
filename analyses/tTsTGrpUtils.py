@@ -26,6 +26,51 @@ def add_date(demo_pths, demo):
         print("skipping. 'Date' column already exists in demo_pths.")
         return demo_pths
 
+def stdizeNA(df, missing_patterns=None, verbose=True):
+    """
+    Replace various missing value patterns in the DataFrame with np.nan.
+
+    Parameters:
+        df: pd.DataFrame
+        missing_patterns: list or None
+            List of patterns to treat as missing. If None, uses a default set.
+        verbose: bool
+            If True, prints detailed information about changes made.
+
+    Returns:
+        df: pd.DataFrame with standardized missing values
+    """
+
+    # Default patterns for missing values
+    default_patterns = [
+        '', ' ', 'nan', 'NaN', 'NAN', 'null', 'NULL', '?', 'NA', 'na', 'n/a', 'N/A', '.', '-', '--', 'missing', 'MISSING'
+    ]
+    
+    if missing_patterns is not None:
+        patterns = set(default_patterns) | set(missing_patterns)
+    else:
+        patterns = set(default_patterns)
+
+    # Find all values that match the patterns before replacement
+    mask = df.isin(patterns)
+    changed = mask.stack()[lambda x: x].index.tolist()
+
+    if verbose:
+        if changed:
+            print(f"[stdizeNA] Replacing values matching following patterns with standard NA. Patterns: {patterns}")
+            for idx, col in changed:
+                old_val = df.at[idx, col]
+                print(f"\t[{df.at[idx, 'MICS_ID'] if 'MICS_ID' in df.columns else 'NA'}={df.at[idx, 'PNI_ID'] if 'PNI_ID' in df.columns else 'NA'} study: {df.at[idx, 'study'] if 'study' in df.columns else 'NA'}-ses{df.at[idx, 'SES'] if 'SES' in df.columns else 'NA'}] {{{col[:10]}}}: {old_val} --> NaN")
+
+    # Replace all matching patterns with np.nan
+    df = df.replace(list(patterns), np.nan)
+
+    # Only count the number of values that were actually changed (not total missing)
+    num_changed = len(changed)
+    print(f"[stdizeNA] Standardized {num_changed} missing values")
+    return df
+
+
 def chk_pth(pth):
     """
     Check if the path exists and is a file.
@@ -754,9 +799,15 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                     else:
                         if verbose:
                             print(f"\t\tUnsmoothed map paths:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
-
-                else: # Vol doesn't exist. Must be due to micapipe error; if rawdata didn't exist, would already have been caught (see surf path check above).
                     
+                elif not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # Unsmoothed map doesn't exist. Check raw data.
+                    dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
+                    df.loc[idx, col_base_L] = "NA: NO RAWDATA"
+                    df.loc[idx, col_base_R] = "NA: NO RAWDATA"
+                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe and hippunfold once resolved.\n")
+                    return df
+                
+                else: # Must be due to micapipe error
                     print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Feature volume not found. Check micapipe processing ( {os.path.dirname(vol_pth)} ). Skipping.\n")
                     df.loc[idx, col_base_L] = "NA: MISSING MP PROCESSING (volume ft map)"
                     df.loc[idx, col_base_R] = "NA: MISSING MP PROCESSING (volume ft map)"
@@ -775,6 +826,7 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                 pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_L, out_pth_R, kernel=smth, verbose=False)
                 if not chk_pth(pth_map_smth_R):
                     pth_map_smth_R = f"NA: SCRIPT ERROR. Surf: {surf_R}, Unsmoothed: {pth_map_unsmth_L}, kernel: {smth}"
+                
                 df.loc[idx, col_base_R] = pth_map_smth_R
                 if verbose:
                     print(f"\t\tSmoothed map R: {pth_map_smth_R}\n")
@@ -854,6 +906,243 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
     finally:
         sys.stdout = old_stdout
 
+
+def uniqueNAvals(df):
+    """
+    Determine unique NA values across all subjects.
+
+    Input:
+        df: DataFrame with map paths columns only (df_pths)
+
+    Output:
+        list of unique NA values (including "BLANK" for empty strings)
+    """
+    import pandas as pd
+    
+    out = pd.unique([
+        x if x != None else "BLANK"
+        for x in df.values.flatten()
+        if isinstance(x, str) and (x == "" or x.startswith("NA:"))
+    ])
+
+    return out
+
+def countErrors(df, cols, save=None, show=True):
+    """
+    From df_paths, count number of errors by row.
+
+    Input:
+        df: DataFrame with map paths columns only (df_pths)
+        cols: List of columns to check for NA values/errors
+        save: Path to save summary DataFrame. If None, do not save.
+        show: If True, print unique error values and their counts.
+
+    """
+    import pandas as pd
+    import datetime
+
+    error_values = df[cols].values.flatten() # Flatten all error values in the selected columns
+ 
+    error_values = [x for x in error_values if isinstance(x, str) and (x == None or x.startswith("NA:"))]  # Filter to only error values (blank or start with "NA:")
+
+    error_counts = pd.Series(error_values).value_counts()  # Count occurrences of each unique error value
+
+    # Determine all unique NA values across all subjects
+    unique_na_values = uniqueNAvals(df[cols])
+
+    # For each unique NA value, create a column listing which columns have this error for each row
+    for na_val in unique_na_values:
+        def colnames_with_error(row):
+            # Use "" for BLANK, otherwise the actual na_val
+            check_val = "" if na_val == "BLANK" else na_val
+            return [col for col in cols if isinstance(row[col], str) and (row[col] == check_val)]
+        colname = f'{na_val}'
+        df[colname] = df.apply(colnames_with_error, axis=1)
+        # Convert empty lists to blank string for clarity
+        df[colname] = df[colname].apply(lambda x: x if x else "")
+   
+    def extract_features_from_cols(cols_with_error):  # For each row, extract features from columns with "NA:rawdata" error
+        features = []
+        if isinstance(cols_with_error, list):
+            for col in cols_with_error:
+                # Check for each feature in the column name
+                if any(f in col for f in ['FA', 'ADC']):
+                    features.append('DWI')
+                elif 'T1map' in col:
+                    features.append('T1map')
+                elif 'flair' in col:
+                    features.append('flair')
+                elif 'thickness' in col:
+                    features.append('thickness')
+        # Remove duplicates and sort
+        return ','.join(sorted(set(features)))
+    #print(df.columns)
+    
+    df['NA: NO RAWDATA'] = df['NA: NO RAWDATA'].apply(extract_features_from_cols)
+    df['NA: MISSING MP PROCESSING (volume ft map)'] = df['NA: MISSING MP PROCESSING (volume ft map)'].apply(extract_features_from_cols)
+
+    # Prepare summary DataFrame
+    df['NAs'] = df[cols].apply(lambda row: sum(1 for x in row if isinstance(x, str) and (x == "" or x.startswith("NA:"))), axis=1)
+    error_cols = [f'{na_val}' for na_val in unique_na_values]
+    error_summary = df[df['NAs'] > 0][['study', 'PNI_ID', 'MICS_ID', 'SES', 'NAs'] + error_cols].copy()
+    
+    if show:
+        print("Unique error values and their counts:")
+        print(error_counts) 
+    
+    if save:
+        if save.endswith('/'):
+            savePth = f"{save}errorSummary_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
+        else:
+            savePth = f"{save}/errorSummary_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
+        
+        error_summary.to_csv(savePth, index=False)
+        print(f"[countErrors] Summary saved to {savePth}")
+
+    return error_summary
+
+def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps/paths/",verbose=True):
+    """
+    Clean demoPths dataframe for missing data and saves changes. 
+    
+    Amend/remove rows in case:
+        1) [amend] Missing one hemisphere pair, make complimentary hemisphere NA (to prevent unbalanced analyses) 
+        2) [removal] NA for all smoothed maps
+        3) [removal] Missing one study (3T or 7T) for a given ID-SES combination
+
+    Input:
+        df: DataFrame with columns for ID, SES, Study, and paths to left and right hemisphere maps.
+            NOTE. Assume path columns contain 'hemi-*' indicating L and R hemisphere maps.
+        nStudies: Number of studies (e.g., 2 for 3T and 7T)
+        save: Directory to save cleaned DataFrame and removed cases DataFrame. If None, do not save.
+    Output:
+        df_clean: Cleaned DataFrame with only valid ID-SES combinations.
+        df_rmv: DataFrame with removed cases and reason for removal.
+    """
+    import numpy as np
+    import pandas as pd
+    
+    # Determine columns refering to L/R hemi of the same ft-lbl-surf-smth combination. 
+    cols_L = [col for col in df.columns if 'hemi-L' in col]
+    cols_R = [col for col in df.columns if 'hemi-R' in col]
+    print(f"cols_L: {cols_L}")
+    print(f"cols_R: {cols_R}")
+    
+    pairs = []
+    for col_L in cols_L: # Determine pairs
+        col_R = col_L.replace('hemi-L', 'hemi-R') # check if hemi-R col exists
+        if col_R in cols_R:
+            pairs.append((col_L, col_R))
+        else:
+            print(f"[clean_demoPths] WARNING: No matching hemi-R column found for {col_L}.")
+    
+    assert len(pairs) == len(cols_L) == len(cols_R), "[clean_demoPths] Mismatch in number of L/R hemisphere columns or pairs."
+    # flatten list of pairs to a simple list of strings
+    cols = [col for pair in pairs for col in pair]
+    print(f"Cols ({len(cols)}): {cols}")
+    
+    # Select only the relevant columns for map processing
+    df_maps = df.copy()
+    if verbose:
+        print(f"\tInitial df: {df_maps.shape} (3T participants: {df_maps[df_maps['study'] == '3T']['MICS_ID'].nunique()}, 7T participants: {df_maps[df_maps['study'] == '7T']['PNI_ID'].nunique()}).")
+        n_hipp = sum([col.startswith('hipp') for col in cols])
+        n_ctx = sum([col.startswith('ctx') for col in cols])
+        print(f"\tPaired cols ({len(cols)} cols making {len(pairs)} pairs; ctx = {n_ctx}, hipp = {n_hipp}): {cols}")
+
+    df_rmv = pd.DataFrame(columns=list(df.columns) + ['rmv_reason']) # to store removed cases
+
+    # Standardize missing value names
+    unique_na_values = uniqueNAvals(df_maps)
+    print(f"Unique NA vals {len(unique_na_values)}: {unique_na_values}")
+    
+    for na_val in unique_na_values: # replace all these with np.nan
+        check_val = "" if na_val == "BLANK" else na_val
+        df_maps.replace(check_val, np.nan, inplace=True)
+
+    # 1. [Ammend] unbalanced maps (ie. if missing one hemi, make map for corresponding map NA)
+    for pair in pairs:
+        col_L, col_R = pair
+        if verbose:
+            print(f"[clean_demoPths] Checking pair: ({col_L}, {col_R})")
+        
+        # Find rows where one hemi is missing and the other is present
+        unbalanced = df_maps[(df_maps[col_L].isnull() & df_maps[col_R].notnull()) | 
+                              (df_maps[col_L].notnull() & df_maps[col_R].isnull())]
+        
+        if not unbalanced.empty:
+            if verbose:
+                print(f"[clean_demoPths] Found {len(unbalanced)} unbalanced rows for pair ({col_L}, {col_R}). Setting missing hemi to NA.")
+                print(unbalanced[['MICS_ID', 'PNI_ID', 'SES', 'study', col_L, col_R]])
+            # Set the present hemi to NA to maintain balance
+            for idx, row in unbalanced.iterrows():
+                if pd.isnull(row[col_L]) and pd.notnull(row[col_R]):
+                    df_maps.at[idx, col_R] = np.nan
+                elif pd.notnull(row[col_L]) and pd.isnull(row[col_R]):
+                    df_maps.at[idx, col_L] = np.nan
+
+    # 2. [Remove] NA for all maps    
+    print(f"[clean_demoPths] Removing rows with NA across all maps.")
+
+    missingAll = df_maps[cols].isnull().all(axis=1)  # check if all columns are missing all paired values
+    id_missingAll = df_maps[missingAll][['MICS_ID', 'PNI_ID', 'SES', 'study']]
+    if not id_missingAll.empty:
+        # Add to df_rmv with reason
+        to_add = df_maps[missingAll].copy()
+        for col in cols:
+            to_add[col] = df.loc[to_add.index, col].values
+        to_add['rmv_reason'] = 'missingAllMaps'
+        df_rmv = pd.concat([df_rmv, to_add], ignore_index=True)
+
+    if missingAll.sum() > 0:
+        df_clean = df_maps[~missingAll]
+        print(f"{missingAll.sum()} rows missing all columns: {id_missingAll}")
+    else:
+        df_clean = df_maps.copy()
+        print("0 rows removed for missing all columns.")
+
+    
+    # 3. remove participants with missing 3T-7T pairs
+    id_ses_counts = df_clean.groupby(['MICS_ID', 'PNI_ID', 'SES']).size()
+    
+    missingStudy = []
+    for idx, count in id_ses_counts.items():
+        rows = df_clean[(df_clean['MICS_ID'] == idx[0]) & (df_clean['PNI_ID'] == idx[1]) & (df_clean['SES'] == idx[2])]
+        unique_studies = rows['study'].nunique()
+        if count < nStudies or unique_studies < nStudies:
+            missingStudy.append(idx)
+    
+    if len(missingStudy) > 0:
+        # Create a mask for rows that have missing studies
+        missing_mask = df_clean.set_index(['MICS_ID', 'PNI_ID', 'SES']).index.isin(missingStudy)
+        
+        # Append to df_rmv
+        to_add = df_clean[missing_mask].copy()
+        for col in cols:
+            to_add[col] = df.loc[to_add.index, col].values
+
+        to_add['rmv_reason'] = 'missingStudy'
+        df_rmv = pd.concat([df_rmv, to_add], ignore_index=True)
+        
+        # Remove rows with missing studies
+        df_clean = df_clean[~missing_mask]
+    else:
+        print("0 participants removed for missing data from complementary study.")
+    
+    print(f"Original shape: {df_pths.shape}; final cleaned shape: {df_clean.shape}")
+    print(f"Shape of removed cases df: {df_rmv.shape}")
+
+    if save is not None:
+        date = pd.Timestamp.now().strftime("%d%b%Y-%H%M%S")
+        out_pth = f"{save}/demo_paths_clean_{date}.csv"
+        df_clean.to_csv(out_pth, index=False)
+        print(f"[clean_demoPths] Saved cleaned df: {out_pth}")
+        
+        if not df_rmv.empty:
+            rmv_pth = f"{save}/demo_paths_removed_{date}.csv"
+            df_rmv.to_csv(rmv_pth, index=False)
+            print(f"[clean_demoPths] Saved removed cases df: {rmv_pth}")
+
+    return df_clean, df_rmv
 
 def clean_pths(dl, method="newest", silent=True):
     """
