@@ -1019,6 +1019,7 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
         df_clean: Cleaned DataFrame with only valid ID-SES combinations.
         df_rmv: DataFrame with removed cases and reason for removal.
     """
+    
     import numpy as np
     import pandas as pd
     
@@ -1128,7 +1129,7 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
     else:
         print("0 participants removed for missing data from complementary study.")
     
-    print(f"Original shape: {df_pths.shape}; final cleaned shape: {df_clean.shape}")
+    print(f"Original shape: {df.shape}; final cleaned shape: {df_clean.shape}")
     print(f"Shape of removed cases df: {df_rmv.shape}")
 
     if save is not None:
@@ -1174,7 +1175,7 @@ def clean_pths(dl, method="newest", silent=True):
             print(f"\t[clean_pths] WARNING: Empty dataframe for {d['study']} {d['grp']}")
             continue
         else:
-            df_clean = ses_clean(df, ID_col, method=method, silent=True)
+            df_clean = clean_ses(df, ID_col, method=method, silent=True)
             #dl[i]['map_pths'] = df_clean
 
         if df_clean.empty:  # check if the cleaned dataframe is empty
@@ -1192,7 +1193,7 @@ def clean_pths(dl, method="newest", silent=True):
 
     return dl_out
 
-def ses_clean(df_in, ID_col, method="newest", silent=True):
+def clean_ses(df_in, col_ID, method="newest", col_study=None, silent=True):
     """
     Choose the session to use for each subject.
         If subject has multiple sessions with map path should only be using one of these sessions.
@@ -1200,10 +1201,10 @@ def ses_clean(df_in, ID_col, method="newest", silent=True):
     inputs:
         df: pd.dataframe with columns for subject ID, session, date and map_paths
             Assumes map path is missing if either : map_pth
-        ID_col: column name for subject ID in the dataframe
+        col_ID: column name for subject ID in the dataframe
         method: method to use for choosing session. 
             "newest": use most recent session
-            "oldest": use oldest session in the list
+            "oldest": use oldest session in the list - equivalent to taking the first session
             {number}: session code to use (e.g. '01' or 'a1' etc)
     """
     
@@ -1218,9 +1219,14 @@ def ses_clean(df_in, ID_col, method="newest", silent=True):
     if not silent: print(f"[ses_clean] Choosing session according to method: {method}")
     
     # Find repeated IDs (i.e., subjects with multiple sessions)
-    # sort df by ID_col
-    df = df_in.sort_values(by=[ID_col]).copy()
-    repeated_ids = df[df.duplicated(subset=ID_col, keep=False)][ID_col].unique()
+    # sort df by col_ID
+    df = df_in.sort_values(by=[col_ID]).copy()
+    if col_study is not None and col_study in df.columns:
+        # find repeated IDs within each study
+        df = df.sort_values(by=[col_study, col_ID])
+        repeated_ids = df[df.duplicated(subset=[col_study, col_ID], keep=False)][[col_study, col_ID]].drop_duplicates()
+    else:
+        repeated_ids = df[df.duplicated(subset=col_ID, keep=False)][col_ID].unique()
     
     if not silent:
         if len(repeated_ids) == 0:
@@ -1229,29 +1235,58 @@ def ses_clean(df_in, ID_col, method="newest", silent=True):
     rows_to_remove = []
     
     # Convert 'Date' column to datetime for comparison
-    df['Date_dt'] = pd.to_datetime(df['Date'], format='%d.%m.%Y', errors='coerce')
+    df['Date_fmt'] = pd.to_datetime(df['Date'], format='%d.%m.%Y', errors='coerce')
     today = pd.to_datetime('today').normalize()
 
-    if len(repeated_ids) > 0:
+    # Handle different studies
+    if col_study is not None and len(repeated_ids) > 0:
+        studies = df[col_study].unique()
+        for study in studies:
+            sub_df = df[df[col_study] == study]
+            repeated_ids_study = sub_df[sub_df.duplicated(subset=col_ID, keep=False)][col_ID].unique()
+            if len(repeated_ids_study) > 0:
+                if not silent: print(f"\t{len(repeated_ids_study)} IDs with multiple sessions found in study {study}. Processing...")
+                if method == "newest":
+                    for id in repeated_ids_study:
+                        sub_sub_df = sub_df[sub_df[col_ID] == id]
+                        if sub_sub_df.shape[0] > 1:
+                            idx_to_keep = sub_sub_df['Date_fmt'].idxmax()
+                            idx_to_remove = sub_sub_df.index.difference([idx_to_keep])
+                            rows_to_remove.extend(idx_to_remove)
+                elif method == "oldest":
+                    for id in repeated_ids_study:
+                        sub_sub_df = sub_df[sub_df[col_ID] == id]
+                        if sub_sub_df.shape[0] > 1:
+                            idx_to_keep = sub_sub_df['Date_fmt'].idxmin()
+                            idx_to_remove = sub_sub_df.index.difference([idx_to_keep])
+                            rows_to_remove.extend(idx_to_remove)
+                else:
+                    # Assume method is a session code (e.g., '01', 'a1', etc)
+                    for id in repeated_ids_study:
+                        sub_sub_df = sub_df[sub_df[col_ID] == id]
+                        if sub_sub_df.shape[0] > 1:
+                            idx_to_remove = sub_sub_df[sub_sub_df['SES'] != method].index
+                            rows_to_remove.extend(idx_to_remove)
+    elif len(repeated_ids) > 0:
         if not silent: print(f"\t{len(repeated_ids)} IDs with multiple sessions found. Processing...")
         if method == "newest":
             for id in repeated_ids:
-                sub_df = df[df[ID_col] == id]
+                sub_df = df[df[col_ID] == id]
                 if sub_df.shape[0] > 1:
-                    idx_to_keep = sub_df['Date_dt'].idxmax()
+                    idx_to_keep = sub_df['Date_fmt'].idxmax()
                     idx_to_remove = sub_df.index.difference([idx_to_keep])
                     rows_to_remove.extend(idx_to_remove)
         elif method == "oldest":
             for id in repeated_ids:
-                sub_df = df[df[ID_col] == id]
+                sub_df = df[df[col_ID] == id]
                 if sub_df.shape[0] > 1:
-                    idx_to_keep = sub_df['Date_dt'].idxmin()
+                    idx_to_keep = sub_df['Date_fmt'].idxmin()
                     idx_to_remove = sub_df.index.difference([idx_to_keep])
                     rows_to_remove.extend(idx_to_remove)
         else:
             # Assume method is a session code (e.g., '01', 'a1', etc)
             for id in repeated_ids:
-                sub_df = df[df[ID_col] == id]
+                sub_df = df[df[col_ID] == id]
                 if sub_df.shape[0] > 1:
                     idx_to_remove = sub_df[sub_df['SES'] != method].index
                     rows_to_remove.extend(idx_to_remove)
@@ -1261,12 +1296,12 @@ def ses_clean(df_in, ID_col, method="newest", silent=True):
     #if not silent: print(df_clean[[ID_col, 'SES']].sort_values(by=ID_col))
 
     # if num rows =/= to num unique IDs then write warning
-    if df.shape[0] != df[ID_col].nunique():
-        print(f"[ses_clean] WARNING: Number of rows ({df.shape[0]}) not equal to num unique IDs ({df[ID_col].nunique()})")
-        print(f"\tMultiple sessions for IDs: {df[df.duplicated(subset=ID_col, keep=False)][ID_col].unique()}")
+    if df.shape[0] != df[col_ID].nunique():
+        print(f"[ses_clean] WARNING: Number of rows ({df.shape[0]}) not equal to num unique IDs ({df[col_ID].nunique()})")
+        print(f"\tMultiple sessions for IDs: {df[df.duplicated(subset=col_ID, keep=False)][col_ID].unique()}")
 
     if not silent: 
-        print(f"\t{df_in.shape[0] - df.shape[0]} rows removed, Change in unique IDs: {df_in[ID_col].nunique() - df[ID_col].nunique()}")
+        print(f"\t{df_in.shape[0] - df.shape[0]} rows removed, Change in unique IDs: {df_in[col_ID].nunique() - df[col_ID].nunique()}")
         print(f"\t{df.shape[0]} rows remaining")
 
     return df
