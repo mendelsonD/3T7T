@@ -1274,7 +1274,7 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
             rowsInStudy = df[df[col_study] == study].shape[0]
             uniqueIDsInStudy = df[df[col_study] == study][col_ID].nunique()
             if rowsInStudy != uniqueIDsInStudy:
-                print(f"[ses_clean] [WARNING] [{study}] there remain more rows ({rowsInStudy}) than unique IDs ({uniqueIDsInStudy}) in this study. Check output and code to ensure unique sessions per ID")
+                print(f"\t[WARNING] [{study}] there remain more rows ({rowsInStudy}) than unique IDs ({uniqueIDsInStudy}) in this study. Check output and code to ensure unique sessions per ID")
     elif len(repeated_ids) > 0:
         if verbose: 
             print(f"\t{len(repeated_ids)} IDs with multiple sessions found. Processing...")
@@ -1316,7 +1316,7 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
         save_pth = f"{save}/ses_clean_{date}.csv"
         df.to_csv(save_pth, index=False)
         print(f"[ses_clean] Saved cleaned dataframe to {save_pth}")
-        
+
     return df
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
