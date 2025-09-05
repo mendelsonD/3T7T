@@ -1578,6 +1578,8 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
     return out
 
 
+
+
 ######################### ANALYSIS FUNCTIONS ####################################
 def print_dict(dict, df_print=False, idx=None):
     """
@@ -1620,6 +1622,8 @@ def print_dict(dict, df_print=False, idx=None):
 
 def print_grpDF(dict, grp, study, hipp=False, df="pth"):
     # hipp option: only print items where 'hippocampal'==True
+    import pandas as pd
+
     for item in dict:
         if item['study'] == study and item['grp'] == grp:
             if hipp and not item.get('hippocampal', False):
