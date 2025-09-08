@@ -1429,6 +1429,27 @@ def get_finalSES(dl, demo, save_pth=None, long=False, silent=True):
 
     return out
 
+def get_IDCol(study_name, demographics):
+    """
+    Determine study's ID column name
+
+    Input:
+        study_name: Name of the study ("MICs" or "PNI")
+        demographics: dict  regarding demographics file. 
+            Required keys: 
+                'ID_7T'
+                'ID_3T'
+    Output:
+        col_ID: column name for subject ID in the demographics file
+    """
+    if study_name == "MICs":
+        col_ID = demographics['ID_3T']
+    elif study_name == "PNI":
+        col_ID = demographics['ID_7T']
+    else:
+        raise ValueError(f"Unknown study name: {study_name}")
+    return col_ID
+
 ## Can be removed? ##
 def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
     """
@@ -1585,9 +1606,11 @@ def print_dict(dict, df_print=False, idx=None):
     """
     Print the contents of a dictionary with DataFrames in a readable format.
     Input:
-        List of dict items.
-        df_print: if True, prints DataFrame contents; if False, only print the shape of the DF keys
-        df_idx: if provided, only print the items at these indices in the dict list.
+        dict: list of dict items.
+        df_print: bool
+            if True, prints DataFrame contents; if False, only print the shape of the DF keys
+        idx: list of ints
+            if provided, only print the items at these indices in the dict list.
     Output:
         Prints the keys and values of each dictionary item.
     """
@@ -1785,21 +1808,22 @@ def get_d(col1, col2):
 
     return d   
 
-def get_z(x, col_ctrl):
+def get_z(x, ctrl):
     """
     Calculate z-scores for a given value in a DataFrame, using the control group as the reference.
     
     inputs:
         x: value for specific subject and same column as col_ctrl
-        col_ctrl: column name for control group in the DataFrame
+        ctrl: vector: 
+            column name for control group in the DataFrame
 
     outputs:
         z: z-scores for the specified column
     """
     import pandas as pd
     
-    ctrl_mean = col_ctrl.mean()
-    ctrl_std = col_ctrl.std()
+    ctrl_mean = ctrl.mean()
+    ctrl_std = ctrl.std()
     
     return (x - ctrl_mean) / ctrl_std
 
@@ -2357,3 +2381,130 @@ def vis_item(item, metric, ipsiTo=None, save_pth=None):
         print(f"Saved visualization to {save_name}_{date}.png")
 
     return fig
+
+
+
+def plot_ridgeplot(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2), Xlab="Map value", save_path=None, title=None, Vline=None, VlineCol='darkred'):
+    """
+    Parameters:
+    - matrix: numpy array or pandas DataFrame
+        Each row is an individual, each column is a vertex.
+    - matrix_df: pandas DataFrame, optional
+        DataFrame with info about individuals (rows).
+    - Cmap: str, optional
+        Colormap for ridgeplot.
+    - Range: tuple, optional
+        x-axis range.
+    - Xlab: str, optional
+        x-axis label.
+    - save_path: str, optional
+        Path to save plot.
+    - title: str, optional
+        Plot title.
+    - Vline: float, optional
+        Value for vertical line.
+    - VlineCol: str, optional
+        Color for vertical line.
+    Returns:
+    None
+
+    Plots a ridgeplot: each row is an individual, each column is a vertex.
+    """
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import matplotlib as mpl    
+    import numpy as np
+    import pandas as pd
+    # If input is DataFrame, convert to numpy array
+    if hasattr(matrix, "values"):
+        matrix_np = matrix.values
+    else:
+        matrix_np = matrix
+
+    n_individuals = matrix_np.shape[0]
+    n_vertices = matrix_np.shape[1]
+
+    if matrix_df is None:
+        matrix_df = pd.DataFrame({'id': [f'{i+1}' for i in range(n_individuals)]})
+        print_labels = False
+    else:
+        print_labels = True
+
+    mean_row_values = np.mean(matrix_np, axis=1)
+    sorted_indices = np.argsort(mean_row_values)
+    sorted_matrix = matrix_np[sorted_indices]
+    sorted_id_x = matrix_df['id'].values[sorted_indices]
+
+    # Flatten matrix for plotting
+    ai = sorted_matrix.flatten()
+    subject = np.repeat(np.arange(1, n_individuals+1), n_vertices)
+    id_x = np.repeat(sorted_id_x, n_vertices)
+
+    d = {'feature': ai,
+         'subject': subject,
+         'id_x': id_x
+        }
+    df = pd.DataFrame(d)
+
+    f, axs = plt.subplots(nrows=n_individuals, figsize=(3.468504*2.5, 2.220472*3.5), sharex=True, sharey=True)
+    f.set_facecolor('none')
+
+    x = np.linspace(Range[0], Range[1], 100)
+
+    for i, ax in enumerate(axs, 1):
+        sns.kdeplot(df[df["subject"]==i]['feature'],
+                    fill=True,
+                    color="w",
+                    alpha=0.25,
+                    linewidth=1.5,
+                    legend=False,
+                    ax=ax)
+        
+        ax.set_xlim(Range[0], Range[1])
+        
+        im = ax.imshow(np.vstack([x, x]),
+                       cmap=Cmap,
+                       aspect="auto",
+                       extent=[*ax.get_xlim(), *ax.get_ylim()]
+                      )
+        ax.collections
+        path = ax.collections[0].get_paths()[0]
+        patch = mpl.patches.PathPatch(path, transform=ax.transData)
+        im.set_clip_path(patch)
+           
+        ax.spines[['left','right','bottom','top']].set_visible(False)
+        
+        if i != n_individuals:
+            ax.tick_params(axis="x", length=0)
+        else:
+            ax.set_xlabel(Xlab)
+            
+        ax.set_yticks([])
+        ax.set_ylabel("")
+        
+        ax.axhline(0, color="black")
+
+        ax.set_facecolor("none")
+
+    for i, ax in enumerate(axs):
+        if i == n_individuals - 1:
+            ax.set_xticks([Range[0], Range[1]])
+        else:
+            ax.set_xticks([])
+        if print_labels:
+            ax.text(0.05, 0.01, sorted_id_x[i], transform=ax.transAxes, fontsize=10, color='black', ha='left', va='bottom')
+
+    if Vline is not None:
+        for ax in axs:
+            ax.axvline(x=Vline, linestyle='dashed', color=VlineCol)
+
+    plt.subplots_adjust(hspace=-0.8)
+    
+    if title:
+        plt.suptitle(title, y=0.99, fontsize=16)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    else:
+        plt.show()
+    
