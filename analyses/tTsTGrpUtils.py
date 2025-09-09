@@ -1821,11 +1821,19 @@ def get_z(x, ctrl):
         z: z-scores for the specified column
     """
     import pandas as pd
-    
-    ctrl_mean = ctrl.mean()
-    ctrl_std = ctrl.std()
-    
-    return (x - ctrl_mean) / ctrl_std
+    import numpy as np
+
+    # Ensure x and ctrl are DataFrames or numpy arrays
+    x = pd.DataFrame(x) if not isinstance(x, pd.DataFrame) else x
+    ctrl = pd.DataFrame(ctrl) if not isinstance(ctrl, pd.DataFrame) else ctrl
+
+    ctrl_mean = ctrl.mean(axis=0)
+    ctrl_std = ctrl.std(axis=0)
+
+    # Broadcast subtraction and division for all columns
+    z = (x - ctrl_mean) / ctrl_std
+
+    return z
 
 def get_w(map_ctrl, demo_ctrl, map_test, demo_test, covars, verbose=False):
     """
@@ -1894,7 +1902,7 @@ def get_w(map_ctrl, demo_ctrl, map_test, demo_test, covars, verbose=False):
 
     return w, models
 
-def catToDummy(df, exclude_cols=None):
+def catToDummy(df, exclude_cols=None, verbose = False):
     """
     Convert categorical (string) columns to dummy codes.
     
@@ -1907,7 +1915,7 @@ def catToDummy(df, exclude_cols=None):
     conversion_log: Dictionary logging all conversions made
     """
     import pandas as pd
-    
+
     if exclude_cols is None:
         exclude_cols = []
     
@@ -1936,7 +1944,8 @@ def catToDummy(df, exclude_cols=None):
                         'mapping': val_map,
                         'original_values': list(unique_vals)
                     }
-                    print(f"[convert_categorical] Binary conversion for '{col}': {val_map}")
+                    if verbose:
+                        print(f"[catToDummy] Binary conversion for '{col}': {val_map}")
                     
                 elif len(unique_vals) > 2:
                     # Multi-category variable - one-hot encoding
