@@ -1827,6 +1827,134 @@ def get_z(x, ctrl):
     
     return (x - ctrl_mean) / ctrl_std
 
+def get_w(map_ctrl, demo_ctrl, map_test, demo_test, covars, verbose=False):
+    """
+    Efficiently compute W-scores for patient maps based on control maps and demographics.
+    Supports 2D DataFrames for map_ctrl and map (n_subjects x n_vertices).
+
+    Input:
+        map_ctrl: DataFrame (n_controls x n_vertices)
+        demo_ctrl: DataFrame (n_controls x covariates)
+        map_test: DataFrame (n_subjects x n_vertices)
+        demo_test: DataFrame (n_subjects x covariates)
+        covars: list of covariate column names
+        verbose: bool, whether to print progress messages
+
+    Output:
+        w: DataFrame (n_subjects x n_vertices)
+        model: DataFrame (regression coefficients and residual std per vertex)
+    """
+    import numpy as np
+    import pandas as pd
+    
+    # Prepare covariate matrices
+    X_ctrl = demo_ctrl[covars].values.astype(float)
+    X_ctrl = np.hstack([np.ones((X_ctrl.shape[0], 1)), X_ctrl])  # add intercept column
+
+    X_test = demo_test[covars].values.astype(float)
+    X_test = np.hstack([np.ones((X_test.shape[0], 1)), X_test])  # add intercept column
+
+    # Prepare output containers
+    models = pd.DataFrame(
+        index=['intercept'] + [str(c) for c in covars] + ['resid_std'], # creates n_covar + 2 rows
+        columns=map_test.columns # n_vertices columns
+    )
+    w = pd.DataFrame(index=map_test.index, columns=map_test.columns)
+
+    # Convert map_ctrl and map to numpy arrays
+    Y_ctrl = map_ctrl.values.astype(float)  # shape: n_controls x n_vertices
+    Y_test = map_test.values.astype(float)  # shape: n_subjects x n_vertices
+
+    # Efficient batch regression for each vertex
+    for i, col in enumerate(map_test.columns):
+        if verbose and i % 200 == 0:
+            print(f"\r\t\t {(100*(i+1) / len(map_test.columns)):.0f}%\n", end="")
+
+        y_ctrl = Y_ctrl[:, i] # extract col i
+        if np.all(y_ctrl == 0):
+            if verbose:
+                print(f"{col} fully 0 in control map. skipping.")
+            w[col] = np.nan
+            models[col] = np.nan
+            continue
+
+        # Fit linear regression
+        coef, _, _, _ = np.linalg.lstsq(X_ctrl, y_ctrl, rcond=None)
+        predicted_ctrl = X_ctrl @ coef # shape: n_controls
+        resid = y_ctrl - predicted_ctrl # shape: n_controls
+        resid_std = np.std(resid) # shape: 1
+
+        # Store model
+        models.loc[models.index[:-1], col] = coef
+        models.loc['resid_std', col] = resid_std
+
+        # Predict expected values for all subjects
+        expected = X_test @ coef
+        w[col] = (Y_test[:, i] - expected) / resid_std # CAREFUL: may not be appropriate to divide by residual_std if fat tails
+
+    return w, models
+
+def catToDummy(df, exclude_cols=None):
+    """
+    Convert categorical (string) columns to dummy codes.
+    
+    Parameters:
+    df: DataFrame to process
+    exclude_cols: List of columns to exclude from conversion
+    
+    Returns:
+    df_converted: DataFrame with categorical variables converted to dummy codes
+    conversion_log: Dictionary logging all conversions made
+    """
+    import pandas as pd
+    
+    if exclude_cols is None:
+        exclude_cols = []
+    
+    df_converted = df.copy()
+    conversion_log = {}
+    
+    for col in df.columns:
+        if col in exclude_cols:
+            continue
+            
+        # Check if column is non-numeric (contains strings)
+        if df[col].dtype == 'object' or df[col].dtype.name == 'category':
+            try:
+                # Try to convert to numeric first
+                pd.to_numeric(df[col], errors='raise')
+            except (ValueError, TypeError):
+                # Column contains non-numeric values, convert to dummy codes
+                unique_vals = df[col].dropna().unique()
+                
+                if len(unique_vals) == 2:
+                    # Binary variable - simple 0/1 encoding
+                    val_map = {unique_vals[0]: 0, unique_vals[1]: 1}
+                    df_converted[col] = df[col].map(val_map)
+                    conversion_log[col] = {
+                        'type': 'binary',
+                        'mapping': val_map,
+                        'original_values': list(unique_vals)
+                    }
+                    print(f"[convert_categorical] Binary conversion for '{col}': {val_map}")
+                    
+                elif len(unique_vals) > 2:
+                    # Multi-category variable - one-hot encoding
+                    dummies = pd.get_dummies(df[col], prefix=col, dummy_na=False)
+                    
+                    # Drop original column and add dummy columns
+                    df_converted = df_converted.drop(columns=[col])
+                    df_converted = pd.concat([df_converted, dummies], axis=1)
+                    
+                    conversion_log[col] = {
+                        'type': 'one_hot',
+                        'new_columns': list(dummies.columns),
+                        'original_values': list(unique_vals)
+                    }
+                    print(f"[convert_categorical] One-hot encoding for '{col}': {list(unique_vals)} -> {list(dummies.columns)}")
+    
+    return df_converted, conversion_log
+
 def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
     """
     Take df with columns '{idx}_{hemi}' and rename to just contain an index. By convention, L hemi then R hemi. 
