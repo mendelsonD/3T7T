@@ -1727,26 +1727,38 @@ def find_paired_TLE_index(dl, idx, mtch=['study','label']):
                 return j
     return None  # Not found
 
-def get_pair(dl, idx, mtch=['study', 'grp', 'label']):
+def get_pair(dl, idx, mtch=['study', 'grp', 'label'], skip_idx=None):
     """
     Get corresponding idx for item in dictionary list.
+    NOTE. Assumes only a single match exists.
 
     Input:
         dl: list of dictionary items with keys found in mtch
         idx: index of the item to find the pair for
         mtch: list of keys to match on.
+        skip_idx: index to skip (e.g. if you want to avoid matching to a specific item or if previously processed others)
+    
+    Output:
+        index of the matching item in the list, or None if not found
     """
 
     item = dl[idx]
+    if skip_idx is not None:
+        if idx not in skip_idx:
+            skip_idx.append(idx)
+    else:
+        skip_idx = [idx]
+        
     for j, other in enumerate(dl):
-        if j != idx:
+        if j not in skip_idx:
             match = True
             for key in mtch:
-                if other.get(key) != item.get(key):
+                if other.get(key, None) != item.get(key, False):
                     match = False
                     break
             if match:
                 return j
+            
     return None  # Not found
 
 def ipsi_contra(df, hemi_ipsi='L', rename_cols = True):
