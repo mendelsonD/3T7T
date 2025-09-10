@@ -1784,7 +1784,7 @@ def ipsi_contra(df, hemi_ipsi='L', rename_cols = True):
 
     return df_ic, hemi_ipsi
 
-def get_d(col1, col2):
+def get_d_old(col1, col2):
     """
     Given two columns, calculate cohen's D 
     """
@@ -1807,6 +1807,51 @@ def get_d(col1, col2):
         return float('nan')  # Avoid infinite values
 
     return d   
+
+def get_d(ctrl, test, varName="z", test_name="grp", saveN = False):
+    """
+    Accept 2 2D matrices of size [n_ctrl x n_vertices] and [n_test x n_vertices]. Note n_vertices must be equivalent but n_ctrl need not = n_test.
+    Calculates d with test - ctrl (i.e. positive d means test > ctrl)
+    Return:
+        Matrix of size 5 x n_vertices with the following rows:
+            m_ctrl: mean of ctrl at this vertex
+            std_ctrl: st.dev of ctrl at this vertex
+            m_{test}
+            std_{test}
+            d_{test}: cohen's d between both distributions at this vertex
+    """
+    import numpy as np
+    import pandas as pd
+
+    # get means and stds
+    n_ctrl  = ctrl.shape[0]
+    m_ctrl = np.mean(ctrl, axis=0)
+    std_ctrl = np.std(ctrl, axis=0)
+    
+    n_test = test.shape[0]
+    m_test = np.mean(test, axis=0)
+    std_test = np.std(test, axis=0)
+
+    pooled_std = (((n_ctrl - 1) * std_ctrl**2 + (n_test - 1) * std_test**2) / (n_ctrl + n_test - 2))**0.5
+    pooled_std = np.where(pooled_std == 0, np.nan, pooled_std) # If any pooled_std values are zero, set them to nan to avoid division by zero
+    
+    d = (m_test - m_ctrl) / pooled_std
+
+    # create output df
+    if saveN:
+        n_vertices = test.shape[1] 
+        n_ctrl_arr = np.full(n_vertices, n_ctrl) # Extend all arrays to the length of test[1] (number of vertices)
+        n_test_arr = np.full(n_vertices, n_test)
+        out = np.vstack([n_ctrl_arr, m_ctrl, std_ctrl, n_test_arr, m_test, std_test, d])
+        row_names = [f'n_{varName}_ctrl',f'm_{varName}_ctrl', f'std_{varName}_ctrl', f'n_{varName}_{test_name}', f'm_{varName}_{test_name}', f'std_{varName}_{test_name}', f'd_{varName}_{test_name}']
+    else:
+        out = np.vstack([m_ctrl, std_ctrl, m_test, std_test, d])
+        row_names = [f'm_{varName}_ctrl', f'std_{varName}_ctrl', f'm_{test_name}', f'std_{test_name}', f'd_{test_name}']
+    
+    out_df = pd.DataFrame(out, index=row_names, columns=test.columns)
+    
+    return out_df
+
 
 def get_z(x, ctrl):
     """
