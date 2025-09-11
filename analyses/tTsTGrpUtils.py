@@ -1616,6 +1616,23 @@ def print_dict(dict, df_print=False, idx=None):
     """
     import pandas as pd
     
+    def mainPrint(k, v, df_print):
+        import pandas as pd
+        if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
+            print(f"\t{k}: <DataFrame shape={v.shape}>")
+            if df_print: print(f"\t{k}: {v}")
+        elif isinstance(v, list) and all(isinstance(x, pd.DataFrame) for x in v):
+            if df_print:
+                for idx_df, df_v in enumerate(v):
+                    print(f"\t{k}[{idx_df}]: {df_v}")
+            else:
+                shapes = [df_v.shape for df_v in v]
+                print(f"\t{k}: <list (len {len(v)}) of DataFrames. Shapes : {shapes}>")
+            #print(f"\t{k}: <DataFrame shape={v.shape}>")
+            if df_print: print(f"\t{k}: {v}")
+        else:
+            print(f"\t{k}: {v}")
+
     if idx is not None:
         print(f"\n Printing the following {len(idx)} indices: {idx}")
         for i in idx:
@@ -1623,11 +1640,7 @@ def print_dict(dict, df_print=False, idx=None):
             print(f"\n[{i}]")
             print(f"\tKeys: {list(d.keys())}")
             for k, v in d.items():
-                if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
-                    print(f"\t{k}: <DataFrame shape={v.shape}>")
-                    if df_print: print(f"\t{k}: {v}")
-                else:
-                    print(f"\t{k}: {v}")
+                mainPrint(k,v, df_print)
         return
     else:
         print(f"\n Dict list length ({len(dict)} items)")
@@ -1637,11 +1650,7 @@ def print_dict(dict, df_print=False, idx=None):
             print(f"\tKeys: {list(d.keys())}")
 
             for k, v in d.items():
-                if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
-                    print(f"\t{k}: <DataFrame shape={v.shape}>")
-                    if df_print == True: print(f"\t{k}: {v}")
-                else:
-                    print(f"\t{k}: {v}")
+                mainPrint(k,v, df_print)
 
 def print_grpDF(dict, grp, study, hipp=False, df="pth"):
     # hipp option: only print items where 'hippocampal'==True
@@ -2020,6 +2029,30 @@ def catToDummy(df, exclude_cols=None, verbose = False):
                     print(f"[convert_categorical] One-hot encoding for '{col}': {list(unique_vals)} -> {list(dummies.columns)}")
     
     return df_converted, conversion_log
+
+def printItemMetadata(item):
+    """
+    Print metadata of a dictionary item in a readable format.
+    
+    Parameters:
+    item: Dictionary containing metadata
+    
+    Returns:
+    None
+    """
+    import pandas as pd
+    
+    study = item.get('study', None)
+    if study is None:
+        study = item.get('studies', None)
+    region = item.get('region', None)
+    feature = item.get('feature', None)
+    surf = item.get('surf', None)
+    label = item.get('label', None)
+    smth = item.get('smth', None)
+
+    print(f"\t[{study}]\t{region}: {feature}, {surf}, {label}, {smth}mm")
+
 
 def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
     """
@@ -2411,7 +2444,10 @@ def showBrains(lh, rh, surface='fsLR-5k', metric_lbl=None, ipsiTo=None, title=No
     import datetime
 
     micapipe=os.popen("echo $MICAPIPE").read()[:-1]
-    
+    if micapipe == "":
+        micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
+        print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
+
     # set wd to save_pth
     if save_pth is not None:
         if not os.path.exists(save_pth):
