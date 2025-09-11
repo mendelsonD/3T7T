@@ -2266,11 +2266,11 @@ def h_bar(item, df_name, metric, ipsiTo=None, title=False):
     # Do not show the plot, just return the figure object
     return fig
 
-def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
+def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
     """
     Create brain figures from a list of dictionary items with vertex-wise dataframes.
     Input:
-        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', {df_name}
+        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', 'region' {df_name}
         df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
         indices: list of indices to visualize. If None, visualize all items in the list.
         ipsiTo: hemisphere to use for ipsilateral visualization ('L' or 'R').
@@ -2279,7 +2279,13 @@ def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L"
     from IPython.display import display
 
     for i, item in enumerate(dl):
-        print(f"[visMean] [{i}] ({item.get('study','')} {item.get('grp','')} {item.get('label','')})")
+        region = item.get('region', 'ERROR')
+        feature = item.get('feature', 'ERROR')
+        label = item.get('label', 'ERROR')
+        surface = item.get('surf', 'ERROR')
+        smth = item.get('smth', 'ERROR')
+        
+        print(f"[visMean] [{i}] ([{item.get('studies','NA')}] {region} {feature} {label} {surface} {smth}mm)")
         
         if dl_indices is not None and i not in dl_indices:
             continue
@@ -2314,10 +2320,6 @@ def visMean(dl, df_name='df_z_mean', df_metric=None, dl_indices=None, ipsiTo="L"
             rh_cols = [col for col in df.columns if col.endswith('_R')]
         #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
         assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
-        if len(lh_cols) == 32492:
-            surface = 'fsLR-32k'
-        else: 
-            surface = 'fsLR-5k'
 
         lh = df[lh_cols]
         rh = df[rh_cols]
