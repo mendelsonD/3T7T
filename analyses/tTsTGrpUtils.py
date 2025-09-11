@@ -2030,7 +2030,7 @@ def catToDummy(df, exclude_cols=None, verbose = False):
     
     return df_converted, conversion_log
 
-def printItemMetadata(item):
+def printItemMetadata(item, idx=None):
     """
     Print metadata of a dictionary item in a readable format.
     
@@ -2050,8 +2050,10 @@ def printItemMetadata(item):
     surf = item.get('surf', None)
     label = item.get('label', None)
     smth = item.get('smth', None)
-
-    print(f"\t[{study}]\t{region}: {feature}, {surf}, {label}, {smth}mm")
+    if idx is not None:
+        print(f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})")
+    else:
+        print(f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm")
 
 
 def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
@@ -2357,11 +2359,11 @@ def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, ipsiTo
         lh = df[lh_cols]
         rh = df[rh_cols]
         #print(f"\tL: {lh.shape}, R: {rh.shape}")
-        fig = showBrains(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
+        fig = showCtx(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
 
         return fig
 
-def itmToVisual(item, df_name='df_z_mean', metric = 'dD_by3T', metric_lbl = None, ipsiTo=None, save_name=None, save_pth=None, title=None, max_val=2):
+def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_Δd',region = None, feature = None, ipsiTo="L", save_name=None, save_pth=None, title=None, max_val=None):
     """
     Convert a dictionary item to format to visualize.
     
@@ -2413,12 +2415,31 @@ def itmToVisual(item, df_name='df_z_mean', metric = 'dD_by3T', metric_lbl = None
     #print(f"\tL: {lh.shape}, R: {rh.shape}")
 
     title = title or f"{item.get('study', '3T-7T comp')} {item['label']}"
-
-    fig = showBrains(lh, rh, surface, metric_lbl = metric_lbl, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_pth, title=title, min=-max_val, max=max_val, inflated=True)
+    
+    if max_val is None:
+        max_val = 2
+    if feature is None:
+        feature = item.get('feature', '')
+    if region is None:
+        region = item.get('region', 'ctx') # asign default value to 'ctx'
+        
+    if region == 'hippocampus' or region == 'hipp':
+        print("Hippocampal mapping coming.")
+    else:
+        fig = showCtx(lh, rh, surface,
+                        feature_lbl = feature, ipsiTo=ipsiTo, 
+                        save_name=save_name, save_pth=save_pth, title=title, 
+                        min=-max_val, max=max_val, 
+                        inflated=True)
 
     return fig
 
-def showBrains(lh, rh, surface='fsLR-5k', metric_lbl=None, ipsiTo=None, title=None, min=-2.5, max=2.5, inflated=True, save_name=None, save_pth=None, cmap="seismic"):
+def showCtx(lh, rh, 
+               surface='fsLR-5k', feature_lbl=None, 
+               ipsiTo=None, title=None, 
+               min=-2.5, max=2.5, inflated=True, 
+               save_name=None, save_pth=None, cmap="seismic"
+               ):
     """
     Returns brain figures
 
@@ -2460,7 +2481,7 @@ def showBrains(lh, rh, surface='fsLR-5k', metric_lbl=None, ipsiTo=None, title=No
             surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.inflated.surf.gii', itype='gii')
             surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.inflated.surf.gii', itype='gii')
         else:
-            # Load Load fsLR 5k
+            # Load fsLR 5k
             surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.surf.gii', itype='gii')
             surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.surf.gii', itype='gii')
     elif surface == 'fsLR-32k':
@@ -2578,7 +2599,7 @@ def vis_item(item, metric, ipsiTo=None, save_pth=None):
     # 
 
     # Cortex visual
-    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric=metric, metric_lbl = metric_lbl, ipsiTo=ipsiTo)
+    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric=metric, feature = metric_lbl, ipsiTo=ipsiTo)
     #print(type(crtx_img))
     img_bytes = crtx_img.data  # This is the raw PNG bytes
     img = PILImage.open(io.BytesIO(img_bytes))
