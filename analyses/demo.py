@@ -35,7 +35,7 @@ def get_demo(sheets, save_pth=None, save_name="00_demo"):
     #out.to_csv(f"{save_pth}/demo_debug_1-idVisits.csv", index=False)
    
     out = t1.demo(sheets, out, save_pth=None) # add demographic info
-    out.to_csv(f"{save_pth}/demo_debug_2-demo.csv", index=False) # debug
+    #out.to_csv(f"{save_pth}/demo_debug_2-demo.csv", index=False) # debug
 
     out = rmvNADate(out, 'Date') # remove rows with missing scan dates. If only data from one study remains after this removal, then remove participant completely.
     print(out.columns)
@@ -87,8 +87,15 @@ def get_demo(sheets, save_pth=None, save_name="00_demo"):
     
     out = group(out, out_col="grp", ID_col="MICS_ID", save_pth=None) # assign high level groups
     out = group(out, out_col="grp_detailed", ID_col="MICS_ID", save_pth=None) # assign detailed groups
-    # check that all participants assigned a group
+    
+    # Sanity checks:
+    # Ensure all participants assigned a group
     grpChk(out, grp_cols=['grp', 'grp_detailed'])
+    # Ensure no duplicate rows
+    dupes = out.duplicated(subset=['UID', 'MICS_ID', 'PNI_ID', 'study', 'SES'], keep=False)
+    if dupes.any():
+        print("[WARNING] Duplicated rows:")
+        print(out.loc[dupes, ['UID', 'MICS_ID', 'PNI_ID', 'study', 'SES'] + [col for col in out.columns if col not in ['MICS_ID', 'PNI_ID', 'study', 'SES']]])
 
     if save_pth is not None:
         import datetime
@@ -124,6 +131,68 @@ def uniqueID(df, idcols, uniqueIDName="UID"):
     df = df[cols]
     
     return df
+
+def grp_summary(df_demo, col_grp= 'grp_detailed', save_pth=None, save_name="00c_grpSummary", toPrint=True):
+    """
+    Count number of participants, sessions for a grouping variable
+    """
+    # Calculate max and median number of sessions per participant for each group and study
+    def max_sessions(df, group, study):
+        subset = df[(df[col_grp] == group) & (df['study'] == study)]
+        if subset.empty:
+            return 0
+        return subset.groupby('MICS_ID').size().max()
+
+    def median_sessions(df, group, study):
+        subset = df[(df[col_grp] == group) & (df['study'] == study)]
+        if subset.empty:
+            return 0
+        return subset.groupby('MICS_ID').size().median()
+
+    # Num of participants by group
+    # Show number of unique participants per detailed group
+    # Calculate unique participants, number of 3T sessions, and number of 7T sessions per group
+    group_summary = (
+        df_demo.groupby(col_grp)
+        .agg(
+            num_px=('MICS_ID', 'nunique'),
+            num_ses_3T=('study', lambda x: ((x == '3T')).sum()),
+            num_ses_7T=('study', lambda x: ((x == '7T')).sum()),
+        )
+    )
+
+    group_summary['max_ses_3T'] = group_summary.index.map(lambda g: max_sessions(df_demo, g, '3T'))
+    group_summary['max_ses_7T'] = group_summary.index.map(lambda g: max_sessions(df_demo, g, '7T'))
+    group_summary['median_ses_3T'] = group_summary.index.map(lambda g: median_sessions(df_demo, g, '3T'))
+    group_summary['median_ses_7T'] = group_summary.index.map(lambda g: median_sessions(df_demo, g, '7T'))
+    # Add a total row at the end with sums for participant/session counts, leave median/max empty
+    total_row = {
+        'num_px': group_summary['num_px'].sum(),
+        'num_ses_3T': group_summary['num_ses_3T'].sum(),
+        'num_ses_7T': group_summary['num_ses_7T'].sum(),
+        'max_ses_3T': '',
+        'max_ses_7T': '',
+        'median_ses_3T': '',
+        'median_ses_7T': ''
+    }
+
+    group_summary = pd.concat([group_summary, pd.DataFrame([total_row], index=['TOTAL'])])
+
+    group_summary = group_summary.sort_values('num_px', ascending=False)
+
+    # save to csv
+    if save_pth is not None:
+        output_csv = os.path.join(save_pth, f"{save_name}_{pd.Timestamp.now().strftime('%d%b%Y')}.csv")
+        group_summary.to_csv(output_csv, header=True)
+        print(f"[grp_summary] Saved participant summary to {output_csv}")
+    if toPrint:
+        print("-"*40)
+        pd.set_option('display.max_columns', None)     # Show all columns
+        pd.set_option('display.width', None)          # No width limit
+        pd.set_option('display.max_colwidth', None)   # No column width limit
+        pd.set_option('display.expand_frame_repr', False)  # Don't wrap to multiple lines
+
+        print(group_summary)
 
 def dupSES(df, uniqCols, mergeCols):
     """
