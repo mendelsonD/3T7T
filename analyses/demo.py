@@ -4,12 +4,13 @@ import sys
 import importlib
 import re
 import numpy as np
+import tTsTGrpUtils as tsutil
 
 #sys.path.append("/Users/danielmendelson/Library/CloudStorage/OneDrive-McGillUniversity/Documents/PhD/Boris/code")
 sys.path.append("/host/verges/tank/data/daniel/")
 from genUtils import id, gen, t1
 
-def get_demo(sheets, save_pth=None, save_name="demo"):
+def get_demo(sheets, save_pth=None, save_name="00_demo"):
     """
     Run all functions to generate demographic data for 3T-7T participants.
 
@@ -21,20 +22,12 @@ def get_demo(sheets, save_pth=None, save_name="demo"):
         list of IDs with paired 3T-7T data
         sheet with each row as separate session and with associated demographic information
     """
-
-    import os
-    sys.path.append("/Users/danielmendelson/Library/CloudStorage/OneDrive-McGillUniversity/Documents/PhD/Boris/code") # on mac
-    #sys.path.append("/host/verges/tank/data/daniel/") # on lab computer
-    from Utils import id, t1
-    import tTsTGrpUtils as tsutil
-    
-    import importlib
     importlib.reload(id)
     importlib.reload(t1)
-    importlib.relaod(tsutil)
+    importlib.reload(tsutil)
     
     out = id.ids3T7T(sheets, save_pth=None) # determine participants with 3T and 7T data
-    id_cols = out.columns
+    id_cols = out.columns.to_list()
 
     out = id.id_visits(sheets, out, save_pth=None) # get all sessions for these participants
     
@@ -53,11 +46,18 @@ def get_demo(sheets, save_pth=None, save_name="demo"):
     print("[get_demo] After cleaning for missing scan dates, there are ", out['MICS_ID'].nunique(), " unique participants with a total of ", out.shape[0], " sessions (3T:",(out['study'] == '3T').sum(),", 7T:", (out['study'] == '7T').sum(),") in input datasheet.")
     #out.to_csv(f"{save_pth}/demo_debug_3-rmvNADate.csv", index=False) # debug
     
+    # assign unique ID per participant
+    uniqueIDName = "UID"
+
+    out = uniqueID(out, idcols=id_cols, uniqueIDName=uniqueIDName)
+    id_cols = id_cols + [uniqueIDName]
+    print(id_cols)
+    
     # save out
-    if save_pth is not None:
+    if save_pth is not None: # save corresponding IDs
         import datetime
 
-        save_name_tmp = f"{save_pth}/ids3T7T_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
+        save_name_tmp = f"{save_pth}/00a_ids_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
         toSave = out[id_cols].drop_duplicates()
         toSave.to_csv(save_name_tmp, index=False)
         print("[get_demo] Saved list of paired ids to: ", save_name_tmp)
@@ -93,7 +93,7 @@ def get_demo(sheets, save_pth=None, save_name="demo"):
     if save_pth is not None:
         import datetime
 
-        save_name = f"{save_pth}/{save_name}_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
+        save_name = f"{save_pth}/00b_demo_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
         out.to_csv(save_name, index=False)
         print("[get_demo] Saved to: ", save_name)
     else:
@@ -101,6 +101,29 @@ def get_demo(sheets, save_pth=None, save_name="demo"):
         
     return out
 
+def uniqueID(df, idcols, uniqueIDName="UID"):
+    """
+    Assign unique ID to unique individual.
+
+    Input:
+        df: DataFrame with participant data
+        idcols: list of columns that uniquely identify an individual (e.g., ['MICS_ID', 'PNI_ID'])
+        uniqueIDName: name of the new column to store the unique ID
+
+    Returns:
+        df: DataFrame with new column for unique ID
+    """
+    df = df.copy()
+    
+    df_unique = df[idcols].drop_duplicates().reset_index(drop=True) 
+    df_unique[uniqueIDName] = [f"UID{str(i+1).zfill(4)}" for i in range(df_unique.shape[0])] # create unique ID. Default format should be "UID0001", "UID0002", etc.
+
+    # add as first row in original dataframe
+    df = df.merge(df_unique, on=idcols, how='right')
+    cols = [uniqueIDName] + [col for col in df.columns if col != uniqueIDName]
+    df = df[cols]
+    
+    return df
 
 def dupSES(df, uniqCols, mergeCols):
     """

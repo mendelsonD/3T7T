@@ -40,6 +40,7 @@ def stdizeNA(df, missing_patterns=None, verbose=True):
     Returns:
         df: pd.DataFrame with standardized missing values
     """
+    import numpy as np
 
     # Default patterns for missing values
     default_patterns = [
