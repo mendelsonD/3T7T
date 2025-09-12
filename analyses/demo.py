@@ -106,7 +106,7 @@ def get_demo(sheets, save_pth=None, save_name="00_demo"):
     else:
         print("[get_demo] WARNING. Not saving demographics sheet to file. To save, please provide a path to save_pth")
         
-    return out
+    return out, save_name
 
 def uniqueID(df, idcols, uniqueIDName="UID"):
     """
