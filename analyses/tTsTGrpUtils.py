@@ -1854,7 +1854,10 @@ def get_d(ctrl, test, varName="z", test_name="grp", saveN = False):
     std_test = np.std(test, axis=0)
 
     pooled_std = (((n_ctrl - 1) * std_ctrl**2 + (n_test - 1) * std_test**2) / (n_ctrl + n_test - 2))**0.5
-    pooled_std = np.where(pooled_std == 0, np.nan, pooled_std) # If any pooled_std values are zero, set them to nan to avoid division by zero
+    # Find any vertices where pooled_std is 0 and set to nan to avoid division by zero
+    if np.any(pooled_std == 0):
+        print(f"[get_d] WARNING: {np.sum(pooled_std == 0)} vertices have pooled_std == 0. Setting d to NaN for these vertices.")
+        pooled_std = np.where(pooled_std == 0, np.nan, pooled_std)
     
     d = (m_test - m_ctrl) / pooled_std
 
@@ -2363,7 +2366,11 @@ def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, ipsiTo
 
         return fig
 
-def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_Δd',region = None, feature = None, ipsiTo="L", save_name=None, save_pth=None, title=None, max_val=None):
+def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_Δd',
+                region = None, feature = None, 
+                ipsiTo="L", 
+                save_name=None, save_pth=None, title=None, 
+                min_val = None, max_val=None):
     """
     Convert a dictionary item to format to visualize.
     
@@ -2418,11 +2425,19 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
     lh = df[lh_cols]
     rh = df[rh_cols]
     #print(f"\tL: {lh.shape}, R: {rh.shape}")
-
+    # ensure all numeric data
+    lh = lh.apply(pd.to_numeric, errors='coerce')
+    rh = rh.apply(pd.to_numeric, errors='coerce')
+    
     title = title or f"{item.get('study', '3T-7T comp')} {item['label']}"
     
     if max_val is None:
-        max_val = 2
+        # Calculate min and max from both lh and rh maps
+        max_val = max(lh.max().max(), rh.max().max())
+    
+    if min_val is None:
+        min_val = min(lh.min().min(), rh.min().min())
+
     if feature is None:
         feature = item.get('feature', '')
     if region is None:
@@ -2430,10 +2445,9 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
 
     fig = showBrain(lh, rh, region,
                     surface, feature_lbl = feature,
-                    ipsiTo=ipsiTo, title=title,
-                    min=-max_val, max=max_val, inflated=True,
-                    save_name=save_name, save_pth=save_pth
-
+                    ipsiTo=ipsiTo, title=title, inflated=True,
+                    save_name=save_name, save_pth=save_pth,
+                    min = min_val, max = max_val
                     )
 
     return fig
