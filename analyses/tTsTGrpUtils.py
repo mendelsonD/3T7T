@@ -2359,7 +2359,7 @@ def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, ipsiTo
         lh = df[lh_cols]
         rh = df[rh_cols]
         #print(f"\tL: {lh.shape}, R: {rh.shape}")
-        fig = showCtx(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
+        fig = showBrain(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
 
         return fig
 
@@ -2380,7 +2380,17 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
     """
     import pandas as pd
 
-    df = item[df_name].loc[[metric]]
+    region = item.get('region', region)
+    surface = item.get('surf', 'fsLR-5k')
+    try:
+        # If metric is numeric (int or float or string of digits), convert to int
+        if isinstance(metric, (int, float)) or (isinstance(metric, str) and metric.isdigit()):
+            df = item[df_name].loc[[int(metric)]]
+        else:
+            df = item[df_name].loc[[metric]]
+    except KeyError:
+        print(f"[itmToVisual] WARNING: {metric} not found in item. Skipping.")
+        return None
     #print(f"\tdf of interest: {df.shape}")
 
     # remove SES or ID columns if they exist
@@ -2404,11 +2414,6 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
     
     #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
     assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
-    
-    if len(lh_cols) == 32492:
-        surface = 'fsLR-32k'
-    else: 
-        surface = 'fsLR-5k'
 
     lh = df[lh_cols]
     rh = df[rh_cols]
@@ -2422,19 +2427,18 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
         feature = item.get('feature', '')
     if region is None:
         region = item.get('region', 'ctx') # asign default value to 'ctx'
-        
-    if region == 'hippocampus' or region == 'hipp':
-        print("Hippocampal mapping coming.")
-    else:
-        fig = showCtx(lh, rh, surface,
-                        feature_lbl = feature, ipsiTo=ipsiTo, 
-                        save_name=save_name, save_pth=save_pth, title=title, 
-                        min=-max_val, max=max_val, 
-                        inflated=True)
+
+    fig = showBrain(lh, rh, region,
+                    surface, feature_lbl = feature,
+                    ipsiTo=ipsiTo, title=title,
+                    min=-max_val, max=max_val, inflated=True,
+                    save_name=save_name, save_pth=save_pth
+
+                    )
 
     return fig
 
-def showCtx(lh, rh, 
+def showBrain(lh, rh, region = "ctx",
                surface='fsLR-5k', feature_lbl=None, 
                ipsiTo=None, title=None, 
                min=-2.5, max=2.5, inflated=True, 
@@ -2464,10 +2468,13 @@ def showCtx(lh, rh,
     from brainspace.datasets import load_conte69
     import datetime
 
-    micapipe=os.popen("echo $MICAPIPE").read()[:-1]
-    if micapipe == "":
-        micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
-        print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
+    if region == 'ctx' or region == 'cortex':
+        micapipe=os.popen("echo $MICAPIPE").read()[:-1]
+        if micapipe == "":
+            micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
+            print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
+    elif region == 'hipp' or region == 'hippocampus':
+        hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
 
     # set wd to save_pth
     if save_pth is not None:
@@ -2475,26 +2482,51 @@ def showCtx(lh, rh,
             os.makedirs(save_pth)
         os.chdir(save_pth)
 
-    if surface == 'fsLR-5k':
-        if inflated == True:
-            # Load fsLR 5k inflated
-            surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.inflated.surf.gii', itype='gii')
-            surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.inflated.surf.gii', itype='gii')
+    if region == "ctx" or region == "cortex":
+        if surface == 'fsLR-5k':
+            if inflated == True:
+                # Load fsLR 5k inflated
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.inflated.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.inflated.surf.gii', itype='gii')
+            else:
+                # Load fsLR 5k
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.surf.gii', itype='gii')
+        elif surface == 'fsLR-32k':
+            if inflated == True:
+                # Load fsLR 32k inflated
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.inflated.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.inflated.surf.gii', itype='gii')
+            else:
+                # Load fsLR 32k
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.surf.gii', itype='gii')
         else:
-            # Load fsLR 5k
-            surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.surf.gii', itype='gii')
-            surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.surf.gii', itype='gii')
-    elif surface == 'fsLR-32k':
-        if inflated == True:
-            # Load fsLR 32k inflated
-            surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.inflated.surf.gii', itype='gii')
-            surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.inflated.surf.gii', itype='gii')
+            raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
+        
+    elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
+        if surface == '0p5mm':
+            
+            surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_L.surf.gii', itype='gii')
+            surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_R.surf.gii', itype='gii')
+
+            # unfolded
+            surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
+            surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
+        
+        elif surface == '2mm':
+            raise NotImplementedError("2mm hippocampal surfaces not implemented yet. Missing templates.")
+            surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+            surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+
+            # unfolded
+            surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+            surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+        
         else:
-            # Load fsLR 32k
-            surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.surf.gii', itype='gii')
-            surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.surf.gii', itype='gii')
+            raise ValueError(f"Surface {surface} not recognized. Use '0p5mm' or '2mm'.")
     else:
-        raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
+        raise ValueError(f"Region {region} not recognized. Use 'ctx' or 'hipp'.")
 
     #print(f"L: {lh.shape}, R: {rh.shape}")
     data = np.hstack(np.concatenate([lh, rh], axis=0))
