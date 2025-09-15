@@ -57,7 +57,7 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
     if save_pth is not None: # save corresponding IDs
         import datetime
 
-        save_name_tmp = f"{save_pth}/01a_ids_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
+        save_name_tmp = f"{save_pth}/01a_ids_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
         toSave = out[id_cols].drop_duplicates()
         toSave.to_csv(save_name_tmp, index=False)
         print("[get_demo] Saved list of paired ids to: ", save_name_tmp)
@@ -100,7 +100,7 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
     if save_pth is not None:
         import datetime
 
-        save_name = f"{save_pth}/01b_demo_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
+        save_name = f"{save_pth}/01b_demo_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
         out.to_csv(save_name, index=False)
         print("[get_demo] Saved to: ", save_name)
     else:

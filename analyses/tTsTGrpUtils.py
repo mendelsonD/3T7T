@@ -402,7 +402,8 @@ def checkRawPth(root, sub, ses, ft, return_names=False):
 
 def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
     """
-    From demographic info, identify path to--and if needed compute--smoothed map for parameters of interest (surface, label, feature, smoothing kernel) provided in a dictionary item.
+    From demographic info, add path to unsmoothed, smoothed maps. If smoothed map does not exist, compute. 
+    Do this for all parameter combinations (surface, label, feature, smoothing kernel) provided in a dictionary item.
 
     Parameters
     ----------
@@ -492,27 +493,41 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
             col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             
+            # Replace smoothing with appropriate suffix
+            col_unsmth_L = col_base_L.replace(f"_smth-{smth}mm", "_unsmth")
+            col_unsmth_R = col_base_R.replace(f"_smth-{smth}mm", "_unsmth")
+
             if chk_pth(out_pth_L) and chk_pth(out_pth_R): # If smoothed map already exists, do not recompute. Simply add path to df.
                 if verbose:
                     print(f"\t\tSmoothed maps exists, adding to df: {out_pth_L}\t{out_pth_R}\n")
+                
+                # Add paths to unsmoothed maps
+                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
+                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
+                
+                # Add paths to smoothed maps
                 df.loc[idx, col_base_L] = out_pth_L
                 df.loc[idx, col_base_R] = out_pth_R
                 return df
             elif chk_pth(out_pth_L):
                 if verbose:
                     print(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
+                
+                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
                 df.loc[idx, col_base_L] = out_pth_L
                 skip_L = True
             elif chk_pth(out_pth_R):
                 if verbose:
                     print(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
+                
+                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
                 df.loc[idx, col_base_R] = out_pth_R
                 skip_R = True
 
             # A. Search for unsmoothed map
-            if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R):
+            if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R): # both unsmoothed maps mising
                 
-                if not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # check if raw data problem
+                if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     pth_map_unsmth_L, pth_map_unsmth_R = "NA: NO RAWDATA", "NA: NO RAWDATA"
@@ -530,7 +545,7 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
             
             elif not chk_pth(pth_map_unsmth_L): # missing L hemi only
                 
-                if not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # check if raw data problem
+                if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     pth_map_unsmth_R = "NA: NO RAWDATA"
@@ -547,7 +562,7 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
 
             elif not chk_pth(pth_map_unsmth_R): # missing R hemi only
 
-                if not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # check if raw data problem
+                if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     pth_map_unsmth_R = "NA: NO RAWDATA"
                     print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
@@ -560,9 +575,17 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                 skip_R = True
                 df.loc[idx, col_base_R] = pth_map_unsmth_R
             
-            else:
+            else: # unsmoothed maps exist for both
                 if verbose:
                     print(f"\t\tUnsmoothed maps:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
+            
+            # add path to unsmoothed maps to df
+            if not skip_L:
+                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
+                print(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
+            if not skip_R:
+                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
+                print(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
 
             # B. Smooth map and save to project directory
             surf_L, surf_R = get_surf_pth( # Get surface .func files
@@ -651,17 +674,34 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
             col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             
+            col_unsmth_L = col_base_L.replace(f"_smth-{smth}mm", "_unsmth")
+            col_unsmth_R = col_base_R.replace(f"_smth-{smth}mm", "_unsmth")
+
             if chk_pth(out_pth_L) and chk_pth(out_pth_R): # If smoothed map already exists, do not recompute. Simply add path to df.
                 if verbose:
                     print(f"\t\tSmoothed maps exist, adding paths to df:\t{out_pth_L}\t{out_pth_R}\n")
+                
+                if ft == "thickness":
+                    pth_map_unsmth_L, pth_map_unsmth_R = get_surf_pth(root=root_hu, sub=sub, ses=ses, lbl="thickness", surf=surf, space="T1w")
+                else:
+                    pth_map_unsmth_L = f"{out_dir}/sub-{sub}_ses-{ses}_hipp_{out_pth_L_filename}_smth-NA.func.gii"
+                    pth_map_unsmth_R = f"{out_dir}/sub-{sub}_ses-{ses}_hipp_{out_pth_R_filename}_smth-NA.func.gii"
+                
+                # add unsmth map path
+                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
+                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
+                
+                # add smth map path
                 df.loc[idx, col_base_L] = out_pth_L
                 df.loc[idx, col_base_R] = out_pth_R
                 return df
+            
             elif chk_pth(out_pth_L):
                 if verbose:
                     print(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
                 df.loc[idx, col_base_L] = out_pth_L
                 skip_L = True
+
             elif chk_pth(out_pth_R):
                 if verbose:
                     print(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
@@ -739,6 +779,7 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                 if verbose:
                     print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
             
+
             # A. Generate unsmoothed maps
             if ft == "thickness": # get path to unsmoothed map from hippunfold outputs
                 pth_map_unsmth_L, pth_map_unsmth_R = get_surf_pth(root=root_hu, sub=sub, ses=ses, lbl="thickness", surf=surf, space="T1w")
@@ -760,11 +801,8 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                             pth_map_unsmth_L = None # must be declared
                     
                     if chk_pth(pth_save_map_unsmth_R): 
-                        
                         pth_map_unsmth_R = pth_save_map_unsmth_R
-                    
                     else:
-                        
                         if not skip_R:
                             pth_map_unsmth_R = map(vol=vol_pth, surf=surf_R, out=pth_save_map_unsmth_R, verbose=verbose)
                         else:
@@ -814,6 +852,24 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                     df.loc[idx, col_base_R] = "NA: MISSING MP PROCESSING (volume ft map)"
                     return df   
             
+            # Add unsmoothed map column
+            # Create col name
+            base_name_L = os.path.basename(out_pth_L).replace('.func.gii', '')
+            base_name_R = os.path.basename(out_pth_R).replace('.func.gii', '')
+            base_name_L = base_name_L.replace(f"sub-{sub}_ses-{ses}_", '')
+            base_name_R = base_name_R.replace(f"sub-{sub}_ses-{ses}_", '')
+            col_unsmth_L = base_name_L.replace(f"_smth-{smth}mm", "_unsmth")
+            col_unsmth_R = base_name_R.replace(f"_smth-{smth}mm", "_unsmth")
+
+            print(f"\t\tUnsmoothed map cols:\t{col_unsmth_L}\t{col_unsmth_R}") 
+            
+            if not skip_L:
+                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
+                print(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
+            if not skip_R:
+                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
+                print(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
+
             # B. Smooth map
             if not skip_L:
                 pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, out_pth_L, kernel=smth, verbose=False)
@@ -1324,18 +1380,21 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
     # Determine columns refering to L/R hemi of the same ft-lbl-surf-smth combination. 
     cols_L = [col for col in df.columns if 'hemi-L' in col]
     cols_R = [col for col in df.columns if 'hemi-R' in col]
+    cols_L_smth = [col for col in cols_L if '_smth-' in col]
+    cols_R_smth = [col for col in cols_R if '_smth-' in col]
+
     #print(f"cols_L: {cols_L}")
     #print(f"cols_R: {cols_R}")
 
     pairs = []
-    for col_L in cols_L: # Determine pairs
+    for col_L in cols_L_smth: # Determine pairs
         col_R = col_L.replace('hemi-L', 'hemi-R') # check if hemi-R col exists
-        if col_R in cols_R:
+        if col_R in cols_R_smth:
             pairs.append((col_L, col_R))
         else:
             print(f"[clean_demoPths] WARNING: No matching hemi-R column found for {col_L}.")
 
-    assert len(pairs) == len(cols_L) == len(cols_R), "[clean_demoPths] Mismatch in number of L/R hemisphere columns or pairs."
+    assert len(pairs) == len(cols_L_smth) == len(cols_R_smth), "[clean_demoPths] Mismatch in number of L/R hemisphere columns or pairs."
 
     cols = [col for pair in pairs for col in pair] # flatten list of pairs to a simple list of strings
     if verbose:
@@ -1489,7 +1548,7 @@ def clean_pths(dl, method="newest", silent=True): # TODO. Add option to choose s
 
     return dl_out
 
-def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose=False):
+#def clean_ses(df_in, col_ID="UID", method="oldest", save=None, col_study=None, verbose=False):
     """
     Choose the session to use for each subject.
         If subject has multiple sessions with map path should only be using one of these sessions.
@@ -1499,22 +1558,60 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
             Assumes map path is missing if either : map_pth
         col_ID: column name for subject ID in the dataframe
         method: method to use for choosing session. 
+            TODO. "max": return session code for each column such that you maximize present data.
             "newest": use most recent session
             "oldest": use oldest session in the list - equivalent to taking the first session
-            TODO. "max": return session code for each column such that you maximize present data.
             {number}: session code to use (e.g., '01' or 'a1' etc)
+
+    output:
+        currently:
+        df: pd.dataframe with only one session per subject, same columns as before
+        TODO. df with unique participants in the rows and cols for each map path. Values are ',' sep list of session codes that have data for this map, ordered from most recent to least recent.  
     """
     
     import pandas as pd
     import datetime
 
-    # check if the dataframe is empty
+    # checks
     if df_in.empty:
         print(f"[ses_clean] WARNING: Empty dataframe. Skipping.")
         return
-
+    if col_ID not in df_in.columns:
+        raise ValueError(f"[ses_clean] df must contain 'ID' column. Cols in df: {df_in.columns}")
+    if 'SES' not in df_in.columns:
+        raise ValueError(f"[ses_clean] df must contain 'SES' column. Cols in df: {df_in.columns}")
+    if 'Date' not in df_in.columns:
+        raise ValueError(f"[ses_clean] df must contain 'Date' column. Cols in df: {df_in.columns}")
+    else: # format to allow date comparisons
+        df_in['Date_fmt'] = pd.to_datetime(df_in['Date'], format='%d.%m.%Y', errors='coerce')
     if verbose: print(f"[ses_clean] Choosing session according to method: {method}")
     
+    # find sessions per unique ID, order
+    df = df_in.copy()
+    map_cols = [col for col in df_in.columns if col.contains('hemi-') and ('hemi-L' in col or 'hemi-R' in col)]
+
+    if col_study is not None and col_study not in df_in.columns:
+        raise ValueError(f"[ses_clean] df must contain 'study' column if col_study is provided. Cols in df: {df_in.columns}")
+    elif col_study is not None: # for each ID, make a list of each session for that study. Order from most to least recent
+        df_unique = df[[col_ID, col_study]].drop_duplicates()
+        for row in df_unique.itertuples(index=False):
+            id = getattr(row, col_ID)
+            study = getattr(row, col_study)
+            sessions = df[(df[col_ID] == id) & (df[col_study] == study)].sort_values(by='Date_fmt', ascending=False)['SES'].tolist()
+            df_unique.loc[(df_unique[col_ID] == id) & (df_unique[col_study] == study), 'SES_list'] = ','.join(sessions)
+    else:
+        df_unique = df[[col_ID]].drop_duplicates()
+        for row in df_unique.itertuples(index=False):
+            id = getattr(row, col_ID)
+            sessions = df[df[col_ID] == id].sort_values(by='Date_fmt', ascending=False)['SES'].tolist()
+            df_unique.loc[df_unique[col_ID] == id, 'SES_list'] = ','.join(sessions)    
+
+    # check each map col to see what sessions it is properly defined for
+    
+    print(map_cols)
+    #for col in map_cols:
+
+
     # Find repeated IDs (i.e., subjects with multiple sessions)
     # sort df by col_ID
     df = df_in.sort_values(by=[col_ID]).copy()
@@ -1531,9 +1628,7 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
 
     rows_to_remove = []
     
-    # Convert 'Date' column to datetime for comparison
-    df['Date_fmt'] = pd.to_datetime(df['Date'], format='%d.%m.%Y', errors='coerce')
-    today = pd.to_datetime('today').normalize()
+    
 
     # Handle different studies
     if col_study is not None and len(repeated_ids) > 0:
@@ -1557,7 +1652,9 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
                             idx_to_keep = sub_sub_df['Date_fmt'].idxmin()
                             idx_to_remove = sub_sub_df.index.difference([idx_to_keep])
                             rows_to_remove.extend(idx_to_remove)
-                else:
+                elif method == "max":
+                    # create df
+                #else:
                     # Assume method is a session code (e.g., '01', 'a1', etc)
                     for id in repeated_ids_study:
                         sub_sub_df = sub_df[sub_df[col_ID] == id]
