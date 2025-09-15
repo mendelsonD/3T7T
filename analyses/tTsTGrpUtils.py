@@ -908,6 +908,301 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
         sys.stdout = old_stdout
 
 
+def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
+    """
+    Create dict item for each, study, feature, label, smoothing pair (including hippocampal)
+    Note: multiple groups should be kept in same DF. Seperate groups later on
+
+    Input:
+        df: DataFrame with columns for ID, SES, Date, and paths to left and right hemisphere maps.
+            NOTE. Asusme path columns end with '_L' and '_R' for left and right hemisphere respectively.
+        ID_col: Column name for participant ID in the DataFrame. Default is 'MICS_ID'.
+    
+    Output:
+        df_clean: Cleaned DataFrame with only valid ID-SES combinations, and paths to left and right hemisphere maps.
+    """
+    import nibabel as nib
+    import numpy as np
+    import pandas as pd
+    
+    assert col_ID in df.columns, f"[get_maps] df must contain 'ID' column. Cols in df: {df.columns}"
+    assert 'SES' in df.columns, f"[get_maps] df must contain 'SES' column. Cols in df: {df.columns}"
+    assert col_grp in df.columns, f"[get_maps] df must contain '{col_grp}' column. Cols in df: {df.columns}"
+    
+    # Assert that all columns in mapCols exist in df
+    missing_cols = [col for col in mapCols if col not in df.columns]
+    assert not missing_cols, f"[get_maps] The following columns from mapCols are missing in df: {missing_cols}"
+
+    # find appropriate cols
+    col_L = [i for i in mapCols if  ('hemi-L' in i)]
+    col_R = [i for i in mapCols if ('hemi-R' in i)]
+    assert len(col_L) == 1, f"[get_maps] more than one col with 'hemi-L'. {col_L}"
+    assert len(col_R) == 1, f"[gete_maps] more than one col ending with 'hemi-R'. {col_R}"
+    if verbose:
+        print(f"[get_maps] {col_L}, {col_R}")
+    col_L = col_L[0]
+    col_R = col_R[0]
+
+    # read in the maps and append to df_maps
+    if 'UID' in df.columns:
+        df_maps = df[['UID', col_ID, 'SES', col_L, col_R]]
+    else:
+        df_maps = df[[col_ID, 'SES', col_L, col_R]]
+    
+    # Stack all hemisphere maps into a DataFrame (vertices as columns)
+    map_L_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_L]])
+    map_R_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_R]])
+    
+    # Convert to DataFrame for easier handling
+    map_L_df = pd.DataFrame(map_L_matrix, index=df_maps.index)
+    map_R_df = pd.DataFrame(map_R_matrix, index=df_maps.index)
+
+    # Rename columns to indicate hemisphere and vertex index
+    map_L_df.columns = [f"{v}_L" for v in map_L_df.columns]
+    map_R_df.columns = [f"{v}_R" for v in map_R_df.columns]
+    
+    df_maps = df_maps.drop(columns=[col_L, col_R]) # append map_L_df and map_R_df to df_maps. Remove the original columns col_L and col_R from df_maps
+    #print(f"\tdf_maps cols: {df_maps.columns}")
+    
+    df_maps = pd.concat([df_maps, map_L_df, map_R_df], axis=1)
+    #print(f"\tFinal shape:{df_maps.shape}")
+
+    df_maps = setIndex(df=df_maps, col_ID=col_ID, sort=True) # index: <UID_>ID_SES
+    
+    # Keep only the vertex columns (map data columns)
+    vertex_cols = [col for col in df_maps.columns if col.endswith('_L') or col.endswith('_R')]
+    df_maps_clean = df_maps[vertex_cols]
+
+    if verbose:
+        print(f"\t[get_maps] Maps retrieved. Size: {df_maps_clean.shape}")
+    else:
+        print(f"\t[get_maps] Maps retrieved.")
+    
+    return df_maps_clean
+
+def setIndex(df, col_ID='MICs_ID', sort = True):
+    """
+    Set index of DataFrame to a combination of ID and SES.
+
+    Input:
+        df: DataFrame with columns for ID and SES.
+        col_ID: Column name for participant ID in the DataFrame. Default is 'MICS_ID'.
+
+    Output:
+        DataFrame with index set to 'UID_ID_SES' (if UID in df) else 'ID_SES'.
+    """
+    import pandas as pd
+    
+    assert col_ID in df.columns, f"[setIndex] df must contain 'ID' column. Cols in df: {df.columns}"
+    assert 'SES' in df.columns, f"[setIndex] df must contain 'SES' column. Cols in df: {df.columns}"
+    
+    if 'UID' in df.columns:
+        df['UID_ID_SES'] = df.apply(lambda row: f"{row['UID']}_{row[col_ID]}_{row['SES']}", axis=1)
+        df = df.set_index('UID_ID_SES')
+    else:
+        df['ID_SES'] = df.apply(lambda row: f"{row[col_ID]}_{row['SES']}", axis=1)
+        df = df.set_index('ID_SES')
+    
+    if sort:
+        df = df.sort_index()
+
+    return df
+
+def plotMatrices(dl, key_toPlot):
+    """
+    Plot matrix visualizations for map values from corresponding study
+
+    dl: dictionary list with paired items from different studies
+    key_toPlot: key in the dictionary items to plot (e.g., 'map_smth')
+    """
+    import matplotlib.pyplot as plot
+    skip_idx = []
+    counter = 0
+
+    for idx, item in enumerate(dl):
+        if idx in skip_idx:
+            continue
+        else:
+            skip_idx.append(idx)
+    
+        counter = counter+1
+        
+        idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
+        if idx_other is None:
+            print(f"\tWARNING. No matching index found for: {printItemMetadata(item, idx=idx)}.\nSkipping.")
+            continue
+        skip_idx.append(idx_other)
+        
+        item_other = dl[idx_other]
+        
+        print(f"\n")
+        study = item['study']
+        if study == 'MICs':
+            idx_tT = idx
+            idx_sT = idx_other
+
+            item_tT = item
+            item_sT = item_other
+        else:
+            idx_tT = idx_other
+            idx_sT = idx
+
+            item_tT = item_other
+            item_sT = item
+        
+        title_tT = f"{item_tT['study']} [idx: {idx_tT}]"
+        title_sT = f"{item_sT['study']} [idx: {idx_sT}]"
+        
+        feature_tT = item_tT['feature']
+        feature_sT = item_sT['feature']
+
+        df_tT = item_tT[key_toPlot]
+        df_sT = item_sT[key_toPlot]
+
+        # determine min and max values across both matrices for consistent color scaling
+        assert feature_tT == feature_sT, f"Features do not match: {feature_tT}, {feature_sT}"
+        assert item_tT['region'] == item_sT['region'], f"Regions do not match: {item_tT['region']}, {item_sT['region']}"
+        assert item_tT['surf'] == item_sT['surf'], f"Surfaces do not match: {item_tT['surf']}, {item_sT['surf']}"
+        assert item_tT['label'] == item_sT['label'], f"Labels do not match: {item_tT['label']}, {item_sT['label']}"
+        assert item_tT['smth'] == item_sT['smth'], f"Smoothing kernels do not match: {item_tT['smth']}, {item_sT['smth']}"
+
+        if feature_tT.lower() == "thickness":
+            min_val = 0
+            max_val = 4
+        elif feature_tT.lower() == "flair":
+            min_val = -300
+            max_val = 500
+        elif feature_tT.lower() == "t1map":
+            min_val = 1000
+            max_val = 2800
+        elif feature_tT.lower() == "fa":
+            min_val = 0
+            max_val = 1
+        elif feature_tT.lower() == "md":
+            min_val = 0
+            max_val = 0.03
+        else:
+            min_val = min(df_tT.min().min(), df_sT.min().min())
+            max_val = max(df_tT.max().max(), df_sT.max().max())
+
+        fig, (ax1, ax2) = plot.subplots(1, 2, figsize=(15, 25))
+        ax1_result = visMatrix(df_tT, feature=feature_tT, title=title_tT, 
+                                return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val)
+        # Plot the second matrix with y-axis labels on the right
+        ax2_result = visMatrix(df_sT, feature=feature_sT, title=title_sT, 
+                       return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val)
+        # Move y-axis labels to the right for ax2
+        ax2.yaxis.tick_right()
+        ax2.yaxis.set_label_position("right")
+        # add common title
+        region = item_tT['region']
+        surface = item_tT['surf']
+        label = item_tT['label']
+        smth = item_tT['smth']
+        fig.suptitle(f"{region}: {feature_tT}, {surface}, {label}, {smth}mm", fontsize=16)
+        
+        # since using the same bounds, can use the same colorbar for both
+        plot.colorbar(ax1.images[0], ax=ax1, label=feature_tT)
+        
+        plot.tight_layout()
+        plot.show()
+
+
+def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
+              cmap='seismic', return_fig=True, show_index=False, ax=None, nan_color='green'):
+    """
+    Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The data to visualize, where rows are indices and columns are vertices.
+    feature : str, optional
+        Label for the colorbar (default is "Map Value").
+    title : str, optional
+        Title for the plot.
+    min_val : float, optional
+        Minimum value for colormap scaling. If None, uses the minimum of the data.
+    max_val : float, optional
+        Maximum value for colormap scaling. If None, uses the maximum of the data.
+    cmap : str or matplotlib.colors.Colormap, optional
+        Colormap to use for visualization (default is 'seismic').
+    return_fig : bool, optional
+        If True, returns the matplotlib Figure object; otherwise, returns the Axes object.
+    show_index : bool, optional
+        If True, displays DataFrame index labels on the y-axis.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on. If None, creates a new figure and axes.
+    
+    Returns
+    -------
+    matplotlib.figure.Figure or matplotlib.axes.Axes
+        The figure or axes containing the visualization, depending on `return_fig`.
+    """
+    
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Convert DataFrame to numpy array, mask NaNs
+    data = df.values
+    mask = np.isnan(data)
+
+    # Use provided cmap parameter
+    if isinstance(cmap, str):
+        cmap_obj = plt.get_cmap(cmap)
+    else:
+        cmap_obj = cmap
+    
+    cmap_obj.set_bad(color=nan_color) # Color for NaN values
+
+    if min_val is None:
+        min_val = np.nanmin(data)
+    if max_val is None:
+        max_val = np.nanmax(data)
+    
+    # Use provided axes or create new figure
+    if ax is None:
+        fig_length = max(6, min(20, 0.2 * data.shape[0]))
+        fig, ax = plt.subplots(figsize=(10, fig_length))
+        create_colorbar = True
+    else:
+        fig = ax.get_figure()
+        create_colorbar = False  # Let caller handle colorbar
+    
+    im = ax.imshow(data, aspect='auto', cmap=cmap_obj, vmin=min_val, vmax=max_val, interpolation='none')
+    im.set_array(np.ma.masked_where(mask, data))
+    # Print NAN count per row if any NaNs are present
+    for i, row in enumerate(data):
+        nan_count = np.isnan(row).sum()
+        if nan_count > 0:
+            print(f"row {i}: {nan_count} NANs")
+            # Add annotation to the plot next to the row
+            ax.annotate(f"NAN: {nan_count}", xy=(data.shape[1], i), xytext=(data.shape[1]+2, i),
+                        va='center', ha='left', fontsize=9, color='black')
+
+    if title:
+        ax.set_title(title)
+
+    ax.set_xlabel("Vertex")
+    ax.set_ylabel("Index")
+    
+    if create_colorbar:
+        plt.colorbar(im, ax=ax, label=feature, shrink=0.5)
+    
+    if show_index:
+        ax.set_yticks(np.arange(len(df.index)))
+        ax.set_yticklabels(df.index.astype(str), fontsize=10)
+        ax.tick_params(axis='y', pad=5)
+
+    if ax is None:  # Only tight_layout if we created the figure
+        plt.tight_layout()
+
+    if return_fig:
+        return fig
+    else:
+        if ax is None:
+            plt.show()
+        return ax
+
 def uniqueNAvals(df):
     """
     Determine unique NA values across all subjects.
@@ -993,14 +1288,14 @@ def countErrors(df, cols, save=None, show=True):
     
     if save:
         if save.endswith('/'):
-            savePth = f"{save}errorSummary_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
+            savePth = f"{save}03a_ERRsummary_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
         else:
-            savePth = f"{save}/errorSummary_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
+            savePth = f"{save}/03a_ERRsummary_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
         
         error_summary.to_csv(savePth, index=False)
         print(f"[countErrors] Summary saved to {savePth}")
 
-    return error_summary
+    return error_summary, savePth if save else None
 
 def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps/paths/",verbose=True):
     """
@@ -1132,22 +1427,21 @@ def clean_demoPths(df, nStudies, save="/host/verges/tank/data/daniel/3T7T/z/maps
 
     # Print number of unique participants in MICS_ID before and after cleaning
     print(f"\t{df_clean.shape[0]} rows remain with {df_clean['MICS_ID'].nunique()} unique IDs (total sessions: 3T={len(df_clean[df_clean['study'] == '3T']['MICS_ID'])}, 7T={len(df_clean[df_clean['study'] == '7T']['PNI_ID'])}).")
-    print(f"\t{df_rmv.shape[0]} rows removed.")
 
     if save is not None:
         date = pd.Timestamp.now().strftime("%d%b%Y-%H%M%S")
-        out_pth = f"{save}/demo_paths_clean_{date}.csv"
+        out_pth = f"{save}/03b_demoPths_clean_{date}.csv"
         df_clean.to_csv(out_pth, index=False)
         print(f"[clean_demoPths] Saved cleaned df: {out_pth}")
         
         if not df_rmv.empty:
-            rmv_pth = f"{save}/demo_paths_removed_{date}.csv"
+            rmv_pth = f"{save}/03c_demoPths_removed_{date}.csv"
             df_rmv.to_csv(rmv_pth, index=False)
             print(f"[clean_demoPths] Saved removed cases df: {rmv_pth}")
 
     return df_clean, df_rmv
 
-def clean_pths(dl, method="newest", silent=True):
+def clean_pths(dl, method="newest", silent=True): # TODO. Add option to choose session combination to maximize present data
     """
     Keeps only one session per ID
     input:
@@ -1207,7 +1501,8 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
         method: method to use for choosing session. 
             "newest": use most recent session
             "oldest": use oldest session in the list - equivalent to taking the first session
-            {number}: session code to use (e.g. '01' or 'a1' etc)
+            TODO. "max": return session code for each column such that you maximize present data.
+            {number}: session code to use (e.g., '01' or 'a1' etc)
     """
     
     import pandas as pd
@@ -1314,11 +1609,11 @@ def clean_ses(df_in, col_ID, method="oldest", save=None, col_study=None, verbose
 
     if save is not None:
         date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-        save_pth = f"{save}/ses_clean_{date}.csv"
+        save_pth = f"{save}/03d_ses_clean_{date}.csv"
         df.to_csv(save_pth, index=False)
         print(f"[ses_clean] Saved cleaned dataframe to {save_pth}")
 
-    return df
+    return df, save_pth
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
     """
@@ -2034,7 +2329,7 @@ def catToDummy(df, exclude_cols=None, verbose = False):
     
     return df_converted, conversion_log
 
-def printItemMetadata(item, idx=None):
+def printItemMetadata(item, return_txt = False, idx=None, clean = False):
     """
     Print metadata of a dictionary item in a readable format.
     
@@ -2055,11 +2350,22 @@ def printItemMetadata(item, idx=None):
     label = item.get('label', None)
     smth = item.get('smth', None)
     if idx is not None:
-        print(f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})")
+        txt = f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
     else:
-        print(f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm")
-
-
+        txt = f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm"
+    
+    if clean:
+        txt = txt.replace('\t', '')
+        # Remove other problematic characters
+        txt = txt.replace('\x09', '')  # Another way tabs might appear
+        # Replace newlines with spaces if needed
+        txt = txt.replace('\n', '')
+    
+    if return_txt:
+        return txt
+    else:
+        print(txt)
+        
 def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
     """
     Take df with columns '{idx}_{hemi}' and rename to just contain an index. By convention, L hemi then R hemi. 
@@ -2807,4 +3113,3 @@ def plot_ridgeplot(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2), Xlab="
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
     else:
         plt.show()
-    

@@ -10,7 +10,7 @@ import tTsTGrpUtils as tsutil
 sys.path.append("/host/verges/tank/data/daniel/")
 from genUtils import id, gen, t1
 
-def get_demo(sheets, save_pth=None, save_name="00_demo"):
+def get_demo(sheets, save_pth=None, save_name="01b_demo"):
     """
     Run all functions to generate demographic data for 3T-7T participants.
 
@@ -57,7 +57,7 @@ def get_demo(sheets, save_pth=None, save_name="00_demo"):
     if save_pth is not None: # save corresponding IDs
         import datetime
 
-        save_name_tmp = f"{save_pth}/00a_ids_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
+        save_name_tmp = f"{save_pth}/01a_ids_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
         toSave = out[id_cols].drop_duplicates()
         toSave.to_csv(save_name_tmp, index=False)
         print("[get_demo] Saved list of paired ids to: ", save_name_tmp)
@@ -100,7 +100,7 @@ def get_demo(sheets, save_pth=None, save_name="00_demo"):
     if save_pth is not None:
         import datetime
 
-        save_name = f"{save_pth}/00b_demo_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
+        save_name = f"{save_pth}/01b_demo_{datetime.datetime.now().strftime('%d%b%Y')}.csv"
         out.to_csv(save_name, index=False)
         print("[get_demo] Saved to: ", save_name)
     else:
@@ -132,7 +132,7 @@ def uniqueID(df, idcols, uniqueIDName="UID"):
     
     return df
 
-def grp_summary(df_demo, col_grp= 'grp_detailed', save_pth=None, save_name="00c_grpSummary", toPrint=True):
+def grp_summary(df_demo, col_grp= 'grp_detailed', save_pth=None, save_name="01c_grpSummary", toPrint=True):
     """
     Count number of participants, sessions for a grouping variable
     """
