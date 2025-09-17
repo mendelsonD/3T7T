@@ -1006,8 +1006,8 @@ def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
         df_maps = df[[col_ID, 'SES', col_L, col_R]]
     
     if df_maps[col_L].shape[0] == 0 or df_maps[col_R].shape[0] == 0:
-        print(f"[get_maps] WARNING. No valid entries found in df for columns {col_L} and/or {col_R}. Returning empty DataFrame.")
-        return pd.DataFrame() # return empty df if no valid entries found
+        print(f"[get_maps] WARNING. No valid entries found in df for columns {col_L} and/or {col_R}. Returning None.")
+        return None
     # Stack all hemisphere maps into a DataFrame (vertices as columns)
     map_L_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_L]])
     map_R_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_R]])
@@ -1064,283 +1064,6 @@ def setIndex(df, col_ID='MICs_ID', sort = True):
         df = df.sort_index()
 
     return df
-
-def plotMatrices(dl, key, show=False,save_pth=None, test=False):
-    """
-    Plot matrix visualizations for map values from corresponding study
-
-    dl: 
-        dictionary list with paired items from different studies
-    key:
-        key in the dictionary items to plot (e.g., 'map_smth')
-    show:
-        if True, show the plots interactively
-    save_pth:
-        if provided, save the plots to this path instead of showing them interactively
-    """
-    import matplotlib.pyplot as plot
-    from matplotlib import gridspec
-    import numpy as np
-    import datetime
-
-    skip_idx = []
-    counter = 0
-
-    print(f"Plotting matrices for {key}...")
-    
-    if test:
-        print("TEST MODE: Randomly choosing 2 pairs to plot")
-        import random
-        # randomly reorder dl items
-        random.shuffle(dl)
-
-    for idx, item in enumerate(dl):
-        if idx in skip_idx:
-            continue
-        else:
-            skip_idx.append(idx)
-    
-        counter = counter+1
-        
-        idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
-        if idx_other is None:
-            print(f"\tWARNING. No matching index found for: {printItemMetadata(item, idx=idx)}.\nSkipping.")
-            continue
-        skip_idx.append(idx_other)
-        
-        item_other = dl[idx_other]
-        if item_other is None:
-            print(f"\tWARNING. Item other is None: {printItemMetadata(item, idx=idx)}.\nSkipping.")
-            continue
-
-        study = item['study']
-        if study == 'MICs':
-            idx_tT = idx
-            idx_sT = idx_other
-
-            item_tT = item
-            item_sT = item_other
-        else:
-            idx_tT = idx_other
-            idx_sT = idx
-
-            item_tT = item_other
-            item_sT = item
-        
-        if item_tT is None and item_sT is None:
-            print(f"\tWARNING. Both items are None (3T: {printItemMetadata(item_tT, idx=idx)}, 7T: {printItemMetadata(item_sT, idx=idx)}).\nSkipping.")
-            continue
-        elif item_tT is None:
-            print(f"\tWARNING. Item_tT is None: {printItemMetadata(item_tT, idx=idx)}.\nSkipping.")
-            continue
-        elif item_sT is None:
-            print(f"\tWARNING. Item_sT is None: {printItemMetadata(item_sT, idx=idx)}.\nSkipping.")
-            continue
-
-        title_tT = f"{key} {item_tT['study']} [idx: {idx_tT}]"
-        title_sT = f"{key} {item_sT['study']} [idx: {idx_sT}]"
-        
-        feature_tT = item_tT['feature']
-        feature_sT = item_sT['feature']
-
-        df_tT = item_tT.get(key, None)
-        df_sT = item_sT.get(key, None)
-        
-        if df_tT is None and df_sT is None:
-            print(f"\tWARNING. Missing key '{key}'. Skipping {printItemMetadata(item_tT, clean=True)} and {printItemMetadata(item_sT, clean=True)}\n")
-            continue
-        elif df_tT is None:
-            print(f"\tWARNING. Missing key '{key}' for {printItemMetadata(item_tT, clean=True)}. Skipping.\n")
-            continue
-        elif df_sT is None:
-            print(f"\tWARNING. Missing key '{key}' for {printItemMetadata(item_sT, clean=True)}. Skipping.\n")
-            continue
-
-        # determine min and max values across both matrices for consistent color scaling
-        assert feature_tT == feature_sT, f"Features do not match: {feature_tT}, {feature_sT}"
-        assert item_tT['region'] == item_sT['region'], f"Regions do not match: {item_tT['region']}, {item_sT['region']}"
-        assert item_tT['surf'] == item_sT['surf'], f"Surfaces do not match: {item_tT['surf']}, {item_sT['surf']}"
-        assert item_tT['label'] == item_sT['label'], f"Labels do not match: {item_tT['label']}, {item_sT['label']}"
-        assert item_tT['smth'] == item_sT['smth'], f"Smoothing kernels do not match: {item_tT['smth']}, {item_sT['smth']}"
-        
-        
-        if key == "df_z" or key == "df_w":
-            cmap = "seismic"
-            min_val = -3
-            max_val = 3
-        else:
-            cmap = 'inferno'
-            if feature_tT.lower() == "thickness":
-                min_val = 0
-                max_val = 4
-                cmap = 'Blues'
-            elif feature_tT.lower() == "flair":
-                min_val = -500
-                max_val = 500
-                cmap = "seismic"
-            elif feature_tT.lower() == "t1map":
-                min_val = 1000
-                max_val = 2800
-                cmap = "inferno"
-            elif feature_tT.lower() == "fa":
-                min_val = 0
-                max_val = 1
-                cmap="Blues"
-            elif feature_tT.lower() == "adc":
-                min_val = min(df_tT.min().min(), df_sT.min().min())
-                max_val = max(df_tT.max().max(), df_sT.max().max())
-                cmap = "Blues"
-            else:
-                min_val = min(df_tT.min().min(), df_sT.min().min())
-                max_val = max(df_tT.max().max(), df_sT.max().max())
-
-        # Create a grid layout with space for the colorbar
-        fig = plot.figure(figsize=(30, 25))
-        spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
-
-        # Create subplots
-        ax1 = fig.add_subplot(spec[0])
-        ax2 = fig.add_subplot(spec[2])
-
-        # Plot the matrices
-        visMatrix(df_tT, feature=feature_tT, title=title_tT, 
-                  return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
-        visMatrix(df_sT, feature=feature_sT, title=title_sT, 
-                  return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
-
-        # Add a colorbar between the plots
-        cbar_ax = fig.add_subplot(spec[1])
-        norm = plot.Normalize(vmin=min_val, vmax=max_val)
-        cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
-        cbar.set_label(feature_tT, fontsize=20, labelpad=0)
-        cbar.ax.yaxis.set_label_position("left")
-        cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
-
-        # Add a common title
-        region = item_tT['region']
-        surface = item_tT['surf']
-        label = item_tT['label']
-        smth = item_tT['smth']
-        fig.suptitle(f"{region}: {feature_tT}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
-
-        if show:
-            plot.show()
-
-        if save_pth is not None:
-            save_name = f"{region}_{feature_tT}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
-            print(f"\tSaved: {save_pth}/{save_name}.png")
-            plot.close(fig)
-        
-        if test and counter >= 2:
-            break
-
-
-def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
-              cmap='seismic', return_fig=True, show_index=False, ax=None, nan_color='green', nan_side="right"):
-    """
-    Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        The data to visualize, where rows are indices and columns are vertices.
-    feature : str, optional
-        Label for the colorbar (default is "Map Value").
-    title : str, optional
-        Title for the plot.
-    min_val : float, optional
-        Minimum value for colormap scaling. If None, uses the minimum of the data.
-    max_val : float, optional
-        Maximum value for colormap scaling. If None, uses the maximum of the data.
-    cmap : str or matplotlib.colors.Colormap, optional
-        Colormap to use for visualization (default is 'seismic').
-    return_fig : bool, optional
-        If True, returns the matplotlib Figure object; otherwise, returns the Axes object.
-    show_index : bool, optional
-        If True, displays DataFrame index labels on the y-axis.
-    ax : matplotlib.axes.Axes, optional
-        Existing axes to plot on. If None, creates a new figure and axes.
-    
-    Returns
-    -------
-    matplotlib.figure.Figure or matplotlib.axes.Axes
-        The figure or axes containing the visualization, depending on `return_fig`.
-    """
-    
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    # Convert DataFrame to numpy array, mask NaNs
-    data = df.values
-    mask = np.isnan(data)
-
-    # Use provided cmap parameter
-    if isinstance(cmap, str):
-        cmap_obj = plt.get_cmap(cmap)
-    else:
-        cmap_obj = cmap
-    
-    cmap_obj.set_bad(color=nan_color) # Color for NaN values
-
-    if min_val is None:
-        min_val = np.nanmin(data)
-    if max_val is None:
-        max_val = np.nanmax(data)
-    
-    # Use provided axes or create new figure
-    if ax is None:
-        fig_length = max(6, min(30, 0.1 * data.shape[0]))
-        fig, ax = plt.subplots(figsize=(10, fig_length))
-        create_colorbar = True
-    else:
-        fig = ax.get_figure()
-        create_colorbar = False  # Let caller handle colorbar
-    
-    im = ax.imshow(data, aspect='auto', cmap=cmap_obj, vmin=min_val, vmax=max_val, interpolation='none')
-    im.set_array(np.ma.masked_where(mask, data))
-
-    # add NaN annotation
-    nan_count = 0
-    
-    for i, row in enumerate(data):
-        nan_count = np.isnan(row).sum()
-        if nan_count > 0: # Annotate next to the row
-            ax.annotate(f"NAN: {nan_count}", xy=(data.shape[1], i), xytext=(data.shape[1]+2, i),
-                        va='center', ha=nan_side, fontsize=9, color='black')
-            
-    if nan_count != 0:
-        print(f"NaN values present [{title}]")
-
-    if title:
-        ax.set_title(title, fontsize=23)
-
-    ax.set_xlabel("Vertex", fontsize=15)
-    ax.tick_params(axis='x', labelsize=10)
-    #ax.set_ylabel("Index")
-    
-    if create_colorbar:
-        cbar = plt.colorbar(im, ax=ax, label=feature, shrink=0.25)
-        cbar.ax.tick_params(axis='y', direction='in', length=5)  # Place ticks inside the color bar)
-
-    if show_index:
-        if nan_side == "left":# nan_side and index side should be different
-            ax.yaxis.set_label_position("right") 
-            ax.yaxis.tick_right()
-            ax.yaxis.set_label_position("right")
-        else:
-            ax.yaxis.set_label_position("left")
-            ax.yaxis.tick_left()
-            ax.yaxis.set_label_position("left")
-        ax.set_yticks(np.arange(len(df.index)))
-        ax.set_yticklabels(df.index.astype(str), fontsize=8)
-        ax.tick_params(axis='y', pad=5, labelsize=14)
-
-    if return_fig:
-        return fig
-    else:
-        if ax is None:
-            plt.show()
-        return ax
 
 def uniqueNAvals(df):
     """
@@ -1791,7 +1514,7 @@ def clean_ses(df_in, col_ID="UID", method="oldest", save=None, col_study=None, v
 
     return df, save_pth
 
-def get_mapCols(allCols, verbose=False):
+def get_mapCols(allCols, split=True, verbose=False):
     """
     From a list of column names, return a list of map columns (one for each of L, R). 
     NOTE. Does not differentiate smoothed and unsmoothed maps.
@@ -1814,11 +1537,13 @@ def get_mapCols(allCols, verbose=False):
     """
     cols_L = [col for col in allCols if 'hemi-L' in col]
     cols_R = [col for col in allCols if 'hemi-R' in col]
-    
     if verbose:
         print(f"{len(cols_L) + len(cols_R)} map columns found.")
 
-    return cols_L, cols_R
+    if split:
+        return cols_L, cols_R
+    else:
+        return cols_L + cols_R
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
     """
@@ -2239,10 +1964,265 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
 
     return out
 
-
-
-
 ######################### ANALYSIS FUNCTIONS ####################################
+
+def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp, 
+            save=True, save_pth=None, save_name="05_stats_winStudy", test=False, 
+            verbose=False, dlPrint=False):
+    """
+    Comput within study comparisons between control distribution and all participants
+
+    Input:
+        dl: (list) of dictionaries with map and demographic data for each comparison
+        demographics: (dict) with demographic column names
+        ctrl_grp: (dict) with all control group patterns in the grouping column
+        z: (bool) whether to compute z-scores
+        w: (bool) whether to compute w-scores
+        covars: (list) of covariates to ensure complete data for and to include in w-scoring.
+        col_grp: (str) name of the grouping column in demographics dataframe
+
+        save: (bool) <default: True>
+            whether to save the output dict list as a pickle file
+        save_name: (str) <default: "05_stats_winStudy">
+        test: (bool) <default: False>
+            whether to run in test mode (randomly select 2 dict items to run)
+        verbose: (bool) <default: False>
+            whether to print shapes and other info
+        dlPrint: (bool) <default: False>
+            whether to print summary of output dict list
+    
+    Output:
+        dl_winStats: (list) of dictionaries with map and demographic data for each comparison, with added z and/or w score columns
+    """
+    import numpy as np
+    import pandas as pd
+    import os
+    import pickle
+    import time
+    import datetime
+    import logging
+
+    # Prepare log file path
+    if save_pth is None:
+        print("WARNING. Save path not specified. Defaulting to current working directory.")
+        save_pth = os.getcwd()  # Default to current working directory
+    if not os.path.exists(save_pth):
+        os.makedirs(save_pth)
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    print(f"[winComp] Saving log to: {log_file_path}")
+
+    # Configure logging
+    logging.basicConfig(
+        filename=log_file_path,
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    logger = logging.getLogger()
+
+    # Log the start of the function
+    logger.info("Log started for winComp function.")
+
+    try:
+        print(f"[winComp] Saving log to: {log_file_path}")
+        print(f"Computing within study comparisons. Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\tParameters: z={z}, w={w}, covars={covars}, col_grp={col_grp}, ctrl_grp={ctrl_grp}")
+        print(f"\tDemographics columns: {demographics}")
+        print(f"\tNumber of dictionary items to process: {len(dl)}")
+
+        ctrl_values = [val for sublist in ctrl_grp.values() for val in sublist]
+
+        if test:
+            idx_len = 2 # number of indices
+            idx = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
+            dl_winStats = dl.copy()
+            dl_iterate = [dl[i] for i in idx]
+            print(f"[TEST MODE] Running z-scoring on {idx_len} randomly selected dict items: {idx}")
+        else:
+            dl_winStats = dl.copy()
+            dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
+            
+        for i, item in enumerate(dl_iterate): # can be parallelized
+            
+            study = item['study']
+            col_ID = get_IDCol(study, demographics) # determine ID col name based on study name
+
+            if test:
+                printItemMetadata(item, idx[i])
+            else:
+                printItemMetadata(item, i)
+                
+            demo = item[f'df_demo'].copy() # contains all participants
+            maps = item[f'df_maps'].copy() # contains all participants, indexed by <IUD_>ID_SES
+
+            if verbose: 
+                print(f"\tInput shapes:\t\t[demo] {demo.shape} | [maps] {maps.shape}")
+            if demo.shape[0] == 0 or maps.shape[0] == 0:
+                logger.warning(f"\tWARNING. No data in demo or maps dataframe. Skipping this dict item.")
+                continue
+
+            # 0.i Index appropriately
+            col_ID = get_IDCol(study, demographics)
+            col_SES = demographics['SES']
+            if 'UID' in demo.columns:
+                demo['UID_ID_SES'] = demo['UID'].astype(str) + '_' + demo[col_ID].astype(str) + '_' + demo[col_SES].astype(str) # concat UID, ID and SES into single col 
+                demo.set_index('UID_ID_SES', inplace=True)
+            else:
+                demo['ID_SES'] = demo[col_ID].astype(str) + '_' + demo[col_SES].astype(str) # concat ID and SES into single col
+                demo.set_index('ID_SES', inplace=True)
+
+            # 0.ii Prepare covars
+            if covars is None: # set defaults
+                covars = [demographics['age'], demographics['sex']]
+            
+            covars_copy = covars.copy()
+            for c in list(covars_copy): 
+                if c not in demographics.keys(): # ensure covar is a key in demographics dict
+                    logger.warning(f"\tWARNING. Covariate '{c}' not a key in the demographics dictionary. Skipping this covar.")
+                    covars_copy.remove(c)
+                    continue
+                if c not in demo.columns: # ensure covar column exists in demo dataframe
+                    logger.warning(f"\tWARNING. Covariate '{c}' not found in demographics dataframe. Skipping this covar.")
+                    covars_copy.remove(c)
+                    continue
+
+            # 0.iia Format covar to numeric, dummy code if categorical
+            exclude_cols = [col for col in demo.columns if col not in covars_copy]  # exclude all columns but covars
+            demo_numeric, catTodummy_log = catToDummy(demo, exclude_cols = exclude_cols)
+            print(f"\tConverted categorical covariates to dummy variables: \n\t{catTodummy_log}")
+
+            # 0.iib Remove rows with missing covariate data
+            missing_idx = []
+            if w and (covars_copy == [] or covars_copy is None):
+                logger.warning("[winComp] WARNING. No valid covariates specified. Skipping w-scoring.")
+                w_internal = False
+                demo_num = demo_numeric.copy() # keep all rows in demo_numeric
+            elif w:
+                w_internal = True
+                covar_cols = [demographics[c] for c in covars_copy]
+                demo_num = demo_numeric.loc[:, covar_cols].copy() # keep only covariate columns in demo dataframe
+                missing_cols = demo_num.columns[demo_num.isnull().any()]
+
+                if len(missing_cols) > 0:
+                    # count total number of cases with missing data
+                    missing_idx = demo_num.index[demo_num.isnull().any(axis=1)].tolist()
+                    logger.warning(f"\t[winComp] WARNING. {demo_num.isnull().any(axis=1).sum()} indices with missing covariate values: {missing_idx}")
+                    demo_num_clean = demo_num.dropna().copy()
+                    maps_clean = maps.loc[demo_num_clean.index, :].copy()
+                else:
+                    missing_idx = []
+                    demo_num_clean = demo_num.copy()
+                    maps_clean = maps.copy()
+            else: # remove rows with missing covariate data
+                w_internal = False
+            
+            if w_internal and demo_num_clean.shape[0] < 5:
+                logger.warning("[winComp] WARNING. Skipping w-scoring, ≤5 controls.")
+                w = False
+            
+            # A. Create control and comparison subsets
+            ids_ctrl = [j for j in demo[demo[col_grp].isin(ctrl_values)].index if j not in missing_idx]
+            demo_ctrl = demo_num_clean.loc[ids_ctrl].copy() # extract indices from demo_num_clean
+            maps_ctrl = maps_clean.loc[ids_ctrl].copy() # extract indices from maps_clean
+
+            if verbose: 
+                print(f"\tControl group shapes:\t[demo] {demo_ctrl.shape} | [maps] {maps_ctrl.shape}")
+            
+            demo_test = demo_num_clean.copy()
+            maps_test = maps_clean.copy()
+
+            if col_grp in demo_num_clean.columns:
+                    demo_num_clean.drop(columns=[col_grp], inplace=True)
+
+            if verbose: 
+                print(f"\tTest group shapes:\t[demo] {demo_test.shape} | [maps] {maps_test.shape}")
+            
+            demo_ctrl = demo_numeric.loc[demo_ctrl.index, :].copy() # keep only rows in demo_ctrl
+            demo_test = demo_numeric.loc[demo_test.index, :].copy() # keep only rows in demo_test
+
+            if not test: # add ctrl_IDS to output dictionary item
+                dl_winStats[i][f'ctrl_IDs'] = maps_ctrl.index # TODO. format to a list rather than an index object
+            else:
+                dl_winStats[idx[i]][f'ctrl_IDs'] = maps_ctrl.index
+            
+            # B. Calculate statistics    
+            # B.i. Prepare output dataframes
+            df_out = pd.DataFrame(index=maps_test.index, columns=maps.columns)
+            if verbose:
+                print(f"\tOutput shape:\t\t[map stats] {df_out.shape}")
+            
+            if z and demo_ctrl.shape[0] > 3:
+                print(f"\tComputing z scores [{demo_ctrl.shape[0]} controls]...")
+                start_time = time.time()
+                
+                z_scores = get_z(x = maps_test, ctrl = maps_ctrl)
+                if not test:
+                    dl_winStats[i]['df_z'] = z_scores
+                else: dl_winStats[idx[i]]['df_z'] = z_scores
+                duration = time.time() - start_time
+                print(f"\t\tZ-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+
+            elif z:
+                if not test:
+                    dl_winStats[i]['df_z'] = None
+                else: dl_winStats[idx[i]]['df_z'] = None
+                logger.warning("\tWARNING. Skipping z-score: ≤2 controls.")
+
+            if w_internal and demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
+                print(f"\tComputing w scores [{demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
+                start_time = time.time()
+                if demo_ctrl.shape[0] < 10 * len(covars_copy):
+                    logger.warning(f"\t\tWARNING. INTERPRET WITH CAUTION: Few participants for number of covariates. Linear regression likely to be biased.")
+
+                df_w_out = df_out.copy() # n row by p map cols
+                
+                df_w_out, w_models = get_w(map_ctrl = maps_ctrl, demo_ctrl=demo_ctrl, map_test = maps_test, demo_test = demo_test, covars=covars_copy)
+                if not test:
+                    dl_winStats[i]['df_w'] = df_w_out
+                    dl_winStats[i]['df_w_models'] = w_models
+                else: 
+                    dl_winStats[idx[i]]['df_w'] = df_w_out
+                    dl_winStats[idx[i]]['df_w_models'] = w_models
+                duration = time.time() - start_time
+                print(f"\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+
+            elif w_internal:
+                if not test:
+                    dl_winStats[i]['df_w'] = None
+                    dl_winStats[i]['df_w_models'] = None
+                else:
+                    dl_winStats[idx[i]]['df_w'] = None
+                    dl_winStats[idx[i]]['df_w_models'] = None
+                logger.warning(f"\tWARNING. Skipping w-scoring, ≤{5 * len(covars_copy)} controls (5 * number of covars).\n\t\tInsufficient number of controls for number of covariates. [{demo_ctrl.shape[0]} controls, {len(covars_copy)} covars].\n\t\tGuidelines suggest at least 5-10 controls per covariate to ensure stable regression estimates.")
+
+        # Save dictlist to pickle file
+        if save:
+            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+            if test:
+                save_name = f"TEST_{save_name}"
+            out_pth = f"{save_pth}/{save_name}_{date}.pkl"
+            with open(out_pth, "wb") as f:
+                pickle.dump(dl_winStats, f)
+            logger.info(f"Saved map_dictlist with z-scores to {out_pth}")
+        
+        print(f"\nCompleted within study comparisons.\nEnd time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if dlPrint: # print summary of output dict list
+            try:
+                if test:
+                    print_dict(dl_winStats, df_print=False, idx=idx)
+                else:
+                    print_dict(dl_winStats)
+            except Exception as e:
+                logger.error(f"Error printing dict: {e}")
+                logger.error(dl_winStats)
+
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)
+
+    logger.info("Log ended for winComp function.")
+    return dl_winStats
+
 def print_dict(dict, df_print=False, idx=None):
     """
     Print the contents of a dictionary with DataFrames in a readable format.
@@ -2817,6 +2797,381 @@ def glasser_mean(df_glasserLbl):
 
 ######################### VISUALIZATION FUNCTIONS #########################
 
+def plotMatrices(dl, key, name_append=None, show=False,save_pth=None, test=False):
+    """
+    Plot matrix visualizations for map values from corresponding study
+
+    dl: 
+        dictionary list with paired items from different studies
+    key:
+        key in the dictionary items to plot (e.g., 'map_smth')
+    name_append:
+        if provided, append this string to the filename when saving
+    show:
+        if True, show the plots interactively
+    save_pth:
+        if provided, save the plots to this path instead of showing them interactively
+    """
+    import matplotlib.pyplot as plot
+    from matplotlib import gridspec
+    import numpy as np
+    import datetime
+
+    skip_idx = []
+    counter = 0
+
+    print(f"Plotting matrices for {key}...")
+    
+    if test:
+        print("TEST MODE: Randomly choosing 2 pairs to plot")
+        import random
+        # randomly reorder dl items
+        random.shuffle(dl)
+
+    for idx, item in enumerate(dl):
+        if idx in skip_idx:
+            continue
+        else:
+            skip_idx.append(idx)
+    
+        counter = counter+1
+        
+        idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
+        if idx_other is None:
+            print(f"\tWARNING. No matching index found for: {printItemMetadata(item, idx=idx)}.\nSkipping.")
+            continue
+        skip_idx.append(idx_other)
+        
+        item_other = dl[idx_other]
+        if item_other is None:
+            print(f"\tWARNING. Item other is None: {printItemMetadata(item, idx=idx)}.\nSkipping.")
+            continue
+
+        study = item['study']
+        if study == 'MICs':
+            idx_tT = idx
+            idx_sT = idx_other
+
+            item_tT = item
+            item_sT = item_other
+        else:
+            idx_tT = idx_other
+            idx_sT = idx
+
+            item_tT = item_other
+            item_sT = item
+        
+        if item_tT is None and item_sT is None:
+            print(f"\tWARNING. Both items are None (3T: {printItemMetadata(item_tT, idx=idx)}, 7T: {printItemMetadata(item_sT, idx=idx)}).\nSkipping.")
+            continue
+        elif item_tT is None:
+            print(f"\tWARNING. Item_tT is None: {printItemMetadata(item_tT, idx=idx)}.\nSkipping.")
+            continue
+        elif item_sT is None:
+            print(f"\tWARNING. Item_sT is None: {printItemMetadata(item_sT, idx=idx)}.\nSkipping.")
+            continue
+
+        title_tT = f"{key} {item_tT['study']} [idx: {idx_tT}]"
+        title_sT = f"{key} {item_sT['study']} [idx: {idx_sT}]"
+        
+        feature_tT = item_tT['feature']
+        feature_sT = item_sT['feature']
+
+        df_tT = item_tT.get(key, None)
+        df_sT = item_sT.get(key, None)
+        
+        if df_tT is None and df_sT is None:
+            print(f"\tWARNING. Missing key '{key}'. Skipping {printItemMetadata(item_tT, clean=True)} and {printItemMetadata(item_sT, clean=True)}\n")
+            continue
+        elif df_tT is None:
+            print(f"\tWARNING. Missing key '{key}' for {printItemMetadata(item_tT, clean=True)}. Skipping.\n")
+            continue
+        elif df_sT is None:
+            print(f"\tWARNING. Missing key '{key}' for {printItemMetadata(item_sT, clean=True)}. Skipping.\n")
+            continue
+
+        # determine min and max values across both matrices for consistent color scaling
+        assert feature_tT == feature_sT, f"Features do not match: {feature_tT}, {feature_sT}"
+        assert item_tT['region'] == item_sT['region'], f"Regions do not match: {item_tT['region']}, {item_sT['region']}"
+        assert item_tT['surf'] == item_sT['surf'], f"Surfaces do not match: {item_tT['surf']}, {item_sT['surf']}"
+        assert item_tT['label'] == item_sT['label'], f"Labels do not match: {item_tT['label']}, {item_sT['label']}"
+        assert item_tT['smth'] == item_sT['smth'], f"Smoothing kernels do not match: {item_tT['smth']}, {item_sT['smth']}"
+        
+        if key == "df_z" or key == "df_w":
+            cmap = "seismic"
+            min_val = -3
+            max_val = 3
+        else:
+            cmap = 'inferno'
+            if feature_tT.lower() == "thickness":
+                min_val = 0
+                max_val = 4
+                cmap = 'Blues'
+            elif feature_tT.lower() == "flair":
+                min_val = -500
+                max_val = 500
+                cmap = "seismic"
+            elif feature_tT.lower() == "t1map":
+                min_val = 1000
+                max_val = 2800
+                cmap = "inferno"
+            elif feature_tT.lower() == "fa":
+                min_val = 0
+                max_val = 1
+                cmap="Blues"
+            elif feature_tT.lower() == "adc": # units: mm2/s
+                min_val = 0
+                max_val = 0.0025
+                cmap = "Blues"
+            else:
+                min_val = min(np.percentile(df_sT.values, 95), np.percentile(df_tT.values, 95))
+                max_val = max(np.percentile(df_sT.values, 5), np.percentile(df_tT.values, 5))
+
+        # Create a grid layout with space for the colorbar
+        fig = plot.figure(figsize=(30, 25))
+        spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
+
+        # Create subplots
+        ax1 = fig.add_subplot(spec[0])
+        ax2 = fig.add_subplot(spec[2])
+
+        # Plot the matrices
+        visMatrix(df_tT, feature=feature_tT, title=title_tT, 
+                  return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+        visMatrix(df_sT, feature=feature_sT, title=title_sT, 
+                  return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+
+        # Add a colorbar between the plots
+        if feature_tT.upper() == "ADC":
+            cmap_title = "ADC (mm²/s)"
+        elif feature_tT.upper() == "T1MAP":
+            cmap_title = "T1 (ms)"
+        else:
+            cmap_title = feature_tT
+
+        if key== "df_z":
+            cmap_title = f"Z-score [{cmap_title}]"
+        elif key == "df_w":
+            cmap_title = f"W-score [{cmap_title}]"
+
+        cbar_ax = fig.add_subplot(spec[1])
+        norm = plot.Normalize(vmin=min_val, vmax=max_val)
+        cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
+        cbar.set_label(cmap_title, fontsize=20, labelpad=0)
+        cbar.ax.yaxis.set_label_position("left")
+        cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
+
+        # Add a common title
+        region = item_tT['region']
+        surface = item_tT['surf']
+        label = item_tT['label']
+        smth = item_tT['smth']
+        fig.suptitle(f"{region}: {feature_tT}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
+
+        if show:
+            plot.show()
+
+        if save_pth is not None:
+            if name_append is not None:
+                save_name = f"{region}_{feature_tT}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            else:
+                save_name = f"{region}_{feature_tT}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
+            print(f"\tSaved: {save_pth}/{save_name}.png")
+            plot.close(fig)
+        
+        if test and counter >= 2:
+            break
+
+def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
+              cmap='seismic', return_fig=True, show_index=False, ax=None, nan_color='green', nan_side="right"):
+    """
+    Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The data to visualize, where rows are indices and columns are vertices.
+    feature : str, optional
+        Label for the colorbar (default is "Map Value").
+    title : str, optional
+        Title for the plot.
+    min_val : float, optional
+        Minimum value for colormap scaling. If None, uses the minimum of the data.
+    max_val : float, optional
+        Maximum value for colormap scaling. If None, uses the maximum of the data.
+    cmap : str or matplotlib.colors.Colormap, optional
+        Colormap to use for visualization (default is 'seismic').
+    return_fig : bool, optional
+        If True, returns the matplotlib Figure object; otherwise, returns the Axes object.
+    show_index : bool, optional
+        If True, displays DataFrame index labels on the y-axis.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on. If None, creates a new figure and axes.
+    
+    Returns
+    -------
+    matplotlib.figure.Figure or matplotlib.axes.Axes
+        The figure or axes containing the visualization, depending on `return_fig`.
+    """
+    
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if df is None or df.shape[0] == 0 or df.shape[1] == 0:
+        print("[visMatrix] WARNING: DataFrame is empty or None. Skipping visualization.")
+        return None
+    
+    # Convert DataFrame to numpy array, mask NaNs
+    data = df.values
+    mask = np.isnan(data)
+
+    # Use provided cmap parameter
+    if isinstance(cmap, str):
+        cmap_obj = plt.get_cmap(cmap)
+    else:
+        cmap_obj = cmap
+    
+    cmap_obj.set_bad(color=nan_color) # Color for NaN values
+
+    if min_val is None:
+        min_val = np.nanmin(data)
+    if max_val is None:
+        max_val = np.nanmax(data)
+    
+    # Use provided axes or create new figure
+    anyNaN = np.isnan(data).any()
+    if ax is None:
+        fig_length = max(6, min(30, 0.1 * data.shape[0]))
+        fig_width = 10
+        if anyNaN:  # Increase width if NaN annotations are present
+            fig_width += 2
+        fig, ax = plt.subplots(figsize=(fig_width, fig_length))
+        create_colorbar = True
+    else:
+        fig = ax.get_figure()
+        create_colorbar = False  # Let caller handle colorbar
+    
+    im = ax.imshow(data, aspect='auto', cmap=cmap_obj, vmin=min_val, vmax=max_val, interpolation='none')
+    im.set_array(np.ma.masked_where(mask, data))
+
+    if anyNaN:
+        print(f"\tNaN values present [{title}: {feature}]")
+        for i, row in enumerate(data):
+            nan_count = np.isnan(row).sum()
+            if nan_count > 0:  # Annotate next to the row
+                if nan_side == "right":
+                    ax.annotate(f"NAN: {nan_count}", 
+                                xy=(data.shape[1], i), 
+                                xytext=(data.shape[1] + 1, i),  # Place outside the plot
+                                va='center', ha='left', fontsize=9, color='black')
+                elif nan_side == "left":
+                    ax.annotate(f"NAN: {nan_count}", 
+                                xy=(-1, i), 
+                                xytext=(-2, i),  # Place outside the plot
+                                va='center', ha='right', fontsize=9, color='black')
+            
+    if title:
+        ax.set_title(title, fontsize=23)
+
+    ax.set_xlabel("Vertex", fontsize=15)
+    ax.tick_params(axis='x', labelsize=10)
+    
+    if create_colorbar:
+        if feature.upper == "ADC":
+            feature = "ADC (mm²/s)"
+        elif feature.upper == "T1MAP":
+            feature = "T1 (ms)"
+        cbar = plt.colorbar(im, ax=ax, label=feature, shrink=0.25)
+        cbar.ax.tick_params(axis='y', direction='in', length=5)  # Place ticks inside the color bar)
+
+    if show_index:
+        if nan_side == "left":# nan_side and index side should be different
+            ax.yaxis.set_label_position("right") 
+            ax.yaxis.tick_right()
+        else:
+            ax.yaxis.set_label_position("left")
+            ax.yaxis.tick_left()
+        ax.set_yticks(np.arange(len(df.index)))
+        ax.set_yticklabels(df.index.astype(str), fontsize=8)
+        ax.tick_params(axis='y', pad=5, labelsize=14)
+
+    if return_fig:
+        return fig
+    else:
+        if ax is None:
+            plt.show()
+        return ax
+    
+def pngs2pdf(fig_dir, output=None, verbose=False):
+    """
+    Combine multiple pngs held in same folder to a single pdf.
+    Groups pngs with variation only in "_smth-*" or "_stat-*" values.
+
+    Input:
+        fig_dir: Directory containing png files.
+        output: Directory to save output pdf files. If None, saves in fig_dir.
+    Output:
+        PDF files saved in output directory.
+    """
+    
+    import os
+    import re
+    from matplotlib.backends.backend_pdf import PdfPages
+    from PIL import Image
+    import matplotlib.pyplot as plt
+    
+    if output is None:
+        output = fig_dir
+    else:
+        if not os.path.exists(output):
+            os.makedirs(output)
+            print(f"Created output directory: {output}")
+    
+    # Find all PNG files in the directory
+    files = [f for f in os.listdir(fig_dir) if os.path.isfile(os.path.join(fig_dir, f)) and f.endswith('.png')]
+
+    # Extract base names (excluding smoothing pattern)
+    def get_base_name(filename):
+        filename = re.sub(r"_smth-(\d+|NA)mm", "", filename)  # Remove smoothing pattern
+        filename = re.sub(r"_stat-(\w+)", "", filename)  # Remove stat pattern
+        filename = re.sub(r"-\d{6}\.png$", ".png", filename)  # Remove time pattern
+        return filename
+
+    # Group files by their base name
+    file_groups = {}
+    for f in files:
+        base_name = get_base_name(f)
+    
+        if base_name not in file_groups:
+            file_groups[base_name] = []
+        file_groups[base_name].append(f)
+    if verbose:
+        print(f"Creating {len(file_groups)} PDFs...")
+
+    # Create a PDF for each group
+    for base_name, group_files in file_groups.items():
+        # Sort files in the group by smoothing value (NA first, then ascending)
+        group_files = sorted(group_files, key=lambda f: int(re.search(r"_smth-(\d+)mm", f).group(1)) if re.search(r"_smth-(\d+)mm", f) else -1)
+
+        # Output PDF path
+        base_name = re.sub(r"\.png$", "", base_name)  # Remove the .png extension using re
+        output_pdf = os.path.join(output, f"{base_name}.pdf")
+
+        # Open images and save them directly to a PDF
+        images = []
+        for file in group_files:
+            file_path = os.path.join(fig_dir, file)
+            img = Image.open(file_path)
+            if img.mode != "RGB":
+                img = img.convert("RGB")  # Convert to RGB if necessary
+            images.append(img)
+
+        # Save all images to a single PDF
+        if images:
+            images[0].save(output_pdf, save_all=True, append_images=images[1:])
+            if verbose:
+                print(f"\tPDF created: {output_pdf}")
+
 def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
     """
     Given a dict item and a list of dicts, return a list of indices in dictlist
@@ -3171,7 +3526,7 @@ def showBrain(lh, rh, region = "ctx",
             raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
         
     elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
-        if surface == '0p5mm':
+        if surface == '0p5mm': # use hippunfold toolbox
             
             surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_L.surf.gii', itype='gii')
             surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_R.surf.gii', itype='gii')
