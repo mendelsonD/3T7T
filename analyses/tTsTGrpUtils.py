@@ -2797,7 +2797,7 @@ def glasser_mean(df_glasserLbl):
 
 ######################### VISUALIZATION FUNCTIONS #########################
 
-def plotMatrices(dl, key, name_append=None, show=False,save_pth=None, test=False):
+def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=False):
     """
     Plot matrix visualizations for map values from corresponding study
 
@@ -3116,9 +3116,7 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
     
     import os
     import re
-    from matplotlib.backends.backend_pdf import PdfPages
     from PIL import Image
-    import matplotlib.pyplot as plt
     
     if output is None:
         output = fig_dir
@@ -3133,15 +3131,14 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
     # Extract base names (excluding smoothing pattern)
     def get_base_name(filename):
         filename = re.sub(r"_smth-(\d+|NA)mm", "", filename)  # Remove smoothing pattern
-        filename = re.sub(r"_stat-(\w+)", "", filename)  # Remove stat pattern
-        filename = re.sub(r"-\d{6}\.png$", ".png", filename)  # Remove time pattern
+        filename = re.sub(r"_stat-(\w+)_", "_", filename)  # Remove stat pattern
+        filename = re.sub(r"-(\d{6})(?=\.\w+$)", "", filename)  # Remove time pattern
         return filename
-
+    
     # Group files by their base name
     file_groups = {}
     for f in files:
         base_name = get_base_name(f)
-    
         if base_name not in file_groups:
             file_groups[base_name] = []
         file_groups[base_name].append(f)
@@ -3150,8 +3147,9 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
 
     # Create a PDF for each group
     for base_name, group_files in file_groups.items():
-        # Sort files in the group by smoothing value (NA first, then ascending)
-        group_files = sorted(group_files, key=lambda f: int(re.search(r"_smth-(\d+)mm", f).group(1)) if re.search(r"_smth-(\d+)mm", f) else -1)
+        # sort files
+        group_files = sorted(group_files, key=lambda f: re.search(r"_stat-(\w+)_", f).group(1) if re.search(r"_stat-(\w+)_", f) else "") # alphabetically by stat name
+        group_files = sorted(group_files, key=lambda f: int(re.search(r"_smth-(\d+)mm", f).group(1)) if re.search(r"_smth-(\d+)mm", f) else -1) # then by increasing smoothing kernel
 
         # Output PDF path
         base_name = re.sub(r"\.png$", "", base_name)  # Remove the .png extension using re
