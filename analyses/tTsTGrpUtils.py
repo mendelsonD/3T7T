@@ -2433,7 +2433,7 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
         logger.info(f"[grp_flip] Saving log to: {log_file_path}")
         logger.info(f"Performing two steps:\n\ta. Selecting patients belonging to {goi}.\n\tb. Ipsi/contra flip.")
         logger.info(f"Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"\tParameters:\tgoi: {goi}, col_grp: {col_grp}, test: {test}, verbose: {verbose}")
+        logger.info(f"\tParameters:\n\tinput dl: shape: {dl.shape}, keys: {dl.keys}\n\tgoi: {goi}\n\tcol_grp: {col_grp}\n\ttest: {test}\n\tverbose: {verbose}")
 
         if test:
             idx_len = 1 # number of indices
@@ -2604,18 +2604,22 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
         save_pth = os.getcwd()  # Default to current working directory
     if not os.path.exists(save_pth):
         os.makedirs(save_pth)
+    if test:
+        save_name = f"TEST_{save_name}"
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
     print(f"[winD] Saving log to: {log_file_path}")
     
     # Configure logging
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-
+    
     # Create handlers
     info_handler = logging.FileHandler(log_file_path)
     info_handler.setLevel(logging.INFO)
     warning_handler = logging.FileHandler(log_file_path)
     warning_handler.setLevel(logging.WARNING)
+    console_handler = logging.StreamHandler()  # Add a StreamHandler for terminal output
+    console_handler.setLevel(logging.ERROR)  # Only print errors to the terminal
 
     # Create formatters
     info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
@@ -2630,13 +2634,15 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
     logger.addHandler(warning_handler)
 
     # Log the start of the function
-    logger.info("Log started for winComp function.")
+    logger.info(f"[winD] Computing within study D-scores between groups and controls.")
+    logger.info(f"Saving log to: {log_file_path}")
+    start_time = datetime.datetime.now()
+    logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
-        logger.info(f"[winD] Saving log to: {log_file_path}")
-        logger.info(f"Computing within study D-scores between groups and controls.")
-        logger.info(f"Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"Parameters:\n\tstats: {stats}\n\tipsiTo: {ipsiTo}\n\ttest: {test}")
+        logger.info(f"\nParameters:\n\tinput dl: shape: {dl.shape}, keys: {dl.keys}\n\tstats: {stats}\n\tipsiTo: {ipsiTo}\n\ttest: {test}\n")
+        logger.info(f"\n")
 
         if test:
             idx = np.random.choice(len(dl), size=test_len, replace=False).tolist()  # randomly choose index
@@ -2647,12 +2653,12 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
             dl = copy.deepcopy(dl)  
 
-        start_time = datetime.datetime.now()
-        print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        
         logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"Attempting to calculate D-scores for {len(dl_iterate)} dictionary items for the following stats: {stats}")
+        logger.info(f"Attempting to calculate D-scores for {len(dl_iterate)} dictionary items for the following stats: {stats}\n")
 
         for i, item in enumerate(dl_iterate):
+            logging.info(f"\n")
             if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
             else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
 
@@ -2706,7 +2712,7 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
                         logging.warning(f"\t\tNo data in {k}. Skipping.")
                         continue
                     
-                    grp_name = k.replace(f'df_{stat}', '')
+                    grp_name = k.replace(f'df_', '')
 
                     if 'ic' in k.lower(): # use appropriate control df with ipsi/contra labelled cols
                         grp_name = f"{grp_name}_ipsiTo-{ipsiTo}"
@@ -2752,19 +2758,19 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
         if save:
             if test:
                 save_name = f"TEST_{save_name}"
-            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-            out_pth = f"{save_pth}/{save_name}_{date}.pkl"
+            out_pth = f"{save_pth}/{save_name}_{start_time.strftime('%Y%b%d-%H%M%S')}.pkl"
         
             with open(out_pth, "wb") as f:
                 pickle.dump(dl, f)
-            logger.info(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+            logger.info(f"\n\nSaved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
             print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
 
         logger.info(f"Completed winD.")
         end_time = datetime.datetime.now()
-        duration = end_time - start_time    
-        logger.info(f"End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss)")
-        print(f"\nCompleted. End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss)")
+        duration = end_time - start_time
+        minutes, seconds = divmod(int(duration.total_seconds()), 60) 
+        logger.info(f"End time: {end_time.strftime('%Y%m-%d-%H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
+        print(f"\nCompleted. End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
 
         if dlPrint:
             print('-'*100)
@@ -2776,6 +2782,245 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
             except:
                 print(dl)
         
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)
+
+    return dl
+
+def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, test_len=1, verbose=False, dlPrint=False ):
+    """
+    [btwD: within study D-scoring]
+    Calculate D-statistic differences between analogous dictionary items for each study.
+    Difference scores calculated (managed by function [get_d]):
+        d_7T - d_3T
+        d_7T - d_3T / d_7T
+        d_7T - d_3T / d_3T
+    
+    Inputs:
+        dl: (list)              Dictionary items keys holding vertex-wise within study statistics for groups of interest
+                                    Assumes key for dfs holding statistics to have structure: df_{stat} 
+        ipsiTo: (str)           Hemisphere to which ipsi/contra vertices should be mapped to for controls. NOTE. Only used if vertex columns have ipsi/contra data present. Default = 'L'
+
+        save: (bool)            Whether to save the output dictionary list.
+        save_pth: (str)         Directory path to save the output dictionary list.
+        save_name: (str)        Base name for the saved output file.
+        test: (bool)            Whether to run in test mode (randomly select a subset of dict items to run d-scoring on)
+        test_len: (int)         Number of random dict items to run d-scoring on if test=True
+        verbose: (bool)         Whether to print detailed processing information.
+        dlPrint: (bool)         Whether to print the output dictionary list.
+    
+    """
+    
+    import os
+    import pandas as pd
+    import numpy as np
+    import pickle
+    import copy
+    import datetime
+    import logging
+
+    # Prepare log file path
+    if save_pth is None:
+        print("WARNING. Save path not specified. Defaulting to current working directory.")
+        save_pth = os.getcwd()  # Default to current working directory
+    if not os.path.exists(save_pth):
+        os.makedirs(save_pth)
+    if test:
+        save_name = f"TEST_{save_name}"
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    print(f"[winD] Saving log to: {log_file_path}")
+    
+    # Configure logging
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    # Create handlers
+    info_handler = logging.FileHandler(log_file_path)
+    info_handler.setLevel(logging.INFO)
+    warning_handler = logging.FileHandler(log_file_path)
+    warning_handler.setLevel(logging.WARNING)
+    console_handler = logging.StreamHandler()  # Add a StreamHandler for terminal output
+    console_handler.setLevel(logging.ERROR)  # Only print errors to the terminal
+
+    # Create formatters
+    info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
+    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
+
+    # Assign formatters to handlers
+    info_handler.setFormatter(info_formatter)
+    warning_handler.setFormatter(warning_formatter)
+
+    # Add handlers to logger
+    logger.addHandler(info_handler)
+    logger.addHandler(warning_handler)
+
+    # Log the start of the function
+    logger.info(f"[winD] Computing within study D-scores between groups and controls.")
+    logger.info(f"Saving log to: {log_file_path}")
+    start_time = datetime.datetime.now()
+    logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    try:
+        logger.info(f"\nParameters:\n\tinput dl length:{len(dl)}\n\ttest: {test}\n")
+        logger.info(f"\n")
+
+        if test:
+            idx = np.random.choice(len(dl), size=test_len, replace=False).tolist()  # randomly choose index
+            idx_other = get_pair(dl_iterate, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=idx) # TODO. Finding matching index for each randomly chosen index
+            dl_iterate = [dl[i] for i in [idx, idx_other]]
+            dl = copy.deepcopy(dl)
+            logger.info(f"[TEST MODE] Running d-scoring on {test_len} randomly selected dict items: {idx}")
+        else:
+            dl_iterate = dl.copy() # Create a copy of the original list to iterate over
+            dl = copy.deepcopy(dl) 
+
+        
+        logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Attempting to calculate D-scores for {len(dl_iterate)} dictionary items.\n")
+
+        comps = []
+        skip_idx = []
+        counter = 0
+
+        for i, item in enumerate(dl_iterate):
+            if i in skip_idx:
+                continue
+            else:
+                skip_idx.append(i)
+        
+            counter = counter+1
+            logging.info(f"pair {counter}:")
+            if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
+            else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
+            
+            idx_other = get_pair(dl_iterate, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
+            if idx_other is None:
+                print(f"\tNo matching index found. Skipping.")
+                continue
+            skip_idx.append(idx_other)
+            
+            item_other = dl[idx_other]
+           
+            logging.info(printItemMetadata(item_other, idx=idx_other, return_txt=True))
+
+            # if df_z and df_w are None, skip
+            if item.get('df_d', None) is None and item.get('df_d_ic', None) is None:
+                logging.warning(f"\tNo D-score dataframes in this dictionary item. Skipping.")
+                continue
+
+            # Initialize output item
+            out_item = {
+                    'studies': (item['study'], item_other['study']),
+                    'region': item['region'],
+                    'feature': item['feature'],
+                    'surf': item['surf'],
+                    'label': item['label'],
+                    'smth': item['smth'],
+                }
+            
+            ID_keys = [key for key in item.keys() if 'IDs' in key]
+            
+            keys_to_copy = ID_keys + ['df_d', 'df_d_ic']
+            if verbose:
+                logging.info(f"\tCopying keys: {keys_to_copy}")
+            for key in keys_to_copy: # add all ID_keys are their corresponding dataframes to out_item
+                out_item[key] = [item[key], item_other[key]] # stores as list of items. In case of dfs, list of dataframes
+
+            # identify which study is which (to know how to subtract)
+            study = item['study']
+            if study == 'MICs':
+                item_tT = item
+                item_sT = item_other
+            else:
+                item_tT = item_other
+                item_sT = item
+            
+            for df in ['df_d', 'df_d_ic']:
+                metrics_df = None
+                df_tT = item_tT.get(df, None)
+                df_sT = item_sT.get(df, None)
+                
+                if df_tT is None or df_sT is None:
+                    logging.warning(f"\tOne of the d-score dataframes is None. Skipping {df} comparison.")
+                    continue
+                
+                logging.info(f"\tComputing difference metrics for {df}...")
+                
+                if verbose:
+                    logging.info(f"\t\t3 T shape: {df_tT.shape}\n\t\t7 T shape: {df_sT.shape}.")
+                
+                assert df_tT.columns.equals(df_sT.columns) == True, f"[comps] Columns of d-scores DataFrames do not match. Check input data. {df_tT.columns} != {df_sT.columns}"
+
+                # Identfiy the rows that refer to d statistics and ensure that both dataframes have these rows
+                stats_tT = df_tT.index.tolist()
+                stats_sT = df_sT.index.tolist()
+                d_stats = [s for s in stats_tT if s in stats_sT and s.startswith('d_')]
+                if verbose:
+                    logging.info(f"\t\tCohen's d statistic indices: {d_stats}")
+                
+                # want to only apply operations to rows in d_stats
+                df_d_stats_tT = df_tT.loc[d_stats, :].copy()
+                df_d_stats_sT = df_sT.loc[d_stats, :].copy()
+
+                # compute difference metrics
+                d_dif = df_d_stats_sT - df_d_stats_tT # 7 T - 3 T
+                d_dif_by3T = d_dif / df_d_stats_tT
+                d_dif_by7T = d_dif / df_d_stats_sT
+                
+                # Stack the rows from each matrix into the metrics_df
+                d_dif_renamed = d_dif.copy()
+                d_dif_renamed.index = [idx + '_Δd' for idx in d_dif_renamed.index]
+                
+                d_dif_by3T_renamed = d_dif_by3T.copy()
+                d_dif_by3T_renamed.index = [idx + '_Δd_by3T' for idx in d_dif_by3T_renamed.index]
+                
+                d_dif_by7T_renamed = d_dif_by7T.copy()
+                d_dif_by7T_renamed.index = [idx + '_Δd_by7T' for idx in d_dif_by7T_renamed.index]
+
+                metrics_df = pd.concat([d_dif_renamed, d_dif_by3T_renamed, d_dif_by7T_renamed])
+
+                # Add original stats from both datasets to metrics_df
+                df_tT_renamed = df_tT.copy()
+                df_tT_renamed.index = [idx + '_3T' for idx in df_tT_renamed.index]
+                df_sT_renamed = df_sT.copy()
+                df_sT_renamed.index = [idx + '_7T' for idx in df_sT_renamed.index]
+                metrics_df = pd.concat([metrics_df, df_tT_renamed, df_sT_renamed])
+                logging.info(f"\t\tShape of metrics_df: {metrics_df.shape}")
+                logging.info(f"\t\tIndices: {metrics_df.index}")        
+
+                out_item[f'comps_{df}'] = metrics_df # add to output item
+            # if comps[] is None then don't add
+            comps.append(out_item) # append to dict list
+            out_item = None
+
+        # Save the updated map_dictlist to a pickle file
+        if save:
+            if test:
+                save_name = f"TEST_{save_name}"
+            out_pth = f"{save_pth}/{save_name}_{start_time.strftime('%d%b%Y-%H%M%S')}.pkl"
+        
+            with open(out_pth, "wb") as f:
+                pickle.dump(comps, f)
+            print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+
+        logger.info(f"Completed btwD.")
+        end_time = datetime.datetime.now()
+        duration = end_time - start_time
+        minutes, seconds = divmod(int(duration.total_seconds()), 60) 
+        logger.info(f"End time: {end_time.strftime('%Y%m-%d-%H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
+        print(f"\nCompleted btwD. End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
+
+        if dlPrint:
+            print('-'*100)
+            try:
+                if test:
+                    print_dict(comps, df_print=False, idx=idx)
+                else:
+                    print_dict(comps)
+            except:
+                print(comps)
+    
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
 
@@ -3401,6 +3646,9 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
         # randomly reorder dl items
         random.shuffle(dl)
 
+    # If dl is a single dictionary (not a list), wrap it in a list
+    if isinstance(dl, dict):
+        dl = [dl]
     for idx, item in enumerate(dl):
         if idx in skip_idx:
             continue
@@ -3411,13 +3659,15 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
         
         idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
         if idx_other is None:
-            print(f"\tWARNING. No matching index found for: {printItemMetadata(item, idx=idx)}.\nSkipping.")
+            item_txt = printItemMetadata(item, idx=idx, return_txt=True)
+            print(f"\tWARNING. No matching index found for: {item_txt}.\nSkipping.")
             continue
         skip_idx.append(idx_other)
         
         item_other = dl[idx_other]
         if item_other is None:
-            print(f"\tWARNING. Item other is None: {printItemMetadata(item, idx=idx)}.\nSkipping.")
+            item_txt = printItemMetadata(item, idx=idx, return_txt=True)
+            print(f"\tWARNING. Item other is None: {item_txt}.\nSkipping.")
             continue
 
         study = item['study']
@@ -3435,13 +3685,17 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
             item_sT = item
         
         if item_tT is None and item_sT is None:
-            print(f"\tWARNING. Both items are None (3T: {printItemMetadata(item_tT, idx=idx)}, 7T: {printItemMetadata(item_sT, idx=idx)}).\nSkipping.")
+            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
+            item_sT_txt = printItemMetadata(item_sT, idx=idx_sT, return_txt=True)
+            print(f"\tWARNING. Both items are None (3T: {item_tT_txt}, 7T: {item_sT_txt}).\nSkipping.")
             continue
         elif item_tT is None:
-            print(f"\tWARNING. Item_tT is None: {printItemMetadata(item_tT, idx=idx)}.\nSkipping.")
+            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
+            print(f"\tWARNING. Item_tT is None: {item_tT_txt}.\nSkipping.")
             continue
         elif item_sT is None:
-            print(f"\tWARNING. Item_sT is None: {printItemMetadata(item_sT, idx=idx)}.\nSkipping.")
+            item_sT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
+            print(f"\tWARNING. Item_sT is None: {item_sT_txt}.\nSkipping.")
             continue
 
         title_tT = f"{key} {item_tT['study']} [idx: {idx_tT}]"
@@ -3454,13 +3708,17 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
         df_sT = item_sT.get(key, None)
         
         if df_tT is None and df_sT is None:
-            print(f"\tWARNING. Missing key '{key}'. Skipping {printItemMetadata(item_tT, clean=True)} and {printItemMetadata(item_sT, clean=True)}\n")
+            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
+            item_sT_txt = printItemMetadata(item_sT, idx=idx_sT, return_txt=True)
+            print(f"\tWARNING. Missing key '{key}'. Skipping {item_tT_txt} and {item_sT_txt}\n")
             continue
         elif df_tT is None:
-            print(f"\tWARNING. Missing key '{key}' for {printItemMetadata(item_tT, clean=True)}. Skipping.\n")
+            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
+            print(f"\tWARNING. Missing key '{key}' for {item_tT_txt}. Skipping.\n")
             continue
         elif df_sT is None:
-            print(f"\tWARNING. Missing key '{key}' for {printItemMetadata(item_sT, clean=True)}. Skipping.\n")
+            item_sT_txt = printItemMetadata(item_sT, idx=idx_sT, return_txt=True)
+            print(f"\tWARNING. Missing key '{key}' for {item_sT_txt}. Skipping.\n")
             continue
 
         # determine min and max values across both matrices for consistent color scaling
