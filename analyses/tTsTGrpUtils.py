@@ -1,3 +1,25 @@
+################### OVERALL UTILS ####################################
+def loadPickle(pth, verbose=True):
+    """
+    Load a pickle file from the specified path.
+    
+    Parameters:
+    - pth: str
+        Path to the pickle file.
+    
+    Returns:
+    - obj: object
+        The object loaded from the pickle file.
+    """
+    import pickle    
+    
+    with open(pth, "rb") as f:
+            obj = pickle.load(f)
+    if verbose:
+        print(f"[loadPickle] Loaded smoothed maps from {pth}")
+    return obj
+
+
 ################### DATA PREPERATION ####################################
 def add_date(demo_pths, demo):
     """
@@ -1967,7 +1989,7 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
 ######################### ANALYSIS FUNCTIONS ####################################
 
 def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp, 
-            save=True, save_pth=None, save_name="05_stats_winStudy", test=False, 
+            save=True, save_pth=None, save_name="05a_stats_winStudy", test=False, 
             verbose=False, dlPrint=False):
     """
     Comput within study comparisons between control distribution and all participants
@@ -1983,7 +2005,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
 
         save: (bool) <default: True>
             whether to save the output dict list as a pickle file
-        save_name: (str) <default: "05_stats_winStudy">
+        save_name: (str) <default: "05a_stats_winStudy">
         test: (bool) <default: False>
             whether to run in test mode (randomly select 2 dict items to run)
         verbose: (bool) <default: False>
@@ -2010,25 +2032,38 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
         os.makedirs(save_pth)
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
     print(f"[winComp] Saving log to: {log_file_path}")
-
+    
     # Configure logging
-    logging.basicConfig(
-        filename=log_file_path,
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
     logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Create handlers
+    info_handler = logging.FileHandler(log_file_path)
+    info_handler.setLevel(logging.INFO)
+    warning_handler = logging.FileHandler(log_file_path)
+    warning_handler.setLevel(logging.WARNING)
+
+    # Create formatters
+    info_formatter = logging.Formatter("%(levelname)s - %(message)s")  # No timestamp for INFO
+    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
+
+    # Assign formatters to handlers
+    info_handler.setFormatter(info_formatter)
+    warning_handler.setFormatter(warning_formatter)
+
+    # Add handlers to logger
+    logger.addHandler(info_handler)
+    logger.addHandler(warning_handler)
 
     # Log the start of the function
     logger.info("Log started for winComp function.")
 
     try:
-        print(f"[winComp] Saving log to: {log_file_path}")
-        print(f"Computing within study comparisons. Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"\tParameters: z={z}, w={w}, covars={covars}, col_grp={col_grp}, ctrl_grp={ctrl_grp}")
-        print(f"\tDemographics columns: {demographics}")
-        print(f"\tNumber of dictionary items to process: {len(dl)}")
+        logger.info(f"[winComp] Saving log to: {log_file_path}")
+        logger.info(f"Computing within study comparisons. Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"\tParameters: z={z}, w={w}, covars={covars}, col_grp={col_grp}, ctrl_grp={ctrl_grp}")
+        logger.info(f"\tDemographics columns: {demographics}")
+        logger.info(f"\tNumber of dictionary items to process: {len(dl)}")
 
         ctrl_values = [val for sublist in ctrl_grp.values() for val in sublist]
 
@@ -2037,7 +2072,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             idx = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
             dl_winStats = dl.copy()
             dl_iterate = [dl[i] for i in idx]
-            print(f"[TEST MODE] Running z-scoring on {idx_len} randomly selected dict items: {idx}")
+            logger.info(f"[TEST MODE] Running z-scoring on {idx_len} randomly selected dict items: {idx}")
         else:
             dl_winStats = dl.copy()
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
@@ -2047,16 +2082,14 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             study = item['study']
             col_ID = get_IDCol(study, demographics) # determine ID col name based on study name
 
-            if test:
-                printItemMetadata(item, idx[i])
-            else:
-                printItemMetadata(item, i)
+            if test: printItemMetadata(item, idx = idx[i], return_txt=True)
+            else: printItemMetadata(item, idx = i, return_txt=True)
                 
             demo = item[f'df_demo'].copy() # contains all participants
             maps = item[f'df_maps'].copy() # contains all participants, indexed by <IUD_>ID_SES
 
             if verbose: 
-                print(f"\tInput shapes:\t\t[demo] {demo.shape} | [maps] {maps.shape}")
+                logger.info(f"\tInput shapes:\t\t[demo] {demo.shape} | [maps] {maps.shape}")
             if demo.shape[0] == 0 or maps.shape[0] == 0:
                 logger.warning(f"\tWARNING. No data in demo or maps dataframe. Skipping this dict item.")
                 continue
@@ -2089,7 +2122,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             # 0.iia Format covar to numeric, dummy code if categorical
             exclude_cols = [col for col in demo.columns if col not in covars_copy]  # exclude all columns but covars
             demo_numeric, catTodummy_log = catToDummy(demo, exclude_cols = exclude_cols)
-            print(f"\tConverted categorical covariates to dummy variables: \n\t{catTodummy_log}")
+            logger.info(f"\tConverted categorical covariates to dummy variables: \n\t{catTodummy_log}")
 
             # 0.iib Remove rows with missing covariate data
             missing_idx = []
@@ -2126,7 +2159,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             maps_ctrl = maps_clean.loc[ids_ctrl].copy() # extract indices from maps_clean
 
             if verbose: 
-                print(f"\tControl group shapes:\t[demo] {demo_ctrl.shape} | [maps] {maps_ctrl.shape}")
+                logger.info(f"\tControl group shapes:\t[demo] {demo_ctrl.shape} | [maps] {maps_ctrl.shape}")
             
             demo_test = demo_num_clean.copy()
             maps_test = maps_clean.copy()
@@ -2135,7 +2168,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
                     demo_num_clean.drop(columns=[col_grp], inplace=True)
 
             if verbose: 
-                print(f"\tTest group shapes:\t[demo] {demo_test.shape} | [maps] {maps_test.shape}")
+                logger.info(f"\tTest group shapes:\t[demo] {demo_test.shape} | [maps] {maps_test.shape}")
             
             demo_ctrl = demo_numeric.loc[demo_ctrl.index, :].copy() # keep only rows in demo_ctrl
             demo_test = demo_numeric.loc[demo_test.index, :].copy() # keep only rows in demo_test
@@ -2149,10 +2182,10 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             # B.i. Prepare output dataframes
             df_out = pd.DataFrame(index=maps_test.index, columns=maps.columns)
             if verbose:
-                print(f"\tOutput shape:\t\t[map stats] {df_out.shape}")
+                logger.info(f"\tOutput shape:\t\t[map stats] {df_out.shape}")
             
             if z and demo_ctrl.shape[0] > 3:
-                print(f"\tComputing z scores [{demo_ctrl.shape[0]} controls]...")
+                logger.info(f"\tComputing z scores [{demo_ctrl.shape[0]} controls]...")
                 start_time = time.time()
                 
                 z_scores = get_z(x = maps_test, ctrl = maps_ctrl)
@@ -2160,7 +2193,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
                     dl_winStats[i]['df_z'] = z_scores
                 else: dl_winStats[idx[i]]['df_z'] = z_scores
                 duration = time.time() - start_time
-                print(f"\t\tZ-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+                logger.info(f"\t\tZ-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
             elif z:
                 if not test:
@@ -2169,7 +2202,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
                 logger.warning("\tWARNING. Skipping z-score: ≤2 controls.")
 
             if w_internal and demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
-                print(f"\tComputing w scores [{demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
+                logger.info(f"\tComputing w scores [{demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
                 start_time = time.time()
                 if demo_ctrl.shape[0] < 10 * len(covars_copy):
                     logger.warning(f"\t\tWARNING. INTERPRET WITH CAUTION: Few participants for number of covariates. Linear regression likely to be biased.")
@@ -2184,7 +2217,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
                     dl_winStats[idx[i]]['df_w'] = df_w_out
                     dl_winStats[idx[i]]['df_w_models'] = w_models
                 duration = time.time() - start_time
-                print(f"\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+                logger.info(f"\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
             elif w_internal:
                 if not test:
@@ -2222,6 +2255,279 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
 
     logger.info("Log ended for winComp function.")
     return dl_winStats
+
+def search_df(df, ptrn, out_cols, search_col='grp_detailed', searchType='end'): 
+    """
+    Search column for matching pattern and return values from other columns joined with '_'.
+
+    Input:
+        df: DataFrame to search in, with columns search_col and out_col.
+        value: Value to search for in the search_col.
+        out_cols: Column name(s) to return the values from. Can be a string or list of strings.
+            If list, values will be joined with '_'.
+            NOTE. Will attempt to begin with 'UID' value if present in df.
+        searchType: Type of search. Options:
+            'end' - search for values that end with the specified value,
+            'begin' - search for values that begin with the specified value.
+            'contains' - search for values that contain the specified value.
+        search_col: Column to search for the value in.
+
+
+    Output:
+        out: List of out_col values where search_col matches the specified criteria.
+    """
+    import pandas as pd
+
+    # Check that all required columns exist in the dataframe
+    if isinstance(out_cols, str): # Ensure out_col is a list
+        out_cols = [out_cols]
+    else:
+        out_cols = out_cols
+    
+    required_cols = [search_col] + out_cols
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols: 
+        print(f"[search_df] Error: Missing columns {missing_cols} in dataframe")
+        return []
+    if 'UID' in df.columns and 'UID' not in out_cols:
+        out_cols = ['UID'] + out_cols
+
+    # Filter for pattern in search_col based on searchType
+    if searchType.lower() == 'end':
+        filtered_df = df[df[search_col].str.endswith(ptrn)]
+    elif searchType.lower() == 'begin':
+        filtered_df = df[df[search_col].str.startswith(ptrn)]
+    elif searchType.lower() == 'contains':
+        filtered_df = df[df[search_col].str.contains(ptrn)]
+    else:
+        print(f"[search_df] Warning: searchType `{searchType}` not recognized. Use 'end', 'begin', or 'contains'.")
+        return []
+
+    # Get values from out_col(s)
+    if len(out_cols) == 1:
+        out = filtered_df[out_cols[0]]
+    else:
+        # Join multiple columns with '_'
+        out = filtered_df[out_cols].astype(str).apply('_'.join, axis=1)
+    
+    return out.unique().tolist()
+
+def toIC(df_r, df_l):
+    """
+    Take in two dataframes, one for patients with L sided pathology, one for R sided pathology.
+    Dataframes hold vertex numbers and end with _L or _R to indicate hemisphere.
+
+    Return dataframe with ipsi and contra columns.
+    out shape: (n_r + n_l) x n_vertices [assuming both inputs have identical column names]
+    """
+    import pandas as pd
+    
+    # if pathology on R then col names ending with _R --> ipsi, _L --> contra
+    df_r_ic = df_r.rename(columns=lambda x: x.replace('_R', '_ipsi').replace('_L', '_contra') if x.endswith('_R') or x.endswith('_L') else x)
+    # if pathology on L then col names ending with _L --> ipsi, _R --> contra
+    df_l_ic = df_l.rename(columns=lambda x: x.replace('_L', '_ipsi').replace('_R', '_contra') if x.endswith('_L') or x.endswith('_R') else x)
+    
+    df_ic = pd.concat([df_r_ic, df_l_ic], axis=0) # concatenate both dataframes
+
+    return df_ic
+
+def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name="05b_stats_winStudy_grp", test=False, verbose=False, dlPrint=False):
+    """
+    Group participants and ipsi/contra flip maps according to side of lesion.
+
+    Inputs:
+        dl: (list)              List of dictionary items, each with keys:
+        demographics: (dict)    Demographics file path and column names.
+        goi: (list)             Groups of interest. List of group names to extract from demographics file.
+        col_grp: (str)          Column name in demographics file with group labels.
+
+        save: (bool)            Whether to save the output dictionary list.
+        save_pth: (str)         Directory path to save the output dictionary list.
+        save_name: (str)        Base name for the saved output file.
+        test: (bool)            Whether to run in test mode (process a small subset of data.
+        verbose: (bool)         Whether to print detailed processing information.
+        dlPrint: (bool)         Whether to print the output dictionary list.
+    """
+    import os
+    import pandas as pd
+    import numpy as np
+    import pickle
+    import copy
+    import datetime
+    import logging
+
+    # Prepare log file path
+    if save_pth is None:
+        print("WARNING. Save path not specified. Defaulting to current working directory.")
+        save_pth = os.getcwd()  # Default to current working directory
+    if not os.path.exists(save_pth):
+        os.makedirs(save_pth)
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    print(f"[grp_flip] Saving log to: {log_file_path}")
+    
+    # Configure logging
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Create handlers
+    info_handler = logging.FileHandler(log_file_path)
+    info_handler.setLevel(logging.INFO)
+    warning_handler = logging.FileHandler(log_file_path)
+    warning_handler.setLevel(logging.WARNING)
+
+    # Create formatters
+    info_formatter = logging.Formatter("%(levelname)s - %(message)s")  # No timestamp for INFO
+    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
+
+    # Assign formatters to handlers
+    info_handler.setFormatter(info_formatter)
+    warning_handler.setFormatter(warning_formatter)
+
+    # Add handlers to logger
+    logger.addHandler(info_handler)
+    logger.addHandler(warning_handler)
+
+    # Log the start of the function
+    logger.info("Log started for winComp function.")
+
+    try:
+        logger.info(f"[grp_flip] Saving log to: {log_file_path}")
+        logger.info(f"Performing two steps:\n\ta. Selecting patients belonging to {goi}.\n\tb. Ipsi/contra flip.")
+        logger.info(f"Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"\tParameters:\tgoi: {goi}, col_grp: {col_grp}, test: {test}, verbose: {verbose}")
+
+        if test:
+            idx_len = 1 # number of indices
+            idx = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
+            dl_iterate = [dl[i] for i in idx]
+            dl_grp_ic = copy.deepcopy([dl[i] for i in idx])
+            logger.info(f"[TEST MODE] Running ipsi/contra flipping on {idx_len} randomly selected dict items: {idx}")
+        else:
+            dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
+            dl_grp_ic = copy.deepcopy(dl)  # Create a copy of the original list for output and to iterate over
+
+        for i, item in enumerate(dl_iterate):
+            if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
+            else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
+            
+            df_demo = item[f'df_demo'].copy() # contains all participants
+            IDs_ctrl = item.get('ctrl_IDs', None)
+            col_ID = get_IDCol(item['study'], demographics)
+            col_SES = demographics['SES']
+
+            if df_demo is None or df_demo.empty or df_demo.shape[0] == 0:
+                logger.warning(f"[grp_flip] WARNING. df_demo has no rows, is None or is empty [item index: {i}]. Skipping this item.")
+                continue
+            if col_grp not in df_demo.columns:
+                logger.warning(f"[grp_flip] WARNING. col_grp `{col_grp}` not found in df_demo columns {df_demo.columns} [item index: {i}]. Skipping this item.")
+                continue
+            if IDs_ctrl is None or len(IDs_ctrl) == 0:
+                logger.warning(f"[grp_flip] WARNING. No control IDs found for item index {i}. Skipping this item.")
+                continue
+                
+            for grp_val in goi: # for each group
+            
+                # extract IDs for grp_L and grp_R
+                demo_grp = df_demo[df_demo[col_grp].str.contains(grp_val)].copy() # extract only participants in group of interest
+                IDs_right = search_df(df=demo_grp, ptrn='R', searchType='end', search_col=col_grp, out_cols=[col_ID, col_SES])
+                IDs_left = search_df(df=demo_grp, ptrn='L', searchType='end', search_col=col_grp, out_cols=[col_ID, col_SES])
+                
+                # add group IDs to output dictionary item
+                dl_grp_ic[i][f'{grp_val}_IDs_R'] = IDs_right
+                dl_grp_ic[i][f'{grp_val}_IDs_L'] = IDs_left
+
+                logger.info(f"\tCtrl: {len(IDs_ctrl.tolist())}")
+                if verbose: 
+                    logger.info(f"\t\tIDs Ctrl: {IDs_ctrl}")
+                logger.info(f"\tGroup {grp_val}: {len(IDs_left)} L | {len(IDs_right)} R")
+                if verbose:
+                    logger.info(f"\t\tIDs L: {IDs_left}\n\t\tIDs R: {IDs_right}")
+                
+                # Create df_{stat} for each side
+                df_z = item.get('df_z', None)
+                df_w = item.get('df_w', None)
+
+                if df_z is not None: # split according to grps
+                    df_z_grp = df_z.copy() # search indexes of df_z for values in IDs_right. No need to split by SES, as df_z index is UID_ID_SES
+                    df_z_r = df_z_grp[df_z_grp.index.isin(IDs_right)]
+                    df_z_l = df_z_grp[df_z_grp.index.isin(IDs_left)]
+                    df_z_ic = toIC(df_r = df_z_r, df_l = df_z_l)
+                    
+                    if verbose:
+                        logger.info(f"\t\tShapes of df_z: L {df_z_l.shape} | R {df_z_r.shape} | IC {df_z_ic.shape}")
+
+                    dl_grp_ic[i][f'df_z_{grp_val}_R'] = df_z_r
+                    dl_grp_ic[i][f'df_z_{grp_val}_L'] = df_z_l
+                    dl_grp_ic[i][f'df_z_{grp_val}_ic'] = df_z_ic
+
+                    if dl_grp_ic[i].get('df_z_ctrl', None) is None: # if ctrl df not yet created, create it
+                        df_z_ctrl = df_z_grp[df_z_grp.index.isin(IDs_ctrl)]
+                        dl_grp_ic[i]['df_z_ctrl'] = df_z_ctrl
+                        if verbose:
+                            logger.info(f"\t\tControl group df_z shape: {df_z_ctrl.shape}")
+
+                    
+                    dl_grp_ic[i].pop('df_z', None) # remove original as it is saved elsewhere
+                else: # do nothing
+                    if verbose: 
+                        logger.warning(f"\t\tdf_z is None.")
+                    pass
+
+                if df_w is not None:
+                    df_w_grp = df_w.copy()
+                    
+                    df_w_r = df_w_grp[df_w_grp.index.isin(IDs_right)]
+                    df_w_l = df_w_grp[df_w_grp.index.isin(IDs_left)]
+                    df_w_ic = toIC(df_r = df_w_r, df_l = df_w_l)
+                    
+                    if verbose:
+                        logger.info(f"\t\tShapes of df_z: L {df_w_l.shape} | R {df_w_r.shape} | IC {df_w_ic.shape}")
+
+                    dl_grp_ic[i][f'df_w_{grp_val}_R'] = df_z_r
+                    dl_grp_ic[i][f'df_w_{grp_val}_L'] = df_z_l
+                    dl_grp_ic[i][f'df_w_{grp_val}_ic'] = df_z_ic
+                    
+                    if dl_grp_ic[i].get('df_w_ctrl', None) is None: # if ctrl df not yet created, create it
+                        df_w_ctrl = df_w_grp[df_w_grp.index.isin(IDs_ctrl)]
+                        dl_grp_ic[i]['df_w_ctrl'] = df_w_ctrl
+                        if verbose:
+                            logger.info(f"\t\tControl group df_z shape: {df_w_ctrl.shape}")
+                    
+                    dl_grp_ic[i].pop('df_w', None) # remove original as it is saved elsewhere
+                else:
+                    if verbose: 
+                        logger.warning(f"\t\tdf_w is None.")
+                    pass
+
+        # Save the updated map_dictlist to a pickle file
+        if save:
+            if test:
+                save_name = f"TEST_{save_name}"
+            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+            out_pth = f"{save_pth}/{save_name}_{date}.pkl"
+        
+            with open(out_pth, "wb") as f:
+                pickle.dump(dl_grp_ic, f)
+            logger.info(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+
+        logger.info(f"\nCompleted grp_flip. \nEnd time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        if dlPrint:
+            print('-'*100)
+            try:
+                if test:
+                    print_dict(dl_grp_ic, df_print=False, idx=idx)
+                else:
+                    print_dict(dl_grp_ic)
+            except:
+                print(dl_grp_ic)
+
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)
+
+    logger.info("Log ended for winComp function.")
+    return dl_grp_ic
+
 
 def print_dict(dict, df_print=False, idx=None):
     """
