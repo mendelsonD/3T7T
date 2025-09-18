@@ -561,14 +561,14 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 return df
             elif chk_pth(out_pth_L):
                 if verbose:
-                    print(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
+                    logger.info(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
                 
                 df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
                 df.loc[idx, col_base_L] = out_pth_L
                 skip_L = True
             elif chk_pth(out_pth_R):
                 if verbose:
-                    print(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
+                    logger.info(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
                 
                 df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
                 df.loc[idx, col_base_R] = out_pth_R
@@ -581,13 +581,13 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     pth_map_unsmth_L, pth_map_unsmth_R = "NA: NO RAWDATA", "NA: NO RAWDATA"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                    
                 else: # Must be micapipe problem if raw data exists
                     
                     dir_surf = " ( " + os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) + " ) " if pth_map_unsmth_L and pth_map_unsmth_R else "" # Find the common directory of both pth_map_unsmth_L and pth_map_unsmth_R
                     pth_map_unsmth_L, pth_map_unsmth_R = "NA: MISSING MP PROCESSING (unsmoothed map)", "NA: MISSING MP PROCESSING (unsmoothed map)"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
+                    c(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
                     
                 df.loc[idx, col_base_L] = pth_map_unsmth_L
                 df.loc[idx, col_base_R] = pth_map_unsmth_R
@@ -599,13 +599,13 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     pth_map_unsmth_R = "NA: NO RAWDATA"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
+                    logger.warning(f"\t\t[WARctx_mapsNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                 
                 else: # Must be micapipe problem if raw data exists
 
                     dir_surf = os.path.basename(pth_map_unsmth_L)
                     pth_map_unsmth_L = "NA: MISSING MP PROCESSING (unsmoothed map)"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses}  ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses}  ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
 
                 skip_L = True
                 df.loc[idx, col_base_L] = pth_map_unsmth_L
@@ -615,27 +615,27 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     pth_map_unsmth_R = "NA: NO RAWDATA"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                     
                 else: # Must be micapipe problem if raw data exists
                     dir_surf = os.path.basename(pth_map_unsmth_R)
                     pth_map_unsmth_L = "NA: MISSING MP PROCESSING (unsmoothed map)"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses}  ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses}  ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
 
                 skip_R = True
                 df.loc[idx, col_base_R] = pth_map_unsmth_R
             
             else: # unsmoothed maps exist for both
                 if verbose:
-                    print(f"\t\tUnsmoothed maps:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
+                    logger.info(f"\t\tUnsmoothed maps:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
             
             # add path to unsmoothed maps to df
             if not skip_L:
                 df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
-                print(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
+                logger.info(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
             if not skip_R:
                 df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
-                print(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
+                logger.info(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
 
             # B. Smooth map and save to project directory
             surf_L, surf_R = get_surf_pth( # Get surface .func files
@@ -648,24 +648,24 @@ def idToMap(df_demo, studies, dict_demo, specs,
             
             if not chk_pth(surf_L) and not chk_pth(surf_R) and not skip_L and not skip_R: # check that surfaces exist
                 dir_surf = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
-                print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface not found. Skipping. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
+                logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface not found. Skipping. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
                 surf_L, surf_R = "NA: MISSING MP PROCESSING (surface)", "MISSING MP PROCESSING (surface)"
                 return df
             elif not chk_pth(surf_L):
-                print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface missing for hemi-L. Check micapipe processing ( {os.path.dirname(surf_L)} ). Skipping smoothing for this hemi. Expected: {surf_L}")
+                logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface missing for hemi-L. Check micapipe processing ( {os.path.dirname(surf_L)} ). Skipping smoothing for this hemi. Expected: {surf_L}")
                 surf_L = "NA: MISSING MP PROCESSING (surface)"
                 
                 skip_L = True
                 df.loc[idx, col_base_L] = surf_L
             elif not chk_pth(surf_R):
-                print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface missing for hemi-R. Check micapipe processing ( {os.path.dirname(surf_R)} ). Skipping smoothing for this hemi. Expected: {surf_R}")
+                logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface missing for hemi-R. Check micapipe processing ( {os.path.dirname(surf_R)} ). Skipping smoothing for this hemi. Expected: {surf_R}")
                 surf_R = "NA: MISSING MP PROCESSING (surface)"
                 
                 skip_R = True
                 df.loc[idx, col_base_R] = surf_R
             else:
                 if verbose:
-                    print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
+                    logger.info(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
 
             # ii. Smooth
             if not skip_L:
@@ -678,12 +678,12 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 pth_map_smth_R = None
 
             if pth_map_smth_L is None or pth_map_smth_R is None and not skip_L and not skip_R:
-                print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Smoothing failed.\n")
+                logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Smoothing failed.\n")
                 pth_map_smth_L, pth_map_smth_R = f"NA: SMOOTHING FAILED. Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}", f"NA: SMOOTHING FAILED.  Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}"
             else:
                 # Add paths to DataFrame
                 if verbose:
-                    print(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
+                    logger.info(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
                     
                 df.loc[idx, col_base_L] = pth_map_smth_L
                 df.loc[idx, col_base_R] = pth_map_smth_R
@@ -696,7 +696,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
             """
             import os 
             
-            print(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
+            logger.info(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
             root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
             root_hu = f"{study['dir_root']}{study['dir_deriv']}{study['dir_hu']}"
             study_code = study['study']
@@ -729,7 +729,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
 
             if chk_pth(out_pth_L) and chk_pth(out_pth_R): # If smoothed map already exists, do not recompute. Simply add path to df.
                 if verbose:
-                    print(f"\t\tSmoothed maps exist, adding paths to df:\t{out_pth_L}\t{out_pth_R}\n")
+                    logger.info(f"\t\tSmoothed maps exist, adding paths to df:\t{out_pth_L}\t{out_pth_R}\n")
                 
                 if ft == "thickness":
                     pth_map_unsmth_L, pth_map_unsmth_R = get_surf_pth(root=root_hu, sub=sub, ses=ses, lbl="thickness", surf=surf, space="T1w")
@@ -748,13 +748,13 @@ def idToMap(df_demo, studies, dict_demo, specs,
             
             elif chk_pth(out_pth_L):
                 if verbose:
-                    print(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
+                    logger.info(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
                 df.loc[idx, col_base_L] = out_pth_L
                 skip_L = True
 
             elif chk_pth(out_pth_R):
                 if verbose:
-                    print(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
+                    logger.info(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
                 df.loc[idx, col_base_R] = out_pth_R
                 skip_R = True
 
@@ -780,17 +780,17 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 if not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # if missing raw data
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     surf_L, surf_R = "NA: NO RAWDATA", "NA: NO RAWDATA"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe and hippunfold once resolved.\n")
+                    logger.warning(f"\t\t[hipp_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe and hippunfold once resolved.\n")
 
                 elif not chk_pth(pth = T1w_pth): # Check T1w from Micapipe outputs
                     dir_t1w = os.path.dirname(T1w_pth)
                     surf_L, surf_R = "NA: MISSING MP PROCESSING (nativepro T1w)", "NA: MISSING MP PROCESSING (nativepro T1w)"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING Nativepro T1w in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_t1w} ).\n")                    
+                    logger.warning(f"\t\t[hipp_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING Nativepro T1w in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_t1w} ).\n")                    
                 
                 else: # hippunfold processing error
                     dir_surf = " ( " + os.path.commonpath([surf_L, surf_R]) + " ) " if surf_L and surf_R else "" # Find the common directory of both surf_L and surf_R
                     surf_L, surf_R = "NA: MISSING HU PROCESSING (surf)", "NA: MISSING MP PROCESSING (surf)"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface MISSING due to HIPPUNFOLD OUTPUTS. Check hippunfold outputs {dir_surf}.\n") # could also check that the dir exists and further specify
+                    logger.warning(f"\t\t[hipp_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface MISSING due to HIPPUNFOLD OUTPUTS. Check hippunfold outputs {dir_surf}.\n") # could also check that the dir exists and further specify
                 
                 
                 df.loc[idx, col_base_L] = surf_L
@@ -801,7 +801,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
             
                 dir_surf = os.path.dirname(surf_L)
                 surf_L = "NA: MISSING HU PROCESSING (surf)"
-                print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): L-hemi hippocampal surface missing due to HIPPUNFOLD OUTPUTS. Check hippunfold outputs ( {dir_surf} ).\n") # could also check that the dir exists and further specify
+                logger.warning(f"\t\t[hipp_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): L-hemi hippocampal surface missing due to HIPPUNFOLD OUTPUTS. Check hippunfold outputs ( {dir_surf} ).\n") # could also check that the dir exists and further specify
             
                 df.loc[idx, col_base_L] = surf_L
 
@@ -815,7 +815,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
 
                 dir_surf = os.path.dirname(surf_R)
                 surf_R = "NA: MISSING HU PROCESSING (surf)"
-                print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): R-hemi hippocampal surface missing due to HIPPUNFOLD OUTPUTS. Check hippunfold outputs ( {dir_surf} ).\n") # could also check that the dir exists and further specify
+                logger.warning(f"\t\t[hipp_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): R-hemi hippocampal surface missing due to HIPPUNFOLD OUTPUTS. Check hippunfold outputs ( {dir_surf} ).\n") # could also check that the dir exists and further specify
             
                 df.loc[idx, col_base_L] = surf_R
 
@@ -823,11 +823,11 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     return df
                 else:
                     skip_R = True # cannot continue to smoothing for this hemi
-                    if verbose: print(f"\t\tSurface (L only):\t{surf_L}")
+                    if verbose: logger.info(f"\t\tSurface (L only):\t{surf_L}")
 
             else:
                 if verbose:
-                    print(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
+                    logger.info(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
             
 
             # A. Generate unsmoothed maps
@@ -859,7 +859,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                             pth_map_unsmth_R = None # must be declared
                     
                     if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R): # check that unsmoothed paths exist. If not, it is a local processing error.
-                        print(f"\t\t[ERROR] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}) Unsmoothed map could not compute.\n")
+                        logger.warning(f"\t\t[hipp_maps] ERROR. {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}) Unsmoothed map could not compute.\n")
                         pth_map_unsmth_L, pth_map_unsmth_R = "NA: SCRIPT ERROR (unsmoothed map compute)", "NA: SCRIPT ERROR (unsmoothed map compute)"
                         df.loc[idx, col_base_L] = pth_map_unsmth_L
                         df.loc[idx, col_base_R] = pth_map_unsmth_R
@@ -867,7 +867,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     
                     elif not chk_pth(pth_map_unsmth_L) and not skip_L:
                     
-                        print(f"\t\t[ERROR] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}). Could not compute unsmoothed map for L hemi.")
+                        logger.warning(f"\t\t[hipp_maps] ERROR. {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}). Could not compute unsmoothed map for L hemi.")
                         pth_map_unsmth_L = "NA: PROCESSING ERROR (unsmoothed map compute)"
                         df.loc[idx, col_base_L] = pth_map_unsmth_L
                         
@@ -877,7 +877,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                             skip_L = True
                     
                     elif not chk_pth(pth_map_unsmth_R) and not skip_R:
-                        print(f"\t\t[ERROR] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}). Could not compute unsmoothed map for R hemi.")
+                        logger.warning(f"\t\t[hipp_maps] ERROR. {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}). Could not compute unsmoothed map for R hemi.")
                         pth_map_unsmth_R = "NA: PROCESSING ERROR (unsmoothed map compute)"
                         df.loc[idx, col_base_R] = pth_map_unsmth_R
                         
@@ -887,7 +887,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                             skip_R = True
                     else:
                         if verbose:
-                            print(f"\t\tUnsmoothed map paths:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
+                            logger.info(f"\t\tUnsmoothed map paths:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
                     
                 elif not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # Unsmoothed map doesn't exist. Check raw data.
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
@@ -911,14 +911,14 @@ def idToMap(df_demo, studies, dict_demo, specs,
             col_unsmth_L = base_name_L.replace(f"_smth-{smth}mm", "_unsmth")
             col_unsmth_R = base_name_R.replace(f"_smth-{smth}mm", "_unsmth")
 
-            print(f"\t\tUnsmoothed map cols:\t{col_unsmth_L}\t{col_unsmth_R}") 
+            logger.info(f"\t\tUnsmoothed map cols:\t{col_unsmth_L}\t{col_unsmth_R}") 
             
             if not skip_L:
                 df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
-                print(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
+                logger.info(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
             if not skip_R:
                 df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
-                print(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
+                logger.info(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
 
             # B. Smooth map
             if not skip_L:
@@ -927,7 +927,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     pth_map_smth_L = f"NA: SCRIPT ERROR. Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_L}, kernel: {smth}"
                 df.loc[idx, col_base_L] = pth_map_smth_L
                 if verbose:
-                    print(f"\t\tSmoothed map L: {pth_map_smth_L}")
+                    logger.info(f"\t\tSmoothed map L: {pth_map_smth_L}")
             
             if not skip_R:
                 pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_L, out_pth_R, kernel=smth, verbose=False)
@@ -936,7 +936,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 
                 df.loc[idx, col_base_R] = pth_map_smth_R
                 if verbose:
-                    print(f"\t\tSmoothed map R: {pth_map_smth_R}\n")
+                    logger.info(f"\t\tSmoothed map R: {pth_map_smth_R}\n")
             
             return df
 
@@ -947,7 +947,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
             logger.info(f"[TEST MODE] Running on random {test_frac*100}% subset of demographics ({len(df_demo)} rows).")
         
         if verbose:
-            print("\t Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...")
+            logger.info("\t Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...")
 
         if dict_demo['nStudies']: # Check if 'study' column exists, else skip or set default
             assert 'study' in df_demo.columns, "[idToMap] 'study' column not found in df_demo, but 'nStudies' is True in dict_demo."
@@ -961,14 +961,14 @@ def idToMap(df_demo, studies, dict_demo, specs,
             if dict_demo['nStudies']: # determine study dictionary item
                 study_item = next((s for s in studies if s['study'] == study_code), None)
                 if study_item is None:
-                    print(f"[idToMap] WARNING. Unknown study code `{study_code}`. Skipping row.")
+                    logger.warning(f"[idToMap] WARNING. Unknown study code `{study_code}`. Skipping row.")
                     continue
                 else:
                     if verbose:
-                        print(f"[idToMap] {idx} of {df_demo.shape[0]-1}...")
+                        logger.info(f"[idToMap] {idx} of {df_demo.shape[0]-1}...")
                     ID_col = dict_demo['ID_' + study_item['study']]
             else: # if no matches, then take first study
-                print(f"[idToMap] No 'study' column provided. Defaulting to first study in studies list: {studies[0]['study']}.")
+                logger.warning(f"[idToMap] No 'study' column provided. Defaulting to first study in studies list: {studies[0]['study']}.")
                 study_item = studies[0]
                 ID_col = dict_demo['ID']
             
@@ -977,9 +977,9 @@ def idToMap(df_demo, studies, dict_demo, specs,
 
             if idx % 10 == 0 and idx > 0: # progress statement every 10 rows
                 percent_complete = 100 * idx / len(df_demo)
-                print(f"Progress: {percent_complete:.1f}% of rows completed ({idx}/{len(df_demo)})")
+                logger.info(f"Progress: {percent_complete:.1f}% of rows completed ({idx}/{len(df_demo)})")
 
-            print(f"\n{study_code} sub-{sub} ses-{ses}")
+            logger.info(f"\n{study_code} sub-{sub} ses-{ses}")
 
             out_dir = f"{specs['prjDir_root']}{specs['prjDir_maps']}/sub-{sub}_ses-{ses}" # for saving smoothed maps
             create_dir(out_dir)
@@ -995,7 +995,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
 
                                 
             if specs['hipp']:
-                print(f"\n\tHIPPOCAMPAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
+                logger.info(f"\n\tHIPPOCAMPAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
                 
                 for ft in specs['ft_hipp']:
                     for surf in specs['surf_hipp']:
@@ -2415,7 +2415,7 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
     warning_handler.setLevel(logging.WARNING)
 
     # Create formatters
-    info_formatter = logging.Formatter("%(message)s")  # No timestamp, level name for INFO
+    info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
     warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
 
     # Assign formatters to handlers
@@ -2568,6 +2568,218 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
     logger.info(f"End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return dl_grp_ic
+
+def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats_winD", verbose=False, test=False, test_len=1, dlPrint=False ):
+    """
+    [winD: within study D-scoring]
+    Calculate d-scores for each group of interest compared to controls, for the same studies.
+    
+    Inputs:
+        dl: (list)              Dictionary items keys holding vertex-wise within study statistics for groups of interest
+                                    Assumes key for dfs holding statistics to have structure: df_{stat} 
+        stats: (list)           Statistics to compute d-scores. NOTE. Currently recognizes the stats: ['z', 'w']
+        ipsiTo: (str)           Hemisphere to which ipsi/contra vertices should be mapped to for controls. NOTE. Only used if vertex columns have ipsi/contra data present. Default = 'L'
+
+        save: (bool)            Whether to save the output dictionary list.
+        save_pth: (str)         Directory path to save the output dictionary list.
+        save_name: (str)        Base name for the saved output file.
+        test: (bool)            Whether to run in test mode (randomly select a subset of dict items to run d-scoring on)
+        test_len: (int)         Number of random dict items to run d-scoring on if test=True
+        verbose: (bool)         Whether to print detailed processing information.
+        dlPrint: (bool)         Whether to print the output dictionary list.
+    
+    """
+    
+    import os
+    import pandas as pd
+    import numpy as np
+    import pickle
+    import copy
+    import datetime
+    import logging
+
+    # Prepare log file path
+    if save_pth is None:
+        print("WARNING. Save path not specified. Defaulting to current working directory.")
+        save_pth = os.getcwd()  # Default to current working directory
+    if not os.path.exists(save_pth):
+        os.makedirs(save_pth)
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    print(f"[winD] Saving log to: {log_file_path}")
+    
+    # Configure logging
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # Create handlers
+    info_handler = logging.FileHandler(log_file_path)
+    info_handler.setLevel(logging.INFO)
+    warning_handler = logging.FileHandler(log_file_path)
+    warning_handler.setLevel(logging.WARNING)
+
+    # Create formatters
+    info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
+    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
+
+    # Assign formatters to handlers
+    info_handler.setFormatter(info_formatter)
+    warning_handler.setFormatter(warning_formatter)
+
+    # Add handlers to logger
+    logger.addHandler(info_handler)
+    logger.addHandler(warning_handler)
+
+    # Log the start of the function
+    logger.info("Log started for winComp function.")
+
+    try:
+        logger.info(f"[winD] Saving log to: {log_file_path}")
+        logger.info(f"Computing within study D-scores between groups and controls.")
+        logger.info(f"Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Parameters:\n\tstats: {stats}\n\tipsiTo: {ipsiTo}\n\ttest: {test}")
+
+        if test:
+            idx = np.random.choice(len(dl), size=test_len, replace=False).tolist()  # randomly choose index
+            dl_iterate = [dl[i] for i in idx]
+            dl = copy.deepcopy(dl)
+            logger.info(f"[TEST MODE] Running d-scoring on {test_len} randomly selected dict items: {idx}")
+        else:
+            dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
+            dl = copy.deepcopy(dl)  
+
+        start_time = datetime.datetime.now()
+        print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Attempting to calculate D-scores for {len(dl_iterate)} dictionary items for the following stats: {stats}")
+
+        for i, item in enumerate(dl_iterate):
+            if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
+            else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
+
+            # list to save before concatenating all dfs into single df
+            d_dfs = [] 
+            d_dfs_ic = []
+
+            # compare every other df to the control df, put results into a single df_{stat}_d
+            for stat in stats: # iterate over all statistics of interest [df_z, df_w]
+                logging.info(f"\tCalculating d-scores for {stat}...")
+                
+                key = f'df_{stat}'
+                
+                df_stat_ctrl = item.get(f'{key}_ctrl', None)
+                if df_stat_ctrl is None:
+                    logging.warning(f"\tWARNING. No control group df for {stat}. Skipping d-score.")
+                    continue
+                
+                # identify all other dfs for this stat
+                key_grps = [k for k in item.keys() if k.startswith(f'{key}_') and k != f'{key}_ctrl' and k != f'{key}_models']
+                if len(key_grps) == 0:
+                    logging.warning(f"\tWARNING. No group dfs for {stat}. Skipping d-score.")
+                    continue
+                if verbose:
+                    logging.info(f"\t\tDataframes computing d-scores for {key_grps}-score")
+                
+                # create df_stat_ctrl_ic
+                if any('_ic' in k for k in key_grps): # if any of the keys are ipsi/contra flipped, create a df_stat_ctrl_ic
+                    df_stat_ctrl_ic = df_stat_ctrl.copy()
+                    if ipsiTo == 'L': # TODO use tsutil.ipsi_contra for this
+                        df_stat_ctrl_ic.columns = [col.replace('_R', '_contra') if '_R' in col else col.replace('_L', '_ipsi') for col in df_stat_ctrl.columns]
+                    else:
+                        df_stat_ctrl_ic.columns = [col.replace('_L', '_contra') if '_L' in col else col.replace('_R', '_ipsi') for col in df_stat_ctrl.columns]
+                
+                if verbose:
+                    logging.info(f"\t\t{stat}-score control group shape {df_stat_ctrl.shape}.")
+                
+                # initialize output dfs
+                d_df = pd.DataFrame(columns=df_stat_ctrl.columns)
+                d_df_ic = pd.DataFrame(columns=df_stat_ctrl_ic.columns)
+
+                # compute d scores
+                for k in key_grps:
+                    df_stat = item.get(k, None)
+                    if verbose:
+                        logging.info(f"\t\t{k} (shape {df_stat.shape})")
+                    else:
+                        logging.info(f"\t\t{k}")
+                    
+                    if df_stat is None or df_stat.shape[0] == 0:
+                        logging.warning(f"\t\tNo data in {k}. Skipping.")
+                        continue
+                    
+                    grp_name = k.replace(f'df_{stat}', '')
+
+                    if 'ic' in k.lower(): # use appropriate control df with ipsi/contra labelled cols
+                        grp_name = f"{grp_name}_ipsiTo-{ipsiTo}"
+                        out_ic = get_d(ctrl = df_stat_ctrl_ic, test = df_stat, varName = stat, test_name = grp_name) # use control df with ic flipped vertices
+                        d_df_ic = pd.concat([d_df_ic, out_ic], axis=0) # append out_ic to d_df_ic
+                        d_df_ic.drop_duplicates(inplace=True)
+                    else:
+                        out = get_d(ctrl = df_stat_ctrl, test = df_stat, varName = stat, test_name = grp_name)
+                        d_df = pd.concat([d_df, out], axis=0) # append out to d_df
+                        d_df.drop_duplicates(inplace=True)
+                    
+                    if verbose:
+                        logger.info(f"\t\tD-scores computed.")
+
+                d_dfs.append(d_df) # add to list of dfs
+                d_dfs_ic.append(d_df_ic)
+            
+            # concatenate all d_dfs into single df
+            if len(d_dfs) > 1:
+                d_df = pd.concat(d_dfs, axis=0)
+            elif len(d_dfs_ic) == 1:
+                d_df = d_df[0]
+            else:
+                d_df = None
+
+            # concatenate all d_dfs_ic into single df
+            if len(d_dfs_ic) > 1:
+                d_df_ic = pd.concat(d_dfs_ic, axis=0)
+            elif len(d_dfs_ic) == 1:
+                d_df_ic = d_dfs_ic[0]
+            else:
+                d_df_ic = None
+
+            # add out and out_ic to dictionary item
+            if test:
+                dl[idx[i]][f'df_d'] = d_df
+                dl[idx[i]][f'df_d_ic'] = d_df_ic
+            else:
+                dl[i][f'df_d'] = d_df
+                dl[i][f'df_d_ic'] = d_df_ic
+
+        # Save the updated map_dictlist to a pickle file
+        if save:
+            if test:
+                save_name = f"TEST_{save_name}"
+            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+            out_pth = f"{save_pth}/{save_name}_{date}.pkl"
+        
+            with open(out_pth, "wb") as f:
+                pickle.dump(dl, f)
+            logger.info(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+            print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+
+        logger.info(f"Completed winD.")
+        end_time = datetime.datetime.now()
+        duration = end_time - start_time    
+        logger.info(f"End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss)")
+        print(f"\nCompleted. End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss)")
+
+        if dlPrint:
+            print('-'*100)
+            try:
+                if test:
+                    print_dict(dl, df_print=False, idx=idx)
+                else:
+                    print_dict(dl)
+            except:
+                print(dl)
+        
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)
+
+    return dl
 
 
 def print_dict(dict, df_print=False, idx=None, return_txt=False):
@@ -3036,9 +3248,9 @@ def printItemMetadata(item, return_txt = False, idx=None, clean = False):
     label = item.get('label', None)
     smth = item.get('smth', None)
     if idx is not None:
-        txt = f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
+        txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
     else:
-        txt = f"\t[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm"
+        txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm"
     
     if clean:
         txt = txt.replace('\t', '')
