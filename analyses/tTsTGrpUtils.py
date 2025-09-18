@@ -1,5 +1,5 @@
 ################### OVERALL UTILS ####################################
-def loadPickle(pth, verbose=True):
+def loadPickle(pth, verbose=True, dlPrint=False):
     """
     Load a pickle file from the specified path.
     
@@ -17,6 +17,10 @@ def loadPickle(pth, verbose=True):
             obj = pickle.load(f)
     if verbose:
         print(f"[loadPickle] Loaded smoothed maps from {pth}")
+    if dlPrint:
+        print('-'*100)
+        print_dict(obj)
+        print('='*100)
     return obj
 
 
@@ -422,7 +426,9 @@ def checkRawPth(root, sub, ses, ft, return_names=False):
         if return_names: return None
         else: return False
 
-def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
+def idToMap(df_demo, studies, dict_demo, specs, 
+            save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
+            verbose=False):
     """
     From demographic info, add path to unsmoothed, smoothed maps. If smoothed map does not exist, compute. 
     Do this for all parameter combinations (surface, label, feature, smoothing kernel) provided in a dictionary item.
@@ -456,29 +462,51 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
     - Returns both the updated DataFrame and a string log of all output.
     """
     import os
-    import re
-    import time
-    import sys
-    import io
+    import datetime
+    import logging
 
-    class TeeLogger(io.StringIO):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._stdout = sys.stdout
+    # Prepare log file path
+    if save_pth is None:
+        print("WARNING. Save path not specified. Defaulting to current working directory.")
+        save_pth = os.getcwd()  # Default to current working directory
+    if not os.path.exists(save_pth):
+        os.makedirs(save_pth)
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    print(f"[idToMap] Saving log to: {log_file_path}")
+    
+    # Configure logging
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
-        def write(self, s):
-            self._stdout.write(s)
-            super().write(s)
+    # Create handlers
+    info_handler = logging.FileHandler(log_file_path)
+    info_handler.setLevel(logging.INFO)
+    warning_handler = logging.FileHandler(log_file_path)
+    warning_handler.setLevel(logging.WARNING)
 
-        def flush(self):
-            self._stdout.flush()
-            super().flush()
+    # Create formatters
+    info_formatter = logging.Formatter("%(message)s")  # No timestamp, level name for INFO
+    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
 
-    log_stream = TeeLogger()
-    old_stdout = sys.stdout
-    sys.stdout = log_stream
+    # Assign formatters to handlers
+    info_handler.setFormatter(info_formatter)
+    warning_handler.setFormatter(warning_formatter)
+
+    # Add handlers to logger
+    logger.addHandler(info_handler)
+    logger.addHandler(warning_handler)
+
+    # Log the start of the function
+    logger.info("Log started for winComp function.")
 
     try:
+        logger.info(f"[idToMap] Saving log to: {log_file_path}")
+        start_time = datetime.datetime.now()
+        print(f"\tStart time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}.")
+        logger.info(f"Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.\nStart time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"\tParameters:\tspecs:{print_dict(dict = specs, return_txt=True)}")
+        logger.info(f"\tNumber of rows to process: {df_demo.shape[0]}")
+        
         def ctx_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
             """
             Get or compute cortical smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
@@ -912,9 +940,12 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
             
             return df
 
+        if test:
+            save_name = f"TEST_{save_name}"
+            df_demo = df_demo.sample(frac=test_frac).reset_index(drop=True)
+            df_demo = df_demo.dropna(axis=1, how='all') # drop empty columns
+            logger.info(f"[TEST MODE] Running on random {test_frac*100}% subset of demographics ({len(df_demo)} rows).")
         
-        start_time = time.time()
-        print(f"[idToMap] idToMap function start time: {time.strftime('%d-%b-%Y %H:%M:%S', time.localtime(start_time))}.")
         if verbose:
             print("\t Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...")
 
@@ -971,19 +1002,27 @@ def idToMap(df_demo, studies, dict_demo, specs, verbose=False):
                         for smth in specs['smth_hipp']:
                             for lbl in specs['lbl_hipp']:
                                 df_demo = hipp_maps(out_dir=out_dir, study=study_item, df=df_demo, idx=idx, sub=sub, ses=ses, surf=surf, ft=ft, smth=smth, lbl=lbl, verbose=verbose)
-                                
-          
+                            
             print('-'*100)
         
-        end_time = time.time()
-        elapsed = end_time - start_time
-        mins, secs = divmod(elapsed, 60)
-        print(f"\n[idToMap] idToMap completed at {time.strftime('%d-%b-%Y %H:%M:%S', time.localtime(end_time))} (run duration: {int(mins)}m:{int(secs):02d}s).")
-        log_contents = log_stream.getvalue()
-        return df_demo, log_contents
-
-    finally:
-        sys.stdout = old_stdout
+        if save:
+            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+            if test:
+                save_name = f"TEST_{save_name}"
+            
+            out_pth = f"{save_pth}/{save_name}_{date}.csv"
+            df_demo.to_csv(out_pth, index=False)
+            print(f"\n[idToMap] DataFrame with map paths saved to {out_pth}\n")
+            logger.info(f"[idToMap] DataFrame with map paths saved to {out_pth}")
+    except Exception as e:
+        logger.error(f"An error occurred: {e}", exc_info=True)
+    
+    end_time = datetime.datetime.now()
+    elapsed = end_time - start_time
+    mins, secs = divmod(elapsed, 60)
+    logger.info(f"\n[idToMap] idToMap completed at {end_time.strftime('%d-%b-%Y %H:%M:%S')} (run duration: {int(mins)}m:{int(secs):02d}s).")
+    print(f"\n[idToMap] idToMap completed at {end_time.strftime('%d-%b-%Y %H:%M:%S')} (run duration: {int(mins)}m:{int(secs):02d}s).")
+    return df_demo, out_pth, log_file_path
 
 
 def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
@@ -2044,7 +2083,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
     warning_handler.setLevel(logging.WARNING)
 
     # Create formatters
-    info_formatter = logging.Formatter("%(levelname)s - %(message)s")  # No timestamp for INFO
+    info_formatter = logging.Formatter("%(message)s")  # No timestamp, level name for INFO
     warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
 
     # Assign formatters to handlers
@@ -2237,8 +2276,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             with open(out_pth, "wb") as f:
                 pickle.dump(dl_winStats, f)
             logger.info(f"Saved map_dictlist with z-scores to {out_pth}")
-        
-        print(f"\nCompleted within study comparisons.\nEnd time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Saved map_dictlist with z-scores to {out_pth}")
         
         if dlPrint: # print summary of output dict list
             try:
@@ -2253,7 +2291,8 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
 
-    logger.info("Log ended for winComp function.")
+    logger.info(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return dl_winStats
 
 def search_df(df, ptrn, out_cols, search_col='grp_detailed', searchType='end'): 
@@ -2376,7 +2415,7 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
     warning_handler.setLevel(logging.WARNING)
 
     # Create formatters
-    info_formatter = logging.Formatter("%(levelname)s - %(message)s")  # No timestamp for INFO
+    info_formatter = logging.Formatter("%(message)s")  # No timestamp, level name for INFO
     warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
 
     # Assign formatters to handlers
@@ -2509,8 +2548,9 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
             with open(out_pth, "wb") as f:
                 pickle.dump(dl_grp_ic, f)
             logger.info(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+            print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
 
-        logger.info(f"\nCompleted grp_flip. \nEnd time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"\nCompleted grp_flip.")
 
         if dlPrint:
             print('-'*100)
@@ -2525,11 +2565,12 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
 
-    logger.info("Log ended for winComp function.")
+    logger.info(f"End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return dl_grp_ic
 
 
-def print_dict(dict, df_print=False, idx=None):
+def print_dict(dict, df_print=False, idx=None, return_txt=False):
     """
     Print the contents of a dictionary with DataFrames in a readable format.
     Input:
@@ -2542,7 +2583,13 @@ def print_dict(dict, df_print=False, idx=None):
         Prints the keys and values of each dictionary item.
     """
     import pandas as pd
-    
+    if return_txt:
+        import io
+        import sys
+        # Capture the output of the print statements
+        old_stdout = sys.stdout
+        sys.stdout = mystdout = io.StringIO()
+
     def mainPrint(k, v, df_print):
         import pandas as pd
         if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
@@ -2568,7 +2615,10 @@ def print_dict(dict, df_print=False, idx=None):
             print(f"\tKeys: {list(d.keys())}")
             for k, v in d.items():
                 mainPrint(k,v, df_print)
-        return
+        if not return_txt:
+            # Restore original stdout
+            sys.stdout = old_stdout
+            return mystdout.getvalue()
     else:
         print(f"\n Dict list length ({len(dict)} items)")
         for i, item in enumerate(dict):
@@ -2578,6 +2628,11 @@ def print_dict(dict, df_print=False, idx=None):
 
             for k, v in d.items():
                 mainPrint(k,v, df_print)
+    
+    if return_txt:
+        # Restore original stdout
+        sys.stdout = old_stdout
+        return mystdout.getvalue()
 
 def print_grpDF(dict, grp, study, hipp=False, df="pth"):
     # hipp option: only print items where 'hippocampal'==True
