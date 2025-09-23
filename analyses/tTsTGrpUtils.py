@@ -1025,7 +1025,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
     return df_demo, out_pth, log_file_path
 
 
-def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
+def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
     """
     Create dict item for each, study, feature, label, smoothing pair (including hippocampal)
     Note: multiple groups should be kept in same DF. Seperate groups later on
@@ -1033,7 +1033,10 @@ def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
     Input:
         df: DataFrame with columns for ID, SES, Date, and paths to left and right hemisphere maps.
             NOTE. Asusme path columns end with '_L' and '_R' for left and right hemisphere respectively.
-        ID_col: Column name for participant ID in the DataFrame. Default is 'MICS_ID'.
+        mapCols: List of column names in df that contain paths to the maps.
+        col_grp: Column name for group in the DataFrame. Default is 'grp'.
+        col_ID: Column name for participant ID in the DataFrame. Default is 'MICS_ID'.
+        col_study: If not none, uses values in this column in the index
     
     Output:
         df_clean: Cleaned DataFrame with only valid ID-SES combinations, and paths to left and right hemisphere maps.
@@ -1044,7 +1047,6 @@ def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
     
     assert col_ID in df.columns, f"[get_maps] df must contain 'ID' column. Cols in df: {df.columns}"
     assert 'SES' in df.columns, f"[get_maps] df must contain 'SES' column. Cols in df: {df.columns}"
-    assert col_grp in df.columns, f"[get_maps] df must contain '{col_grp}' column. Cols in df: {df.columns}"
     
     # Assert that all columns in mapCols exist in df
     missing_cols = [col for col in mapCols if col not in df.columns]
@@ -1062,13 +1064,20 @@ def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
 
     # read in the maps and append to df_maps
     if 'UID' in df.columns:
-        df_maps = df[['UID', col_ID, 'SES', col_L, col_R]]
+        if col_study is not None:
+            df_maps = df[['UID', col_study, col_ID, 'SES', col_L, col_R]]
+        else:
+            df_maps = df[['UID', col_ID, 'SES', col_L, col_R]]
     else:
-        df_maps = df[[col_ID, 'SES', col_L, col_R]]
+        if col_study is not None:
+            df_maps = df[[col_study, col_ID, 'SES', col_L, col_R]]
+        else:
+            df_maps = df[[col_ID, 'SES', col_L, col_R]]
     
     if df_maps[col_L].shape[0] == 0 or df_maps[col_R].shape[0] == 0:
         print(f"[get_maps] WARNING. No valid entries found in df for columns {col_L} and/or {col_R}. Returning None.")
         return None
+    
     # Stack all hemisphere maps into a DataFrame (vertices as columns)
     map_L_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_L]])
     map_R_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_R]])
@@ -1087,7 +1096,7 @@ def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
     df_maps = pd.concat([df_maps, map_L_df, map_R_df], axis=1)
     #print(f"\tFinal shape:{df_maps.shape}")
 
-    df_maps = setIndex(df=df_maps, col_ID=col_ID, sort=True) # index: <UID_>ID_SES
+    df_maps = setIndex(df=df_maps, col_ID=col_ID, sort=True) # index: <UID_><study_>ID_SES
     
     # Keep only the vertex columns (map data columns)
     vertex_cols = [col for col in df_maps.columns if col.endswith('_L') or col.endswith('_R')]
@@ -1098,13 +1107,14 @@ def get_maps(df, mapCols, col_grp="grp", col_ID='MICs_ID', verbose=False):
     
     return df_maps_clean
 
-def setIndex(df, col_ID='MICs_ID', sort = True):
+def setIndex(df, col_ID='MICs_ID', col_study = None, sort = True):
     """
     Set index of DataFrame to a combination of ID and SES.
 
     Input:
         df: DataFrame with columns for ID and SES.
         col_ID: Column name for participant ID in the DataFrame. Default is 'MICS_ID'.
+        col_study: If not none, uses values in this column in the index
 
     Output:
         DataFrame with index set to 'UID_ID_SES' (if UID in df) else 'ID_SES'.
@@ -1113,13 +1123,23 @@ def setIndex(df, col_ID='MICs_ID', sort = True):
     
     assert col_ID in df.columns, f"[setIndex] df must contain 'ID' column. Cols in df: {df.columns}"
     assert 'SES' in df.columns, f"[setIndex] df must contain 'SES' column. Cols in df: {df.columns}"
+    if col_study is not None:
+        assert col_study in df.columns, f"[setIndex] df must contain 'col_study' column. Cols in df: {df.columns}"
     
     if 'UID' in df.columns:
-        df['UID_ID_SES'] = df.apply(lambda row: f"{row['UID']}_{row[col_ID]}_{row['SES']}", axis=1)
-        df = df.set_index('UID_ID_SES')
+        if col_study is not None:
+            df['UID_STUDY_ID_SES'] = df.apply(lambda row: f"{row['UID']}_{row[col_study]}_{row[col_ID]}_{row['SES']}", axis=1)
+            df = df.set_index('UID_STUDY_ID_SES')
+        else:
+            df['UID_ID_SES'] = df.apply(lambda row: f"{row['UID']}_{row[col_ID]}_{row['SES']}", axis=1)
+            df = df.set_index('UID_ID_SES')
     else:
-        df['ID_SES'] = df.apply(lambda row: f"{row[col_ID]}_{row['SES']}", axis=1)
-        df = df.set_index('ID_SES')
+        if col_study is not None:
+            df['STUDY_ID_SES'] = df.apply(lambda row: f"{row[col_study]}_{row[col_ID]}_{row['SES']}", axis=1)
+            df = df.set_index('STUDY_ID_SES')
+        else:
+            df['ID_SES'] = df.apply(lambda row: f"{row[col_ID]}_{row['SES']}", axis=1)
+            df = df.set_index('ID_SES')
     
     if sort:
         df = df.sort_index()
@@ -1598,12 +1618,15 @@ def get_mapCols(allCols, split=True, verbose=False):
     """
     cols_L = [col for col in allCols if 'hemi-L' in col]
     cols_R = [col for col in allCols if 'hemi-R' in col]
-    if verbose:
-        print(f"{len(cols_L) + len(cols_R)} map columns found.")
+    
 
     if split:
+        if verbose:
+            print(f"{len(cols_L) + len(cols_R)} map columns found: {len(cols_L)} L | {len(cols_R)} R.")
         return cols_L, cols_R
     else:
+        if verbose:
+            print(f"{len(cols_L) + len(cols_R)} map columns found.")
         return cols_L + cols_R
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
@@ -1868,13 +1891,13 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, 
         return out_dl
         
     for col_L, col_R in zip(cols_L, cols_R):
-        
+         
         assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
         
         # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
         hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
         commonName = col_L[hemi_L_idx:]
-        
+
         if verbose:
             print(f"\n\tProcessing {commonName}... (cols: {col_L} {col_R})")
         
@@ -1900,7 +1923,7 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, 
         if n_after == 0:
             print(f"\t\t[extractMap] WARNING. No participants remain after filtering for complete study data. Skipping this map.")
             continue
-        # TODO: extract only the columns relevant for statistics: IDs, age, sex, grp
+        
         for study in studies:
             study_name = study['name']
             study_code = study['study']
@@ -1940,6 +1963,204 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, 
     
     if verbose:
         print(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
+    
+    return out_dl
+
+def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study', coi = None, region=None, 
+                   save = True, save_pth = None, save_name = "sesMaps_dl", 
+                   test=False, verbose=False, dlPrint = False):
+    """
+    Extract map paths from a dataframe based on specified columns and optional subset string in col name.
+    Rather than iterating over study, iterate over session number.
+
+    Input:
+        df_mapPaths: pd.DataFrame 
+            map paths kept in column passed in cols.
+            NOTE. Should have following columns:
+                col_sesNum: session number (integer) by scan date
+                ID_study: appropriate ID for the row considering study
+                map paths columns: n cols defined by cols_L, cols_R
+        cols_L, cols_R: list of str
+            column names to extract from the dataframe.
+        demographics: dict  regarding demographics file.
+            Required keys:
+                'pth'
+                'ID_7T'
+                'ID_3T'
+                'SES'
+                'date'
+                'grp'
+        col_sesNum: str
+            column name in df_mapPaths that indicates session number (e.g., '1', '2', etc)
+        col_studyID: str
+            column name in df_mapPaths that indicates appropriate ID for the row considering study
+        coi: list of str, optional
+            columns of interest to keep from demographics file. If None, keep all columns.
+        region: string, optional
+            specify cortex or hippocampus. If none, all columns passed will be extracted and region=None will be added to dict item.
+
+        save: bool
+            if True, save the output list of dicts as a .pkl file
+        save_pth: str
+            path to save the .pkl file to. If None, do not save.
+        save_name: str
+            name of the .pkl file to save (without extension) 
+        verbose: bool
+            if True, print progress and warnings
+            
+        Returns:
+        out_dl: list of dicts
+            Each dict contains:
+                'sesNum': session number
+                'region': 'cortex' or 'hippocampus'
+                'surf': surface type and resolution (e.g., 'fsLR-5k')
+                'label': label type (e.g., 'thickness', 'T1', 'FA', etc)
+                'feature': feature type (e.g., 'thickness', 'T1', 'FA', etc)
+                'smth': smoothing level (in mm)
+                'df_demo': pd.DataFrame with demographics and map paths for the specific map
+                'df_maps_unsmth': pd.DataFrame with only the unsmoothed map paths for the specific map (if applicable)
+                'df_maps_smth': pd.DataFrame with only the smoothed map paths for the specific map
+    """
+    import os
+    import pandas as pd
+    import pickle
+    import datetime
+
+    out_dl = []
+    
+    cols_L, cols_R = get_mapCols(df_mapPaths, verbose=True) # get map path columns
+    if region is not None:
+        if region == "cortex" or region == "ctx":
+            region == "cortex"
+            subset = "ctx"
+        elif region == "hippocampus" or region == "hipp":
+            region == "hippocampus"
+            subset = "hipp"
+        else:
+            raise ValueError(f"[extractMap] Unknown region: {region}. Should be 'cortex' or 'hippocampus'.")
+        
+        cols_L = [col for col in cols_L if subset in col]
+        cols_R = [col for col in cols_R if subset in col]
+        print(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {subset}).")
+    else:
+        print(f"\n{len(cols_L) + len(cols_R)} map columns found.")
+
+    if cols_L == [] or cols_R == []:
+        print("\n[extractMap] WARNING. No map columns found. Skipping.")
+        return out_dl
+
+    for col_L, col_R in zip(cols_L, cols_R):
+        
+        assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
+        
+        # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
+        hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
+        commonName = col_L[hemi_L_idx:]
+        if 'ctx' in col_L.lower():
+            region = 'cortex'
+        elif 'hipp' in col_L.lower():
+            region = 'hippocampus'
+        else:
+            region = 'unknown'
+        print(f"\n\tProcessing {commonName}... (cols: {col_L} {col_R}) | region: {region}")
+        
+        if verbose:
+            print(f"\n\tProcessing {commonName}... (cols: {col_L} {col_R})")
+        
+        df_tmp = df_mapPaths.dropna(subset=[col_L, col_R]) # remove IDs with missing values in col_L or col_R
+        if verbose:
+            print(f"\t\t{len(df_mapPaths) - len(df_tmp)} rows removed due to missing values for these maps. [{(len(df_mapPaths))} rows before, {len(df_tmp)} rows remain]")
+        
+        # Remove participants who do not have data for more than one session in this analysis
+        participant_counts = df_tmp.groupby(col_studyID)[col_sesNum].nunique()
+        valid_ids = participant_counts[participant_counts > 1].index.tolist() # keep IDs with data in at least one session
+        df_tmp_drop = df_tmp[~df_tmp[col_studyID].isin(valid_ids)].copy()
+        df_tmp = df_tmp[df_tmp[col_studyID].isin(valid_ids)]
+        if verbose:
+            print(f"\t\t{len(df_tmp_drop)} unique study-IDs removed given data for 0 or 1 sessions. [{(len(df_tmp) + len(df_tmp_drop))} rows before, {len(df_tmp)} rows remain]")
+
+        # relabel session numbers to be sequential
+        df_tmp = df_tmp.sort_values(by=['ID_study', 'Date'])
+        df_tmp[col_sesNum] = df_tmp.groupby(['ID_study']).cumcount() + 1
+        
+        # sort df_tmp by number of unique sessions
+        df_tmp['unique_sessions'] = df_tmp.groupby(col_studyID)[col_sesNum].transform('nunique')
+        df_tmp = df_tmp.sort_values(by=['unique_sessions', col_studyID, col_sesNum], ascending=[False, True, True])
+        #print(df_tmp.iloc[:25, [df_tmp.columns.get_loc(col) for col in ['UID', col_studyID, 'unique_sessions', 'SES', col_sesNum, *coi]]])
+        
+        n_before = df_mapPaths[col_studyID].nunique()
+        n_after = df_tmp[col_studyID].nunique()
+        n_removed = n_before - n_after
+
+        if n_removed > 0:
+            print(f"\t\t{n_after} unique study-ID pairs remain after removing {n_removed} IDs due to having one or zero sessions with data for this column.")
+            if verbose:
+                print(f"\t\tsutdy-IDs removed: {sorted(df_tmp_drop[col_studyID].unique())}")
+        
+        if n_after == 0:
+            print(f"\t\t[extractMap] WARNING. No participants remain after filtering for complete study data. Skipping this map.")
+            continue
+        
+        if coi is not None: # retain only the columns of interest in df_demo 
+            df_tmp = df_tmp[['UID', 'study', col_studyID, col_sesNum, 'SES'] + coi + [col_L, col_R]].copy()
+
+        for sesNum in df_tmp[col_sesNum].unique():  # TODO. Keep first two sessions with data, not necessaily group by session number
+            df_tmp_ses = df_tmp[df_tmp[col_sesNum] == sesNum] # filter for rows from this study
+            
+            if verbose:
+                print(f"\t\t\t[Session: {sesNum}] {len(df_tmp_ses)} rows")
+
+            maps = get_maps(df_tmp_ses, mapCols=[col_L, col_R], col_ID = col_studyID, verbose=verbose)
+            
+            # add to dict list
+            surf = col_L.split('surf-')[1].split('_label')[0]
+            lbl = col_L.split('_label-')[1].split('_')[0]
+            if lbl == 'thickness':
+                ft = 'thickness'
+            else:
+                ft = col_L.split('_label-')[1].split('_')[1]
+            
+            if '_unsmth' in commonName:
+                smth = 'NA'
+            else:
+                smth = col_L.split('_smth-')[1].split('mm')[0]
+            
+            out_dl.append({
+                'sesNum': sesNum,
+                'region': region,
+                'surf': surf,
+                'label': lbl,
+                'feature': ft,
+                'smth': smth,
+                'df_demo': df_tmp_ses,
+                'df_maps': maps,
+            })
+    
+    if save:
+        if save_pth is None:
+            save_pth = os.getcwd()  # Default to current working directory
+        if not os.path.exists(save_pth):
+            os.makedirs(save_pth)
+        
+        date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+        if test:
+            save_name = f"TEST_{save_name}"
+        out_pth = f"{save_pth}/{save_name}_{date}.pkl"
+        with open(out_pth, "wb") as f:
+            pickle.dump(out_dl, f)
+        print(f"Saved map_dictlist with z-scores to {out_pth}")
+    
+        if dlPrint: # print summary of output dict list
+                if test:
+                    print_dict(out_dl, df_print=False)
+                else:
+                    print_dict(out_dl)
+
+    if verbose:
+        if region:
+            print(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
+        else:
+            print(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items.")
     
     return out_dl
 
@@ -2031,7 +2252,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             save=True, save_pth=None, save_name="05a_stats_winStudy", test=False, 
             verbose=False, dlPrint=False):
     """
-    Comput within study comparisons between control distribution and all participants
+    Compute within study comparisons between control distribution and all participants
 
     Input:
         dl: (list) of dictionaries with map and demographic data for each comparison
@@ -3196,7 +3417,8 @@ def get_pair(dl, idx, mtch=['study', 'grp', 'label'], skip_idx=None):
             skip_idx.append(idx)
     else:
         skip_idx = [idx]
-        
+    
+    matches = []
     for j, other in enumerate(dl):
         if j not in skip_idx:
             match = True
@@ -3205,9 +3427,14 @@ def get_pair(dl, idx, mtch=['study', 'grp', 'label'], skip_idx=None):
                     match = False
                     break
             if match:
-                return j
-            
-    return None  # Not found
+                matches.append(j)
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        print(f"[get_pair] WARNING: Multiple matches found for index {idx} with keys {mtch}. Returning all matches: {matches}")
+        return matches
+    else:
+        return None  # Not found
 
 def ipsi_contra(df, hemi_ipsi='L', rename_cols = True):
     """
@@ -3615,7 +3842,7 @@ def glasser_mean(df_glasserLbl):
 
 ######################### VISUALIZATION FUNCTIONS #########################
 
-def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=False):
+def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pth=None, test=False):
     """
     Plot matrix visualizations for map values from corresponding study
 
@@ -3625,6 +3852,8 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
         key in the dictionary items to plot (e.g., 'map_smth')
     name_append:
         if provided, append this string to the filename when saving
+    sessions: (list of ints)
+        if provided, will plot different sessions next to eachother rather than different studies
     show:
         if True, show the plots interactively
     save_pth:
@@ -3652,12 +3881,38 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
     for idx, item in enumerate(dl):
         if idx in skip_idx:
             continue
-        else:
-            skip_idx.append(idx)
+        skip_idx.append(idx)
+        if sessions:
+            if item.get('sesNum', None) not in sessions or item.get('sesNum', None) not in sessions:
+                continue
+            
     
         counter = counter+1
         
         idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
+        
+        skip_idx.append(idx_other)
+        if type(idx_other) == list:
+            # get the indices whose session number is in 'sessions'. Add also the index 'idx'. 
+            # If not in 'sessions' then, add to skip idx
+            matches = []
+            for indices in [idx, *idx_other]:
+                itm = dl[indices]
+                sesNum = itm.get('sesNum', None)
+                if sesNum in sessions:
+                    matches.append(indices)
+            if len(matches) == 2:
+                # sort matches by teh ses num of that index
+                matches = sorted(matches, key=lambda x: dl[x].get('sesNum', float('inf')))
+                idx = matches[0]
+                idx_other = matches[1]
+                
+                item = dl[idx]
+                item_other = dl[idx_other]
+            else:
+                print(f"[plotMatrices] WARNING: More than 2 matches found for index {idx} with keys ['region', 'surf', 'label', 'feature', 'smth'] and sessions {sessions}. Skipping.")
+                continue
+
         if idx_other is None:
             item_txt = printItemMetadata(item, idx=idx, return_txt=True)
             print(f"\tWARNING. No matching index found for: {item_txt}.\nSkipping.")
@@ -3669,150 +3924,171 @@ def plotMatrices(dl, key, name_append=None, show=False, save_pth=None, test=Fals
             item_txt = printItemMetadata(item, idx=idx, return_txt=True)
             print(f"\tWARNING. Item other is None: {item_txt}.\nSkipping.")
             continue
+        
+        if sessions is None:
+            study = item['study']
+            if study == 'MICs':
+                idx_one = idx
+                idx_two = idx_other
 
-        study = item['study']
-        if study == 'MICs':
-            idx_tT = idx
-            idx_sT = idx_other
+                item_one = item
+                item_two = item_other
+            else:
+                idx_one = idx_other
+                idx_two = idx
 
-            item_tT = item
-            item_sT = item_other
+                item_one = item_other
+                item_two = item
         else:
-            idx_tT = idx_other
-            idx_sT = idx
+            
+            idx_one = idx
+            idx_two = idx_other
 
-            item_tT = item_other
-            item_sT = item
-        
-        if item_tT is None and item_sT is None:
-            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
-            item_sT_txt = printItemMetadata(item_sT, idx=idx_sT, return_txt=True)
-            print(f"\tWARNING. Both items are None (3T: {item_tT_txt}, 7T: {item_sT_txt}).\nSkipping.")
-            continue
-        elif item_tT is None:
-            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
-            print(f"\tWARNING. Item_tT is None: {item_tT_txt}.\nSkipping.")
-            continue
-        elif item_sT is None:
-            item_sT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
-            print(f"\tWARNING. Item_sT is None: {item_sT_txt}.\nSkipping.")
-            continue
+            item_one = item
+            item_two = item_other
 
-        title_tT = f"{key} {item_tT['study']} [idx: {idx_tT}]"
-        title_sT = f"{key} {item_sT['study']} [idx: {idx_sT}]"
-        
-        feature_tT = item_tT['feature']
-        feature_sT = item_sT['feature']
+            ses_one = item_one.get('sesNum', None)
+            ses_two = item_two.get('sesNum', None)
 
-        df_tT = item_tT.get(key, None)
-        df_sT = item_sT.get(key, None)
+            
+        if item_one is None and item_two is None:
+            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
+            print(f"\tWARNING. Both items are None (item one: {item_one_txt}, item two: {item_two_txt}).\nSkipping.")
+            continue
+        elif item_one is None:
+            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            print(f"\tWARNING. Item_one is None: {item_one_txt}.\nSkipping.")
+            continue
+        elif item_two is None:
+            item_two_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            print(f"\tWARNING. Item_two is None: {item_two_txt}.\nSkipping.")
+            continue
         
-        if df_tT is None and df_sT is None:
-            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
-            item_sT_txt = printItemMetadata(item_sT, idx=idx_sT, return_txt=True)
-            print(f"\tWARNING. Missing key '{key}'. Skipping {item_tT_txt} and {item_sT_txt}\n")
+        if item_one.get('study', None) and item_two.get('study', None):
+            title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
+            title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
+        else:
+            title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
+            title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
+        
+        feature_one = item_one['feature']
+        feature_two = item_two['feature']
+
+        df_one = item_one.get(key, None)
+        df_two = item_two.get(key, None)
+        
+        if df_one is None and df_two is None:
+            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
+            print(f"\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
             continue
-        elif df_tT is None:
-            item_tT_txt = printItemMetadata(item_tT, idx=idx_tT, return_txt=True)
-            print(f"\tWARNING. Missing key '{key}' for {item_tT_txt}. Skipping.\n")
+        elif df_one is None:
+            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            print(f"\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
             continue
-        elif df_sT is None:
-            item_sT_txt = printItemMetadata(item_sT, idx=idx_sT, return_txt=True)
-            print(f"\tWARNING. Missing key '{key}' for {item_sT_txt}. Skipping.\n")
+        elif df_two is None:
+            item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
+            print(f"\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
             continue
 
         # determine min and max values across both matrices for consistent color scaling
-        assert feature_tT == feature_sT, f"Features do not match: {feature_tT}, {feature_sT}"
-        assert item_tT['region'] == item_sT['region'], f"Regions do not match: {item_tT['region']}, {item_sT['region']}"
-        assert item_tT['surf'] == item_sT['surf'], f"Surfaces do not match: {item_tT['surf']}, {item_sT['surf']}"
-        assert item_tT['label'] == item_sT['label'], f"Labels do not match: {item_tT['label']}, {item_sT['label']}"
-        assert item_tT['smth'] == item_sT['smth'], f"Smoothing kernels do not match: {item_tT['smth']}, {item_sT['smth']}"
-        
-        if key == "df_z" or key == "df_w":
+        assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
+        assert item_one['region'] == item_two['region'], f"Regions do not match: {item_one['region']}, {item_two['region']}"
+        assert item_one['surf'] == item_two['surf'], f"Surfaces do not match: {item_one['surf']}, {item_two['surf']}"
+        assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
+        assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
+    
+        if "_z_" in key or "_w_" in key:
             cmap = "seismic"
             min_val = -3
             max_val = 3
         else:
             cmap = 'inferno'
-            if feature_tT.lower() == "thickness":
+            if feature_one.lower() == "thickness":
                 min_val = 0
                 max_val = 4
                 cmap = 'Blues'
-            elif feature_tT.lower() == "flair":
+            elif feature_one.lower() == "flair":
                 min_val = -500
                 max_val = 500
                 cmap = "seismic"
-            elif feature_tT.lower() == "t1map":
+            elif feature_one.lower() == "t1map":
                 min_val = 1000
                 max_val = 2800
                 cmap = "inferno"
-            elif feature_tT.lower() == "fa":
+            elif feature_one.lower() == "fa":
                 min_val = 0
                 max_val = 1
                 cmap="Blues"
-            elif feature_tT.lower() == "adc": # units: mm2/s
+            elif feature_one.lower() == "adc": # units: mm2/s
                 min_val = 0
                 max_val = 0.0025
                 cmap = "Blues"
             else:
-                min_val = min(np.percentile(df_sT.values, 95), np.percentile(df_tT.values, 95))
-                max_val = max(np.percentile(df_sT.values, 5), np.percentile(df_tT.values, 5))
+                min_val = min(np.percentile(df_two.values, 95), np.percentile(df_one.values, 95))
+                max_val = max(np.percentile(df_two.values, 5), np.percentile(df_one.values, 5))
 
-        # Create a grid layout with space for the colorbar
-        fig = plot.figure(figsize=(30, 25))
-        spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
+            # Create a grid layout with space for the colorbar
+            fig = plot.figure(figsize=(30, 25))
+            spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
 
-        # Create subplots
-        ax1 = fig.add_subplot(spec[0])
-        ax2 = fig.add_subplot(spec[2])
+            # Create subplots
+            ax1 = fig.add_subplot(spec[0])
+            ax2 = fig.add_subplot(spec[2])
 
-        # Plot the matrices
-        visMatrix(df_tT, feature=feature_tT, title=title_tT, 
-                  return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
-        visMatrix(df_sT, feature=feature_sT, title=title_sT, 
-                  return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+            # Plot the matrices
+            visMatrix(df_one, feature=feature_one, title=title_one, 
+                    return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+            visMatrix(df_two, feature=feature_two, title=title_two, 
+                    return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
 
-        # Add a colorbar between the plots
-        if feature_tT.upper() == "ADC":
-            cmap_title = "ADC (mm²/s)"
-        elif feature_tT.upper() == "T1MAP":
-            cmap_title = "T1 (ms)"
-        else:
-            cmap_title = feature_tT
+            # Add a colorbar between the plots
+            cmap_title = feature_one
 
-        if key== "df_z":
-            cmap_title = f"Z-score [{cmap_title}]"
-        elif key == "df_w":
-            cmap_title = f"W-score [{cmap_title}]"
-
-        cbar_ax = fig.add_subplot(spec[1])
-        norm = plot.Normalize(vmin=min_val, vmax=max_val)
-        cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
-        cbar.set_label(cmap_title, fontsize=20, labelpad=0)
-        cbar.ax.yaxis.set_label_position("left")
-        cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
-
-        # Add a common title
-        region = item_tT['region']
-        surface = item_tT['surf']
-        label = item_tT['label']
-        smth = item_tT['smth']
-        fig.suptitle(f"{region}: {feature_tT}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
-
-        if show:
-            plot.show()
-
-        if save_pth is not None:
-            if name_append is not None:
-                save_name = f"{region}_{feature_tT}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            if "_z_" in key:
+                cmap_title = f"Z-score [{cmap_title}]"
+            elif "_w_" in key:
+                cmap_title = f"W-score [{cmap_title}]"
             else:
-                save_name = f"{region}_{feature_tT}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
-            print(f"\tSaved: {save_pth}/{save_name}.png")
-            plot.close(fig)
-        
-        if test and counter >= 2:
-            break
+                if feature_one.upper() == "ADC":
+                    cmap_title = "ADC (mm²/s)"
+                elif feature_one.upper() == "T1MAP":
+                    cmap_title = "T1 (ms)"
+            
+            cbar_ax = fig.add_subplot(spec[1])
+            norm = plot.Normalize(vmin=min_val, vmax=max_val)
+            cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
+            cbar.set_label(cmap_title, fontsize=20, labelpad=0)
+            cbar.ax.yaxis.set_label_position("left")
+            cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
+
+            # Add a common title
+            region = item_one['region']
+            surface = item_one['surf']
+            label = item_one['label']
+            smth = item_one['smth']
+            if sessions:
+                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
+            else:
+                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
+            
+            if show:
+                plot.show()
+
+            if save_pth is not None:
+                if name_append is not None:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                elif sessions:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                else:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
+                print(f"\tSaved: {save_pth}/{save_name}.png")
+                plot.close(fig)
+            
+            if test and counter >= 2:
+                break
 
 def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
               cmap='seismic', return_fig=True, show_index=False, ax=None, nan_color='green', nan_side="right"):
@@ -3872,7 +4148,7 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None,
     # Use provided axes or create new figure
     anyNaN = np.isnan(data).any()
     if ax is None:
-        fig_length = max(6, min(30, 0.1 * data.shape[0]))
+        fig_length = max(6, min(0.1, 0.1 * data.shape[0]))
         fig_width = 10
         if anyNaN:  # Increase width if NaN annotations are present
             fig_width += 2
