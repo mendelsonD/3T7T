@@ -3120,10 +3120,22 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
                 print(f"\tNo matching index found. Skipping.")
                 continue
             skip_idx.append(idx_other)
-            
-            item_other = dl[idx_other]
-           
-            logging.info(printItemMetadata(item_other, idx=idx_other, return_txt=True))
+            logging.info(printItemMetadata(dl_iterate[idx_other], idx=idx_other, return_txt=True))
+
+            # identify which study is which (to know how to subtract)
+            tT_idx, sT_idx = determineStudy(dl_iterate, i, idx_other, study_key = 'study')
+
+            item_tT = dl_iterate[tT_idx]
+            item_sT = dl_iterate[sT_idx]
+            """
+            study = item['study']
+            if study == 'MICs':
+                item_tT = item
+                item_sT = item_other
+            else:
+                item_tT = item_other
+                item_sT = item
+            """
 
             # if df_z and df_w are None, skip
             if item.get('df_d', None) is None and item.get('df_d_ic', None) is None:
@@ -3132,31 +3144,21 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
 
             # Initialize output item
             out_item = {
-                    'studies': (item['study'], item_other['study']),
-                    'region': item['region'],
-                    'feature': item['feature'],
-                    'surf': item['surf'],
-                    'label': item['label'],
-                    'smth': item['smth'],
+                    'studies': (item_tT['study'], item_sT['study']),
+                    'region': item_tT['region'],
+                    'feature': item_tT['feature'],
+                    'surf': item_tT['surf'],
+                    'label': item_tT['label'],
+                    'smth': item_tT['smth'],
                 }
             
-            ID_keys = [key for key in item.keys() if 'IDs' in key]
-            
+            ID_keys = [key for key in item_tT.keys() if 'IDs' in key]
             keys_to_copy = ID_keys + ['df_d', 'df_d_ic']
             if verbose:
                 logging.info(f"\tCopying keys: {keys_to_copy}")
             for key in keys_to_copy: # add all ID_keys are their corresponding dataframes to out_item
-                out_item[key] = [item[key], item_other[key]] # stores as list of items. In case of dfs, list of dataframes
+                out_item[key] = [item_tT[key], item_sT[key]] # stores as list of items. In case of dfs, list of dataframes            
 
-            # identify which study is which (to know how to subtract)
-            study = item['study']
-            if study == 'MICs':
-                item_tT = item
-                item_sT = item_other
-            else:
-                item_tT = item_other
-                item_sT = item
-            
             for df in ['df_d', 'df_d_ic']:
                 metrics_df = None
                 df_tT = item_tT.get(df, None)
@@ -3247,6 +3249,30 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
 
     return dl
 
+
+def determineStudy(dl, idx, idx_other, study_key='study'):
+    """
+    Determine study assignment of each provided dictionary item.
+    Assumes that 3T study code is 'MICS', does not assume name for 7T study.
+    
+    input:
+        dl: (list)            List of dictionary items
+        idx: (int)            One index of item in dict list
+        idx_other: (int)      Another index of item in dict list
+        study_key: (str)      Key in both dictionary items that holds the study name. Default is 'study'.
+    """
+
+    study = dl[idx].get(study_key, None)
+    study_other = dl[idx_other].get(study_key, None)
+    assert study is not None and study_other is not None, f"One of the dictionary items does not have the key '{study_key}'."
+    assert study != study_other, f"Both dictionary items have the same study '{study}'. They should be different."
+
+    if study == 'MICs':
+        idx_tT, idx_sT = idx, idx_other
+    else:
+        idx_sT, idx_tT = idx, idx_other
+
+    return idx_tT, idx_sT
 
 def print_dict(dict, df_print=False, idx=None, return_txt=False):
     """
@@ -4276,6 +4302,128 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
             images[0].save(output_pdf, save_all=True, append_images=images[1:])
             if verbose:
                 print(f"\tPDF created: {output_pdf}")
+
+def sortCols(df):
+    """
+    Sort DataFrame columns. Rules: 
+        All _L columns first (sorted by number), then all _R columns (sorted by number).
+        If ends with _contra, put before _ipsi (same logic).
+        If neither, put at the end.
+
+    Input:
+        df: DataFrame with columns to sort
+
+    Output:
+        df_sorted: DataFrame with sorted columns
+    """
+    import re
+    import pandas as pd
+
+    def col_type(col):
+        col = str(col)
+        if col.endswith('_L'):
+            return 'L'
+        elif col.endswith('_R'):
+            return 'R'
+        elif col.endswith('_contra'):
+            return 'contra'
+        elif col.endswith('_ipsi'):
+            return 'ipsi'
+        else:
+            return 'other'
+
+    def col_num(col):
+        col = str(col)
+        match = re.match(r"(\d+)", col)
+        if match:
+            return int(match.group(1))
+        else:
+            return float('inf')
+
+    # Group columns
+    L_cols = [col for col in df.columns if col_type(col) == 'L']
+    R_cols = [col for col in df.columns if col_type(col) == 'R']
+    contra_cols = [col for col in df.columns if col_type(col) == 'contra']
+    ipsi_cols = [col for col in df.columns if col_type(col) == 'ipsi']
+    other_cols = [col for col in df.columns if col_type(col) == 'other']
+
+    # Sort each group by number
+    L_cols = sorted(L_cols, key=col_num)
+    R_cols = sorted(R_cols, key=col_num)
+    contra_cols = sorted(contra_cols, key=col_num)
+    ipsi_cols = sorted(ipsi_cols, key=col_num)
+    other_cols = sorted(other_cols)
+
+    # Order: L, contra, R, ipsi, other
+    sorted_cols = L_cols + contra_cols + R_cols + ipsi_cols + other_cols
+    df_sorted = df[sorted_cols]
+    return df_sorted
+
+def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, offset = 5):
+    """
+    Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
+
+
+    Input:
+        df_a, df_b: DataFrames with identical columns and identical row indices.
+            NOTE. Index should be sorted 
+        lbl_a, lbl_b: labels for the two groups
+        title: title for the plot
+
+        offset: vertical distance between plots
+    
+    Output:
+        figure object
+    """
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    n = df_a.shape[0]
+    
+    # sort columns
+    df_a_sort = sortCols(df_a)
+    df_b_sort = sortCols(df_b)
+    # Reverse the order of rows so the top row of the plot corresponds to the top row of the DataFrame
+    df_a_sort = df_a_sort.iloc[::-1]
+    df_b_sort = df_b_sort.iloc[::-1]
+    
+    vertices = df_a_sort.columns
+
+    for i in range(n):
+        if i == 0:
+            fig_length = 2 * df_a_sort.shape[0]
+            fig_width = 80
+            fig, ax = plt.subplots(figsize=(fig_width, fig_length))
+        # Increase amplitude range for better visualization
+
+        # Reverse the order so the first row of the plot is the first row of the df
+        y_a = df_a_sort.iloc[i].values + i * offset
+        y_b = df_b_sort.iloc[i].values + i * offset
+        
+        # Plot group A: solid black line, fill white
+        ax.plot(vertices, y_a, color='red', alpha=0.2, linewidth = 3, label=lbl_a if i == 0 else "")
+
+        # Plot group B: dashed black line, fill light gray
+        ax.plot(vertices, y_b, color='blue', alpha=0.2, linewidth = 3, label=lbl_b if i == 0 else "")
+
+    ax.set_title(title, fontsize=50)
+    ax.set_xlabel("Vertex", fontsize=35)
+
+    # Set y-axis labels
+    ax.set_yticks([i * offset for i in range(n)])
+    ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=30)
+    #ax.set_ylabel("Index", fontsize=15)
+    ax.legend(fontsize=40)
+    
+    xticks = np.linspace(ax.get_xlim()[0], ax.get_xlim()[1], 8) # Only show five x ticks
+    ax.set_xticks(xticks)
+    ax.tick_params(axis='x', labelsize=30)
+    # remove y-axis line
+    ax.spines['left'].set_visible(False)
+    ax.yaxis.set_ticks_position('none')
+
+    return fig
 
 def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
     """
