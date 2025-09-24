@@ -3274,7 +3274,7 @@ def determineStudy(dl, idx, idx_other, study_key='study'):
 
     return idx_tT, idx_sT
 
-def print_dict(dict, df_print=False, idx=None, return_txt=False):
+def print_dict(dict, df_print=False, idx=None, verbose=False, return_txt=False):
     """
     Print the contents of a dictionary with DataFrames in a readable format.
     Input:
@@ -3283,6 +3283,11 @@ def print_dict(dict, df_print=False, idx=None, return_txt=False):
             if True, prints DataFrame contents; if False, only print the shape of the DF keys
         idx: list of ints
             if provided, only print the items at these indices in the dict list.
+        
+        return_txt: bool
+            if True, returns the printed output as a string instead of printing to console.
+        verbose:
+            if True, prints additional information.
     Output:
         Prints the keys and values of each dictionary item.
     """
@@ -3312,17 +3317,14 @@ def print_dict(dict, df_print=False, idx=None, return_txt=False):
             print(f"\t{k}: {v}")
 
     if idx is not None:
-        print(f"\n Printing the following {len(idx)} indices: {idx}")
+        if verbose:
+            print(f"\n Printing the following {len(idx)} indices: {idx}")
         for i in idx:
             d = dict[i]
             print(f"\n[{i}]")
             print(f"\tKeys: {list(d.keys())}")
             for k, v in d.items():
                 mainPrint(k,v, df_print)
-        if not return_txt:
-            # Restore original stdout
-            sys.stdout = old_stdout
-            return mystdout.getvalue()
     else:
         print(f"\n Dict list length ({len(dict)} items)")
         for i, item in enumerate(dict):
@@ -3815,7 +3817,7 @@ def apply_glasser(df, ipsiTo=None, labelType='glasser_int'):
     """
     Input:
         df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
-            Number of columns per hemisphere should be 32492 for fsLR-32k
+            should be fsLR-32k (32492 vertices per hemisphere) 
         labelType: final label to return. options:
             - 'glasser_int': integer [0:360] indicating glasser region
             - 'glasser_str': string with glasser region name
@@ -3868,13 +3870,13 @@ def glasser_mean(df_glasserLbl):
 
 ######################### VISUALIZATION FUNCTIONS #########################
 
-def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pth=None, test=False):
+def plotMatrices(dl, df_key, name_append=None, sessions = None, show=False, save_pth=None, test=False):
     """
     Plot matrix visualizations for map values from corresponding study
 
     dl: 
         dictionary list with paired items from different studies
-    key:
+    df_key:
         key in the dictionary items to plot (e.g., 'map_smth')
     name_append:
         if provided, append this string to the filename when saving
@@ -3893,7 +3895,7 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
     skip_idx = []
     counter = 0
 
-    print(f"Plotting matrices for {key}...")
+    print(f"Plotting matrices for {df_key}...")
     
     if test:
         print("TEST MODE: Randomly choosing 2 pairs to plot")
@@ -3903,7 +3905,9 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
 
     # If dl is a single dictionary (not a list), wrap it in a list
     if isinstance(dl, dict):
+        print("[plotMatrices] WARNING: dl is a single dictionary, wrapping in a list.")
         dl = [dl]
+
     for idx, item in enumerate(dl):
         if idx in skip_idx:
             continue
@@ -3928,7 +3932,7 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
                 if sesNum in sessions:
                     matches.append(indices)
             if len(matches) == 2:
-                # sort matches by teh ses num of that index
+                # sort matches by the ses num of that index
                 matches = sorted(matches, key=lambda x: dl[x].get('sesNum', float('inf')))
                 idx = matches[0]
                 idx_other = matches[1]
@@ -3976,7 +3980,6 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
             ses_one = item_one.get('sesNum', None)
             ses_two = item_two.get('sesNum', None)
 
-            
         if item_one is None and item_two is None:
             item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
             item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
@@ -3992,30 +3995,56 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
             continue
         
         if item_one.get('study', None) and item_two.get('study', None):
-            title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
-            title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
+            title_one = f"{df_key} {item_one['study']} [idx: {idx_one}]"
+            title_two = f"{df_key} {item_two['study']} [idx: {idx_two}]"
         else:
-            title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
-            title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
+            title_one = f"{df_key} SES num: {ses_one} [idx: {idx_one}]"
+            title_two = f"{df_key} SES num: {ses_two} [idx: {idx_two}]"
         
         feature_one = item_one['feature']
         feature_two = item_two['feature']
-
-        df_one = item_one.get(key, None)
-        df_two = item_two.get(key, None)
+        
+        try:
+            df_one = item_one[df_key]
+        except KeyError:
+            print(f"\tWARNING: Could not access key '{df_key}' for item at index {idx_one}. Skipping.")
+            print_dict(dl, idx = [idx_one])
+            print('-'*50)
+            continue
+        except Exception as e:
+            print(f"\tERROR: Unexpected error while accessing key '{df_key}' for item at index {idx_one}: {e}")
+            print_dict(dl, idx=[idx_one])
+            print('-'*50)
+            continue
+        
+        try:
+            df_two = item_two[df_key]
+        except KeyError:
+            print(f"\tWARNING: Could not access key '{df_key}' for item at index {idx_two}. Skipping.")
+            print_dict(dl, idx = [idx_two])
+            print('-'*50)
+            continue
+        except Exception as e:
+            print(f"\tERROR: Unexpected error while accessing key '{df_key}' for item at index {idx_one}: {e}")
+            print_dict(dl, idx=[idx_one])
+            print('-'*50)
+            continue
         
         if df_one is None and df_two is None:
             item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
             item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-            print(f"\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
+            print(f"\tWARNING. Missing key '{df_key}'. Skipping {item_one_txt} and {item_two_txt}\n")
+            print('-'*50)
             continue
         elif df_one is None:
             item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-            print(f"\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
+            print(f"\tWARNING. Missing key '{df_key}' for {item_one_txt}. Skipping.\n")
+            print('-'*50)
             continue
         elif df_two is None:
             item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-            print(f"\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
+            print(f"\tWARNING. Missing key '{df_key}' for {item_two_txt}. Skipping.\n")
+            print('-'*50)
             continue
 
         # determine min and max values across both matrices for consistent color scaling
@@ -4025,7 +4054,7 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
         assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
         assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
     
-        if "_z_" in key or "_w_" in key:
+        if "_z_" in df_key or "_w_" in df_key:
             cmap = "seismic"
             min_val = -3
             max_val = 3
@@ -4055,66 +4084,66 @@ def plotMatrices(dl, key, name_append=None, sessions = None, show=False, save_pt
                 min_val = min(np.percentile(df_two.values, 95), np.percentile(df_one.values, 95))
                 max_val = max(np.percentile(df_two.values, 5), np.percentile(df_one.values, 5))
 
-            # Create a grid layout with space for the colorbar
-            fig = plot.figure(figsize=(30, 25))
-            spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
+        # Create a grid layout with space for the colorbar
+        fig = plot.figure(figsize=(30, 25))
+        spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
 
-            # Create subplots
-            ax1 = fig.add_subplot(spec[0])
-            ax2 = fig.add_subplot(spec[2])
+        # Create subplots
+        ax1 = fig.add_subplot(spec[0])
+        ax2 = fig.add_subplot(spec[2])
 
-            # Plot the matrices
-            visMatrix(df_one, feature=feature_one, title=title_one, 
-                    return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
-            visMatrix(df_two, feature=feature_two, title=title_two, 
-                    return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+        # Plot the matrices
+        visMatrix(df_one, feature=feature_one, title=title_one, 
+                return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+        visMatrix(df_two, feature=feature_two, title=title_two, 
+                return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
 
-            # Add a colorbar between the plots
-            cmap_title = feature_one
+        # Add a colorbar between the plots
+        cmap_title = feature_one
 
-            if "_z_" in key:
-                cmap_title = f"Z-score [{cmap_title}]"
-            elif "_w_" in key:
-                cmap_title = f"W-score [{cmap_title}]"
+        if "_z_" in df_key:
+            cmap_title = f"Z-score [{cmap_title}]"
+        elif "_w_" in df_key:
+            cmap_title = f"W-score [{cmap_title}]"
+        else:
+            if feature_one.upper() == "ADC":
+                cmap_title = "ADC (mm²/s)"
+            elif feature_one.upper() == "T1MAP":
+                cmap_title = "T1 (ms)"
+        
+        cbar_ax = fig.add_subplot(spec[1])
+        norm = plot.Normalize(vmin=min_val, vmax=max_val)
+        cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
+        cbar.set_label(cmap_title, fontsize=20, labelpad=0)
+        cbar.ax.yaxis.set_label_position("left")
+        cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
+
+        # Add a common title
+        region = item_one['region']
+        surface = item_one['surf']
+        label = item_one['label']
+        smth = item_one['smth']
+        if sessions:
+            fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
+        else:
+            fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
+        
+        if show:
+            plot.show()
+
+        if save_pth is not None:
+            if name_append is not None:
+                save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            elif sessions:
+                save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
             else:
-                if feature_one.upper() == "ADC":
-                    cmap_title = "ADC (mm²/s)"
-                elif feature_one.upper() == "T1MAP":
-                    cmap_title = "T1 (ms)"
-            
-            cbar_ax = fig.add_subplot(spec[1])
-            norm = plot.Normalize(vmin=min_val, vmax=max_val)
-            cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
-            cbar.set_label(cmap_title, fontsize=20, labelpad=0)
-            cbar.ax.yaxis.set_label_position("left")
-            cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
-
-            # Add a common title
-            region = item_one['region']
-            surface = item_one['surf']
-            label = item_one['label']
-            smth = item_one['smth']
-            if sessions:
-                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
-            else:
-                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
-            
-            if show:
-                plot.show()
-
-            if save_pth is not None:
-                if name_append is not None:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                elif sessions:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                else:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
-                print(f"\tSaved: {save_pth}/{save_name}.png")
-                plot.close(fig)
-            
-            if test and counter >= 2:
-                break
+                save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
+            print(f"\tSaved: {save_pth}/{save_name}.png")
+            plot.close(fig)
+        
+        if test and counter >= 2:
+            break
 
 def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
               cmap='seismic', return_fig=True, show_index=False, ax=None, nan_color='green', nan_side="right"):
@@ -4359,18 +4388,21 @@ def sortCols(df):
     df_sorted = df[sorted_cols]
     return df_sorted
 
-def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, offset = 5):
+def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, hline = None, marks = False, offset = 5, return_fig = True):
     """
     Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
 
 
     Input:
-        df_a, df_b: DataFrames with identical columns and identical row indices.
-            NOTE. Index should be sorted 
-        lbl_a, lbl_b: labels for the two groups
-        title: title for the plot
+        df_a, df_b:         DataFrames with identical columns and identical row indices.
+                                NOTE. Index should be sorted 
+        lbl_a, lbl_b:       Labels for the two groups
+        title:              Title for the plot
 
-        offset: vertical distance between plots
+        hline: <int or None> if provided, draw a horizontal line at this y-value. 
+        marks:              Whether to use marks instead of lines
+        offset:             Vertical distance between plots
+        return_fig:         if True, return figure object. If False, return axis object.
     
     Output:
         figure object
@@ -4390,40 +4422,183 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, offset = 5):
     
     vertices = df_a_sort.columns
 
-    for i in range(n):
-        if i == 0:
-            fig_length = 2 * df_a_sort.shape[0]
-            fig_width = 80
-            fig, ax = plt.subplots(figsize=(fig_width, fig_length))
-        # Increase amplitude range for better visualization
-
-        # Reverse the order so the first row of the plot is the first row of the df
+    fig_length = 3 * df_a_sort.shape[0]
+    fig_width = 100
+    fig, ax = plt.subplots(figsize=(fig_width, fig_length))
+    
+    for i in range(n):            
         y_a = df_a_sort.iloc[i].values + i * offset
         y_b = df_b_sort.iloc[i].values + i * offset
         
-        # Plot group A: solid black line, fill white
-        ax.plot(vertices, y_a, color='red', alpha=0.2, linewidth = 3, label=lbl_a if i == 0 else "")
+        if marks:
+            ax.scatter(vertices, y_a, color='red', alpha=0.2, s=10, label=lbl_a if i == 0 else "")
+            ax.scatter(vertices, y_b, color='blue', alpha=0.2, s=10, label=lbl_b if i == 0 else "")
+        else:
+            ax.plot(vertices, y_a, color='red', alpha=0.2, linewidth = 3, label=lbl_a if i == 0 else "")
+            ax.plot(vertices, y_b, color='blue', alpha=0.2, linewidth = 3, label=lbl_b if i == 0 else "")
+        if hline is not None:
+            ax.axhline(y=i * offset + hline, color='black', linestyle='--', linewidth=1, alpha=0.4)
 
-        # Plot group B: dashed black line, fill light gray
-        ax.plot(vertices, y_b, color='blue', alpha=0.2, linewidth = 3, label=lbl_b if i == 0 else "")
+    # Annotate hemisphere change
+    split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
+    if split_idx is None:
+        split_idx = next((k for k, col in enumerate(vertices) if '_ipsi' in col), None)
+        if split_idx is not None:
+            ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=5)
+            ax.text(split_idx / 2, -offset * 1.5, "Contralateral", fontsize=80, ha='center', va='top')
+            ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Ipsilateral", fontsize=80, ha='center', va='top')
+    else:
+        ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=5)
+        ax.text(split_idx / 2, -offset * 1.5, "Left", fontsize=80, ha='center', va='top')
+        ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Right", fontsize=80, ha='center', va='top')
 
-    ax.set_title(title, fontsize=50)
-    ax.set_xlabel("Vertex", fontsize=35)
+    # Set title and labels
+    ax.set_title(title, fontsize=100)
 
-    # Set y-axis labels
-    ax.set_yticks([i * offset for i in range(n)])
-    ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=30)
-    #ax.set_ylabel("Index", fontsize=15)
-    ax.legend(fontsize=40)
+    ax.set_yticks([(i) * offset for i in range(n)])
+    ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=50)
+
+    ax.legend(fontsize=80, markerscale=15, loc='upper right')
     
-    xticks = np.linspace(ax.get_xlim()[0], ax.get_xlim()[1], 8) # Only show five x ticks
+    xticks = np.linspace(0, len(vertices) - 1, 3)
     ax.set_xticks(xticks)
-    ax.tick_params(axis='x', labelsize=30)
+    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=50, rotation=45, ha='right')
+    ax.tick_params(axis='x', labelsize=50)
+    ax.set_xlabel("Vertex", fontsize=50)
+    
     # remove y-axis line
     ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
     ax.yaxis.set_ticks_position('none')
 
-    return fig
+    if return_fig:
+            return fig
+    else:
+        if ax is None:
+            plt.show()
+        return ax
+
+def plotLine(dl, df_key = 'df_maps', marks=True,
+            show = False, name_append=None, save_pth=None, 
+            verbose = False, test = False):
+    
+    """
+    Plot ridgeline graphs to compare maps between corrsponding dfs (eg., 3T vs 7T).
+
+    Input:
+        dl:           list of dict items with dataframes to plot
+        df_key:        key in dict items for dataframe to plot
+    
+        show:           whether to show plots
+        name_append:    string to append to saved file names
+        save_pth:       path to save figures. If None, will not save.
+        verbose:        whether to print item metadata  
+        test:           whether to run in test mode (only first 2 items in dl)
+    Output:
+        
+    """
+    import matplotlib.pyplot as plt
+    import datetime
+
+    skip_idx = []
+    counter = 0
+
+    for idx in range(len(dl)):
+
+        if idx in skip_idx:
+            continue
+        print(f"\n")
+        counter += 1
+
+        skip_idx.append(idx)
+        idx_other = get_pair(dl, idx, mtch = ['region', 'feature', 'label', 'surf', 'smth'], skip_idx=skip_idx)
+        skip_idx.append(idx_other)
+        if idx_other is None:
+            print(f"\tNo matching index found. Skipping.")
+            continue
+        # determine which study is tT and which is sT
+        idx_tT, idx_sT = determineStudy(dl, idx = idx, idx_other = idx_other, study_key = 'study')
+        item_tT = dl[idx_tT]
+        item_sT = dl[idx_sT]
+        if verbose:
+            printItemMetadata(item_tT, idx=idx, return_txt=False)
+            printItemMetadata(item_sT, idx=idx_other, return_txt=False)
+
+        # extract df
+        df_tT = item_tT.get(df_key, None)
+        df_sT = item_sT.get(df_key, None)
+        if df_tT is None or df_sT is None:
+            print(f"\t{df_key} is None. Skipping.")
+            continue
+        elif df_tT.shape[0] == 0 or df_sT.shape[0] == 0:
+            print(f"\t{df_key} is empty. Skipping.")
+            continue
+        
+        # ensure that all columns overlap
+        cols_tT = set(df_tT.columns) # use as x-axis
+        cols_sT = set(df_sT.columns)
+        cols_common = list(cols_tT.intersection(cols_sT))
+        assert len(cols_common) == len(cols_tT) and len(cols_common) == len(cols_sT), f"Columns do not match between studies: {cols_tT} vs {cols_sT}"
+        
+        # rename indices to match. Use UID only
+        uid_tT = df_tT.index.str.split('_').str[0]
+        uid_sT = df_sT.index.str.split('_').str[0]
+        
+        # ensure that all indices overlap
+        idxs_common = list(set(uid_tT).intersection(set(uid_sT)))
+        idxs_common = sorted(idxs_common) # sort by UID
+
+        assert len(idxs_common) == len(uid_tT) and len(idxs_common) == len(uid_sT), f"Indices do not match between studies: {set(uid_tT)} vs {set(uid_sT)}"
+        
+        # set index to UID
+        df_tT.index = uid_tT
+        df_sT.index = uid_sT
+        # take only overlapping indices
+        df_tT = df_tT.loc[idxs_common, cols_common]
+        df_sT = df_sT.loc[idxs_common, cols_common]
+
+        # create title
+        region = item_tT.get('region', None)
+        feature = item_tT.get('feature', None)
+        surface = item_tT.get('surf', None)
+        label = item_tT.get('label', None)
+        smth = item_tT.get('smth', None)
+        title = f"{region}: {feature}, {surface}, {label}, smth-{smth}mm"
+        if 'TLE' in df_key:
+            title = title + f" [TLE only]"  # TODO CHANGE SO THAT NOT HARD CODED 
+        
+        hline = None
+        if 'df_z' in df_key.lower():
+            title = title + " [Z-score]"
+            hline = 0 # value at which to plot a horizontal line for each subject
+        elif 'df_w' in df_key.lower():
+            title = title + " [W-score]"
+            hline = 0 # value at which to plot a horizontal line for each subject
+        elif feature.lower() in ['t1map', 'flair']: # rescale values (participant wise)
+            # Robust rescaling: subtract median and divide by IQR (interquartile range)
+            df_tT = (df_tT - df_tT.median(axis=1).values[:, None]) / (df_tT.quantile(0.75, axis=1).values - df_tT.quantile(0.25, axis=1).values)[:, None]
+            df_sT = (df_sT - df_sT.median(axis=1).values[:, None]) / (df_sT.quantile(0.75, axis=1).values - df_sT.quantile(0.25, axis=1).values)[:, None]
+            title = title + " [standardized]"
+
+        # ridge line plot
+        fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", hline=hline, marks=marks, title=title)
+        
+        if show:
+            plt.show()
+
+        if save_pth is not None:
+            if name_append is not None:
+                save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            else:
+                save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            
+            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
+            print(f"\tSaved: {save_pth}/{save_name}.png")
+            plt.close(fig)
+
+        if test and counter >= 1:
+            break
 
 def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
     """
