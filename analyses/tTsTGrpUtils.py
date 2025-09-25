@@ -155,7 +155,7 @@ def get_surf_pth(root, sub, ses, lbl, space="nativepro", surf="fsLR-32k", verbos
 
     return lh, rh 
 
-def get_mapVol_pth(root, sub, ses, feature, space="nativepro"):
+def get_mapVol_pth(root, sub, ses, study, feature, raw=False, space="nativepro"):
     """
     Get path to map volume.
     
@@ -163,27 +163,57 @@ def get_mapVol_pth(root, sub, ses, feature, space="nativepro"):
         root: root directory to micapipe output
         sub: subject ID (no `sub-` prefix)
         ses: session ID (with leading zero if applicable; no `ses-` prefix)
+        study: study name (e.g., "3T", "7T")
         feature: type of map to retrieve (e.g., "T1map", "FLAIR", "ADC", "FA")
             File naming pattern:
                 T1map: map-T1
                 FLAIR: map-flair
                 ADC: DTI_map-ADC
                 FA: DTI_map-FA
+        raw: whether to get raw volume. If false, then get micapipe generated map
         space: space of the map (default is "nativepro")
 
     output:
         Path to the map file in nativepro space.
     """
     feature = feature.upper()
-    if feature == "T1MAP": mtrc = "map-T1map"
-    elif feature == "FLAIR": mtrc = "map-flair"
-    elif feature == "ADC": mtrc = "model-DTI_map-ADC"
-    elif feature == "FA": mtrc = "model-DTI_map-FA"
-    else:
-        raise ValueError(f"[get_vol_path] Invalid metric: {feature}. Choose from 'T1map', 'FLAIR', 'ADC', or 'FA'.")
-
-    return f"{root}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_space-{space}_{mtrc}.nii.gz"
     
+    if raw:
+        if feature == "T1MAP":           
+            if study == "7T":
+                img = "acq-05mm_T1map"
+            elif study == "3T":
+                img = 'T1map'
+            else:
+                img = 'T1map'
+        elif feature == "FLAIR": 
+            img = "FLAIR"
+        elif feature == "THICKNESS" or feature == "T1W": 
+            if study == "7T":
+                img = "UNIT1"
+            elif study == "3T":
+                img = 'T1w'
+            else:
+                img = 'T1w'
+        if feature == "ADC" or feature == "FA":
+            print("[get_mapVol_pth] WARNING: Diffusion raw volumes not yet implemented. Skipping.")
+            return None
+        pth = f"{root}/sub-{sub}/ses-{ses}/anat/sub-{sub}_ses-{ses}_{img}.nii.gz"
+    else:
+        if feature == 'T1W':
+            pth = f"{root}/sub-{sub}/ses-{ses}/anat/sub-{sub}_ses-{ses}_space-{space}_T1w.nii.gz"
+        else:
+            if feature == "T1MAP": mtrc = "map-T1map"
+            elif feature == "FLAIR": mtrc = "map-flair"
+            elif feature == "ADC": mtrc = "model-DTI_map-ADC"
+            elif feature == "FA": mtrc = "model-DTI_map-FA"
+            else:
+                raise ValueError(f"[get_mapVol_pth] Invalid metric: {feature}. Choose from 'T1map', 'FLAIR', 'ADC', or 'FA'.")
+            pth = f"{root}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_space-{space}_{mtrc}.nii.gz"
+
+    return pth
+
+
 def get_map_pth(root, deriv_fldr, sub, ses, feature, label="midthickness", surf="fsLR-5k", space="nativepro", hemi="LR", check_pth=True,silence=True):
     """
     Get the path to the surface data for a given subject and session.
@@ -365,6 +395,29 @@ def create_dir(dir_path, verbose=False):
         if verbose:
             print(f"\t[create_dir] Directory at path `{dir_path}` exists. Skipping creation.")    
     return
+
+def get_RawVolumeNames(features):
+    """
+    from list of features, determine the raw volumes to check for QC
+    NOTE. To implement diffusion scans
+
+    Input:
+        features (list): list of features to be included
+    
+    Output:
+        vol_names (list): list of raw volume names to check for QC
+    """
+    vol_names = []
+    if 'thickness' in features:
+        vol_names = ['T1w']
+    if 'T1map' in features:
+        vol_names.append('T1map')
+    if 'flair' in features:
+        vol_names.append('flair')
+    if 'FA' in features or 'ADC' in features:
+        print("[get_RawVolumeNames] WARNING: Diffusion scans not yet implemented in get_RawVolumeNames function. Not including in volume names.")
+
+    return list(set(vol_names)) # return unique names only
 
 def get_rawvol_pth(root, sub, ses, ft):
     """
