@@ -479,6 +479,25 @@ def checkRawPth(root, sub, ses, ft, return_names=False):
         if return_names: return None
         else: return False
 
+def appendSeries(series, df, match_on):
+            """
+            Append a series to a df matching on provided keys.
+
+            Input:
+                series: pd.Series to append
+                df: pd.DataFrame to append to
+                
+                One of either below must be defined:
+                match_on: list of columns to match on
+                idx_seriesCol: optional, index of the series to match on if not the series index
+            """
+            import pandas as pd
+
+            df_s = pd.DataFrame([series])
+            df_out = df.merge(df_s, on=match_on, how='outer')
+
+            return df_out 
+
 def idToMap(df_demo, studies, dict_demo, specs, 
             save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
             verbose=False):
@@ -517,6 +536,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
     import os
     import datetime
     import logging
+    
 
     # Prepare log file path
     if save_pth is None:
@@ -552,12 +572,14 @@ def idToMap(df_demo, studies, dict_demo, specs,
     # Log the start of the function
     logger.info("Log started for winComp function.")
 
+    out_pth = ""
+
     try:
         logger.info(f"[idToMap] Saving log to: {log_file_path}")
         start_time = datetime.datetime.now()
         print(f"\tStart time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}.")
         logger.info(f"Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.\nStart time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"\tParameters:\tspecs:{print_dict(dict = specs, return_txt=True)}")
+        logger.info(f"\tParameters:\tspecs:{specs}")
         logger.info(f"\tNumber of rows to process: {df_demo.shape[0]}")
         
         def ctx_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
@@ -565,12 +587,15 @@ def idToMap(df_demo, studies, dict_demo, specs,
             Get or compute cortical smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
             """
             import os
+            import pandas as pd
 
             print(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
             root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
             study_code = study['study']
 
             skip_L, skip_R = False, False
+           
+            pths_series = pd.Series({'': }, dtype="object") # Series object to hold paths. Prevents excessive editing of df which leads to defragmentation.
 
             # Ø. Declare output names and final file of interest paths
             if ft == "thickness":
@@ -583,112 +608,128 @@ def idToMap(df_demo, studies, dict_demo, specs,
             pth_map_unsmth_L = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_L_filename}.func.gii"
             pth_map_unsmth_R = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_R_filename}.func.gii"
             
-            out_pth_L  = os.path.join(
+            pth_map_smth_L  = os.path.join(
                 out_dir,
                 f"sub-{sub}_ses-{ses}_ctx_{out_pth_L_filename}_smth-{smth}mm.func.gii",
             )
 
-            out_pth_R = os.path.join(
+            pth_map_smth_R = os.path.join(
                 out_dir,
                 f"sub-{sub}_ses-{ses}_ctx_{out_pth_R_filename}_smth-{smth}mm.func.gii",
             )
             
-            col_base_L = os.path.basename(out_pth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
-            col_base_R = os.path.basename(out_pth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
+            # Determine appropriate col name
+            col_smth_L = os.path.basename(pth_map_smth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
+            col_smth_R = os.path.basename(pth_map_smth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             
-            # Replace smoothing with appropriate suffix
-            col_unsmth_L = col_base_L.replace(f"_smth-{smth}mm", "_unsmth")
-            col_unsmth_R = col_base_R.replace(f"_smth-{smth}mm", "_unsmth")
+            # Remove smoothing suffix for path to unsmoothed maps
+            col_unsmth_L = col_smth_L.replace(f"_smth-{smth}mm", "_unsmth")
+            col_unsmth_R = col_smth_R.replace(f"_smth-{smth}mm", "_unsmth")
 
-            if chk_pth(out_pth_L) and chk_pth(out_pth_R): # If smoothed map already exists, do not recompute. Simply add path to df.
+            if chk_pth(pth_map_smth_L) and chk_pth(pth_map_smth_R): # If smoothed map already exists, do not recompute. Simply add path to df.
                 if verbose:
-                    print(f"\t\tSmoothed maps exists, adding to df: {out_pth_L}\t{out_pth_R}\n")
+                    print(f"\t\tSmoothed maps exists: {pth_map_smth_L}\t{pth_map_smth_R}\n")
                 
-                # Add paths to unsmoothed maps
-                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
-                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
-                
-                # Add paths to smoothed maps
-                df.loc[idx, col_base_L] = out_pth_L
-                df.loc[idx, col_base_R] = out_pth_R
+                pths_series = pd.concat([pths_series, 
+                                        pd.Series({col_unsmth_L: pth_map_unsmth_L, 
+                                                   col_unsmth_R: pth_map_unsmth_R, 
+                                                   col_smth_L: pth_map_smth_L, 
+                                                   col_smth_R: pth_map_smth_R})])
+                # TODO. append the series to the main df at the index idx
                 return df
-            elif chk_pth(out_pth_L):
+            elif chk_pth(pth_map_smth_L):
                 if verbose:
-                    logger.info(f"\t\tSmoothed L map exists, adding path to df:\t\t{out_pth_L}")
-                
-                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
-                df.loc[idx, col_base_L] = out_pth_L
+                    logger.info(f"\t\tSmoothed L map exists :\t\t{pth_map_smth_L}")
+
+                pths_series = pd.concat([pths_series,
+                                        pd.Series({col_unsmth_L: pth_map_unsmth_L, 
+                                                   col_smth_L: pth_map_smth_L})])
                 skip_L = True
-            elif chk_pth(out_pth_R):
+            elif chk_pth(pth_map_smth_R):
                 if verbose:
-                    logger.info(f"\t\tSmoothed R map exists, adding path to df:\t\t{out_pth_R}")
-                
-                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
-                df.loc[idx, col_base_R] = out_pth_R
+                    logger.info(f"\t\tSmoothed R map exists, adding path to df:\t\t{pth_map_smth_R}")
+
+                pths_series = pd.concat([pths_series,
+                                        pd.Series({col_unsmth_R: pth_map_unsmth_R, 
+                                                   col_smth_R: pth_map_smth_R})])
+
                 skip_R = True
+            else: # perform smoothing with steps below
+                pass
 
             # A. Search for unsmoothed map
             if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R): # both unsmoothed maps mising
                 
                 if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     
-                    dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
-                    pth_map_unsmth_L, pth_map_unsmth_R = "NA: NO RAWDATA", "NA: NO RAWDATA"
+                    dir_raw = f" {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} "
+                    pth_error = "NA: NO RAWDATA"
                     logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                    
-                else: # Must be micapipe problem if raw data exists
+                else: # If raw data exists and unsmoothed maps don't exist, must be processing problem (eg., not yet micapipe processed or failed processing) 
                     
-                    dir_surf = " ( " + os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) + " ) " if pth_map_unsmth_L and pth_map_unsmth_R else "" # Find the common directory of both pth_map_unsmth_L and pth_map_unsmth_R
-                    pth_map_unsmth_L, pth_map_unsmth_R = "NA: MISSING MP PROCESSING (unsmoothed map)", "NA: MISSING MP PROCESSING (unsmoothed map)"
-                    c(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
-                    
-                df.loc[idx, col_base_L] = pth_map_unsmth_L
-                df.loc[idx, col_base_R] = pth_map_unsmth_R
+                    dir_surf = os.path.commonpath([pth_map_unsmth_L, pth_map_unsmth_R]) if pth_map_unsmth_L and pth_map_unsmth_R else "" # Find the common directory of both pth_map_unsmth_L and pth_map_unsmth_R
+                    pth_error = "NA: MISSING MP PROCESSING (unsmoothed map)"
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
+                
+                pths_series = pd.concat([pths_series,
+                                        pd.Series({col_unsmth_L: pth_error, 
+                                                   col_unsmth_R: pth_error,
+                                                   col_smth_L: pth_error,
+                                                   col_smth_R: pth_error})])
+                # TODO. append the series to the main df at the index idx
                 return df
             
             elif not chk_pth(pth_map_unsmth_L): # missing L hemi only
                 
                 if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     
-                    dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
-                    pth_map_unsmth_R = "NA: NO RAWDATA"
-                    logger.warning(f"\t\t[WARctx_mapsNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
+                    dir_raw = f" {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
+                    pth_error = "NA: NO RAWDATA"
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                 
                 else: # Must be micapipe problem if raw data exists
 
                     dir_surf = os.path.basename(pth_map_unsmth_L)
-                    pth_map_unsmth_L = "NA: MISSING MP PROCESSING (unsmoothed map)"
+                    pth_error = "NA: MISSING MP PROCESSING (unsmoothed map)"
                     logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses}  ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
 
                 skip_L = True
-                df.loc[idx, col_base_L] = pth_map_unsmth_L
+                pths_series = pd.concat([pths_series,
+                                        pd.Series({col_unsmth_L: pth_error,
+                                                   col_smth_L: pth_error})])
 
             elif not chk_pth(pth_map_unsmth_R): # missing R hemi only
 
                 if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
-                    dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
-                    pth_map_unsmth_R = "NA: NO RAWDATA"
+                    dir_raw = f" {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} "
+                    pth_error = "NA: NO RAWDATA"
                     logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                     
                 else: # Must be micapipe problem if raw data exists
                     dir_surf = os.path.basename(pth_map_unsmth_R)
-                    pth_map_unsmth_L = "NA: MISSING MP PROCESSING (unsmoothed map)"
+                    pth_error = "NA: MISSING MP PROCESSING (unsmoothed map)"
                     logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses}  ({ft}, {lbl}, {surf}): Hemi-R unsmoothed map MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( {dir_surf} ).\n")
 
                 skip_R = True
-                df.loc[idx, col_base_R] = pth_map_unsmth_R
+                pths_series = pd.concat([pths_series,
+                                        pd.Series({col_unsmth_R: pth_error,
+                                                   col_smth_R: pth_error})])
             
             else: # unsmoothed maps exist for both
                 if verbose:
                     logger.info(f"\t\tUnsmoothed maps:\t{pth_map_unsmth_L}\t{pth_map_unsmth_R}")
+                pths_series = pd.concat([pths_series,
+                                        pd.Series({col_unsmth_L: pth_map_unsmth_L, 
+                                                   col_unsmth_R: pth_map_unsmth_R})])
             
-            # add path to unsmoothed maps to df
+            # add unsmoothed maps paths to df
             if not skip_L:
-                df.loc[idx, col_unsmth_L] = pth_map_unsmth_L
                 logger.info(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
+                pths_series = pths_series.append(pd.Series({col_unsmth_L: pth_map_unsmth_L}))
             if not skip_R:
-                df.loc[idx, col_unsmth_R] = pth_map_unsmth_R
-                logger.info(f"\t\tAdded R unsmoothed path: {pth_map_unsmth_R}")
+                logger.info(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
+                pths_series = pths_series.append(pd.Series({col_unsmth_R: pth_map_unsmth_R}))
 
             # B. Smooth map and save to project directory
             surf_L, surf_R = get_surf_pth( # Get surface .func files
@@ -698,49 +739,61 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 surf=surf,
                 lbl=lbl
             )
-            
+
             if not chk_pth(surf_L) and not chk_pth(surf_R) and not skip_L and not skip_R: # check that surfaces exist
                 dir_surf = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
                 logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface not found. Skipping. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
-                surf_L, surf_R = "NA: MISSING MP PROCESSING (surface)", "MISSING MP PROCESSING (surface)"
+                surf_error = "NA: MISSING MP PROCESSING (surface)"
+                pths_series = pths_series.append(pd.Series({col_unsmth_L: surf_error, 
+                                                            col_smth_L: surf_error,
+                                                            col_unsmth_R: surf_error,
+                                                            col_smth_R: surf_error}))
+                # TODO. append the series to the main df at the index idx
                 return df
+            
             elif not chk_pth(surf_L):
                 logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface missing for hemi-L. Check micapipe processing ( {os.path.dirname(surf_L)} ). Skipping smoothing for this hemi. Expected: {surf_L}")
-                surf_L = "NA: MISSING MP PROCESSING (surface)"
-                
+                surf_error = "NA: MISSING MP PROCESSING (surface)"    
                 skip_L = True
-                df.loc[idx, col_base_L] = surf_L
+                pths_series = pths_series.append(pd.Series({col_unsmth_L: surf_error,
+                                                            col_smth_L: surf_error}))
             elif not chk_pth(surf_R):
                 logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface missing for hemi-R. Check micapipe processing ( {os.path.dirname(surf_R)} ). Skipping smoothing for this hemi. Expected: {surf_R}")
-                surf_R = "NA: MISSING MP PROCESSING (surface)"
-                
+                surf_error = "NA: MISSING MP PROCESSING (surface)"
                 skip_R = True
-                df.loc[idx, col_base_R] = surf_R
+                pths_series = pths_series.append(pd.Series({col_unsmth_R: surf_error,
+                                                            col_smth_R: surf_error}))
+
             else:
                 if verbose:
                     logger.info(f"\t\tSurfaces:\t{surf_L}\t{surf_R}")
 
             # ii. Smooth
             if not skip_L:
-                pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, out_pth_L, kernel=smth, verbose=False)
-            else: pth_map_smth_L = None
+                pth_map_smth_L = smooth_map(surf_L, pth_map_unsmth_L, pth_map_smth_L, kernel=smth, verbose=False)
+
+                if pth_map_smth_L is None:
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Smoothing failed for hemi-L. Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_L}, kernel: {smth}\n")
+                    surf_smooth_error = f"NA: SMOOTHING FAILED. Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_L}, kernel: {smth}"
+                    pths_series = pths_series.append(pd.Series({col_smth_L: surf_smooth_error}))
+                else:
+                    if verbose:
+                        logger.info(f"\t\tSmooth map L: {pth_map_smth_L}")
+                    pths_series = pths_series.append(pd.Series({col_smth_L: pth_map_smth_L}))
             
             if not skip_R:
-                pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_R, out_pth_R, kernel=smth, verbose=False)
-            else:
-                pth_map_smth_R = None
-
-            if pth_map_smth_L is None or pth_map_smth_R is None and not skip_L and not skip_R:
-                logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Smoothing failed.\n")
-                pth_map_smth_L, pth_map_smth_R = f"NA: SMOOTHING FAILED. Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}", f"NA: SMOOTHING FAILED.  Surf: {surf_L}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}"
-            else:
-                # Add paths to DataFrame
-                if verbose:
-                    logger.info(f"\t\tAdding to df: {pth_map_smth_L}\t{pth_map_smth_R}\n")
-                    
-                df.loc[idx, col_base_L] = pth_map_smth_L
-                df.loc[idx, col_base_R] = pth_map_smth_R
-
+                pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_R, pth_map_smth_R, kernel=smth, verbose=False)
+                
+                if pth_map_smth_R is None:
+                    logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Smoothing failed for hemi-R. Surf: {surf_R}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}\n")
+                    surf_smooth_error = f"NA: SMOOTHING FAILED. Surf: {surf_R}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}"
+                    pths_series = pths_series.append(pd.Series({col_smth_R: surf_smooth_error}))
+                else:
+                    if verbose:
+                        logger.info(f"\t\tSmooth map R: {pth_map_smth_R}")
+                    pths_series = pths_series.append(pd.Series({col_smth_R: pth_map_smth_R}))
+            
+            # TODO. append the series to the main df at the index idx
             return df
 
         def hipp_maps(out_dir, study, df, idx, sub, ses, surf, ft, smth, lbl, verbose=False):
@@ -748,6 +801,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
             Get or compute hippocampal smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
             """
             import os 
+            import pandas as pd
             
             logger.info(f"\t{ft}, {lbl}, {surf}, smth-{smth}mm")
             root_mp = f"{study['dir_root']}{study['dir_deriv']}{study['dir_mp']}"
@@ -888,7 +942,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 pth_map_unsmth_L, pth_map_unsmth_R = get_surf_pth(root=root_hu, sub=sub, ses=ses, lbl="thickness", surf=surf, space="T1w")
             
             else: # generate feature map from volume and hippunfold surface
-                vol_pth = get_mapVol_pth(root=root_mp, sub=sub, ses=ses, feature=ft) # get the volume path from micapipe outputs
+                vol_pth = get_mapVol_pth(root=root_mp, sub=sub, ses=ses, study = study_code, feature=ft) # get the volume path from micapipe outputs
 
                 if chk_pth(vol_pth): # Check that volume exists.
                     
@@ -1069,12 +1123,14 @@ def idToMap(df_demo, studies, dict_demo, specs,
             logger.info(f"[idToMap] DataFrame with map paths saved to {out_pth}")
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
+        print(f"[idToMap] An error occurred: {e}. Check log file for details: {log_file_path}")
     
     end_time = datetime.datetime.now()
-    elapsed = end_time - start_time
-    mins, secs = divmod(elapsed, 60)
-    logger.info(f"\n[idToMap] idToMap completed at {end_time.strftime('%d-%b-%Y %H:%M:%S')} (run duration: {int(mins)}m:{int(secs):02d}s).")
-    print(f"\n[idToMap] idToMap completed at {end_time.strftime('%d-%b-%Y %H:%M:%S')} (run duration: {int(mins)}m:{int(secs):02d}s).")
+    duration = end_time - start_time
+    mins, secs = divmod(int(duration.total_seconds()), 60) 
+    logger.info(f"\n[idToMap] idToMap completed at {end_time.strftime('%d-%b-%Y %H:%M:%S')} (run duration: {mins:02d}:{secs:02d} (mm:ss)).")
+    print(f"\n[idToMap] idToMap completed at {end_time.strftime('%d-%b-%Y %H:%M:%S')} (run duration: {mins:02d}:{secs:02d} (mm:ss)).")
+    
     return df_demo, out_pth, log_file_path
 
 
@@ -3372,19 +3428,19 @@ def print_dict(dict, df_print=False, idx=None, verbose=False, return_txt=False):
     if idx is not None:
         if verbose:
             print(f"\n Printing the following {len(idx)} indices: {idx}")
+            print(f"\tKeys: {list(d.keys())}")
         for i in idx:
             d = dict[i]
             print(f"\n[{i}]")
-            print(f"\tKeys: {list(d.keys())}")
             for k, v in d.items():
-                mainPrint(k,v, df_print)
+                mainPrint(k, v, df_print)
     else:
         print(f"\n Dict list length ({len(dict)} items)")
+        if verbose:
+            print(f"\tKeys: {list(d.keys())}")
         for i, item in enumerate(dict):
             d = item
             print(f"\n[{i}]")
-            print(f"\tKeys: {list(d.keys())}")
-
             for k, v in d.items():
                 mainPrint(k,v, df_print)
     
