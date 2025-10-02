@@ -4130,7 +4130,7 @@ def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=
     """
     import pandas as pd
     
-    hemi_col = 'LHemi' # could also be SHemi (for short name)
+    hemi_col = 'SHemi' # could also be SHemi (for short name)
     
     if surf == 'fsLR-32k':
         glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
