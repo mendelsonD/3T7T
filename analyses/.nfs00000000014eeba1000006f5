@@ -1,0 +1,1649 @@
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/code/analyses/02a_TEST_log_02Oct2025-082352.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:23:52
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 10.0% subset of demographics (20 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 19...
+
+7T sub-PNC019 ses-02
+An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1107, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 641, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+2025-10-02 08:23:52 - ERROR - An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1107, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 641, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:23:52 (run duration: 00:00 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_TEST_log_02Oct2025-082504.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:25:04
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 10.0% subset of demographics (20 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 19...
+
+3T sub-PX071 ses-01
+An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1107, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 641, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+2025-10-02 08:25:04 - ERROR - An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1107, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 641, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:25:04 (run duration: 00:00 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_TEST_log_02Oct2025-082754.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:27:54
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 10.0% subset of demographics (20 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 19...
+
+7T sub-PNC018 ses-a1
+An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1108, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 642, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+2025-10-02 08:27:54 - ERROR - An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1108, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 642, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:27:54 (run duration: 00:00 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_DEBUG_log_02Oct2025-082926.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:29:26
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 10.0% subset of demographics (20 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 19...
+
+7T sub-PNC024 ses-a2
+An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1110, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 644, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+2025-10-02 08:29:26 - ERROR - An error occurred: unhashable type: 'dict'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1110, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 644, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 809, in get_result
+    join_index, left_indexer, right_indexer = self._get_join_info()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1065, in _get_join_info
+    (left_indexer, right_indexer) = self._get_join_indexers()
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1038, in _get_join_indexers
+    return get_join_indexers(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1665, in get_join_indexers
+    zipped = zip(*mapped)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 1662, in <genexpr>
+    _factorize_keys(left_keys[n], right_keys[n], sort=sort, how=how)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2443, in _factorize_keys
+    rlab = rizer.factorize(rk)  # type: ignore[arg-type]
+  File "pandas/_libs/hashtable.pyx", line 122, in pandas._libs.hashtable.ObjectFactorizer.factorize
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7288, in pandas._libs.hashtable.PyObjectHashTable.get_labels
+  File "pandas/_libs/hashtable_class_helper.pxi", line 7194, in pandas._libs.hashtable.PyObjectHashTable._unique
+TypeError: unhashable type: 'dict'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:29:26 (run duration: 00:00 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_DEBUG_log_02Oct2025-082942.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:29:42
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 10.0% subset of demographics (20 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 19...
+
+3T sub-PX050 ses-03
+An error occurred: Passing 'suffixes' which cause duplicate columns {'ctx_hemi-R_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-R_surf-fsLR-5k_label-thickness_unsmth_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_unsmth_x'} is not allowed.
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1110, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 644, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 811, in get_result
+    result = self._reindex_and_concat(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 763, in _reindex_and_concat
+    llabels, rlabels = _items_overlap_with_suffix(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2640, in _items_overlap_with_suffix
+    raise MergeError(
+pandas.errors.MergeError: Passing 'suffixes' which cause duplicate columns {'ctx_hemi-R_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-R_surf-fsLR-5k_label-thickness_unsmth_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_unsmth_x'} is not allowed.
+2025-10-02 08:29:43 - ERROR - An error occurred: Passing 'suffixes' which cause duplicate columns {'ctx_hemi-R_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-R_surf-fsLR-5k_label-thickness_unsmth_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_unsmth_x'} is not allowed.
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1110, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 644, in ctx_maps
+    df_out = appendSeries(pths_series, df, match_on=match_on)
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 497, in appendSeries
+    df_out = df.merge(df_s, on=match_on, how='outer')
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/frame.py", line 9843, in merge
+    return merge(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 162, in merge
+    return op.get_result(copy=copy)
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 811, in get_result
+    result = self._reindex_and_concat(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 763, in _reindex_and_concat
+    llabels, rlabels = _items_overlap_with_suffix(
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/reshape/merge.py", line 2640, in _items_overlap_with_suffix
+    raise MergeError(
+pandas.errors.MergeError: Passing 'suffixes' which cause duplicate columns {'ctx_hemi-R_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-R_surf-fsLR-5k_label-thickness_unsmth_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_smth-5mm_x', 'ctx_hemi-L_surf-fsLR-5k_label-thickness_unsmth_x'} is not allowed.
+
+[idToMap] idToMap completed at 02-Oct-2025 08:29:43 (run duration: 00:00 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_DEBUG_log_02Oct2025-084600.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:46:00
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 2.5% subset of demographics (5 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 4...
+
+7T sub-PNC022 ses-03
+		[ctx_maps] 7T PNC022-03 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+		[ctx_maps] 7T PNC022-03 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+		[ctx_maps] 7T PNC022-03 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+		[ctx_maps] 7T PNC022-03 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC022/ses-03/maps ).
+
+		[ctx_maps] 7T PNC022-03 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:04 - WARNING - 		[ctx_maps] 7T PNC022-03 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC022-03 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:05 - WARNING - 		[ctx_maps] 7T PNC022-03 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC022/ses-03  ). Process with micapipe once resolved.
+
+[idToMap] 1 of 4...
+
+3T sub-PX183 ses-01
+		[ctx_maps] 3T PX183-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:06 - WARNING - 		[ctx_maps] 3T PX183-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:07 - WARNING - 		[ctx_maps] 3T PX183-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:07 - WARNING - 		[ctx_maps] 3T PX183-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:07 - WARNING - 		[ctx_maps] 3T PX183-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:07 - WARNING - 		[ctx_maps] 3T PX183-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:07 - WARNING - 		[ctx_maps] 3T PX183-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+		[ctx_maps] 3T PX183-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+2025-10-02 08:46:07 - WARNING - 		[ctx_maps] 3T PX183-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX183/ses-01/maps ).
+
+[idToMap] 2 of 4...
+
+7T sub-PNE043 ses-a1
+		[ctx_maps] 7T PNE043-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:08 - WARNING - 		[ctx_maps] 7T PNE043-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE043-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+2025-10-02 08:46:09 - WARNING - 		[ctx_maps] 7T PNE043-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE043/ses-a1/maps ).
+
+[idToMap] 3 of 4...
+
+7T sub-PNC006 ses-01
+		[ctx_maps] 7T PNC006-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:46:10 - WARNING - 		[ctx_maps] 7T PNC006-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+		[ctx_maps] 7T PNC006-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+2025-10-02 08:46:11 - WARNING - 		[ctx_maps] 7T PNC006-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-01/maps ).
+
+[idToMap] 4 of 4...
+
+3T sub-HC013 ses-01
+		[ctx_maps] 3T HC013-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC013/ses-01/maps ).
+
+2025-10-02 08:46:12 - WARNING - 		[ctx_maps] 3T HC013-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC013/ses-01/maps ).
+
+		Unsmoothed maps:	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC013/ses-01/maps/sub-HC013_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC013/ses-01/maps/sub-HC013_ses-01_hemi-R_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		Added L unsmoothed path: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC013/ses-01/maps/sub-HC013_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+An error occurred: 'Series' object has no attribute 'append'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1118, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 745, in ctx_maps
+    pths_series = pths_series.append(pd.Series({col_unsmth_L: pth_map_unsmth_L}))
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/generic.py", line 5989, in __getattr__
+    return object.__getattribute__(self, name)
+AttributeError: 'Series' object has no attribute 'append'
+2025-10-02 08:46:12 - ERROR - An error occurred: 'Series' object has no attribute 'append'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1118, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 745, in ctx_maps
+    pths_series = pths_series.append(pd.Series({col_unsmth_L: pth_map_unsmth_L}))
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/generic.py", line 5989, in __getattr__
+    return object.__getattribute__(self, name)
+AttributeError: 'Series' object has no attribute 'append'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:46:12 (run duration: 00:12 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_DEBUG_log_02Oct2025-084754.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:47:54
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 2.5% subset of demographics (5 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 4...
+
+7T sub-PNC011 ses-01
+		[ctx_maps] 7T PNC011-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:55 - WARNING - 		[ctx_maps] 7T PNC011-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:55 - WARNING - 		[ctx_maps] 7T PNC011-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:55 - WARNING - 		[ctx_maps] 7T PNC011-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:55 - WARNING - 		[ctx_maps] 7T PNC011-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:55 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:55 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC011/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC011-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:56 - WARNING - 		[ctx_maps] 7T PNC011-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+		[ctx_maps] 7T PNC011-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+2025-10-02 08:47:57 - WARNING - 		[ctx_maps] 7T PNC011-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC011/ses-01/maps ).
+
+[idToMap] 1 of 4...
+
+7T sub-PNC019 ses-04
+		[ctx_maps] 7T PNC019-04 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+2025-10-02 08:47:57 - WARNING - 		[ctx_maps] 7T PNC019-04 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+		[ctx_maps] 7T PNC019-04 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+		[ctx_maps] 7T PNC019-04 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+		[ctx_maps] 7T PNC019-04 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC019/ses-04/maps ).
+
+		[ctx_maps] 7T PNC019-04 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:58 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC019-04 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+2025-10-02 08:47:59 - WARNING - 		[ctx_maps] 7T PNC019-04 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC019/ses-04  ). Process with micapipe once resolved.
+
+[idToMap] 2 of 4...
+
+3T sub-PX050 ses-01
+		[ctx_maps] 3T PX050-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/maps ).
+
+2025-10-02 08:48:00 - WARNING - 		[ctx_maps] 3T PX050-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/maps ).
+
+		Unsmoothed maps:	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/maps/sub-PX050_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/maps/sub-PX050_ses-01_hemi-R_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		Added L unsmoothed path: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/maps/sub-PX050_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		Added L unsmoothed path: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/maps/sub-PX050_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		[ctx_maps] 3T PX050-01 (T1map, swm1.0mm, fsLR-5k): Cortical nativepro surface not found. Skipping. Check micapipe processing ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/surf ). Missing: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/surf/sub-PX050_ses-01_hemi-L_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/surf/sub-PX050_ses-01_hemi-R_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii
+
+2025-10-02 08:48:00 - WARNING - 		[ctx_maps] 3T PX050-01 (T1map, swm1.0mm, fsLR-5k): Cortical nativepro surface not found. Skipping. Check micapipe processing ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/surf ). Missing: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/surf/sub-PX050_ses-01_hemi-L_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX050/ses-01/surf/sub-PX050_ses-01_hemi-R_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii
+
+An error occurred: 'Series' object has no attribute 'append'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1118, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 763, in ctx_maps
+    pths_series = pths_series.append(pd.Series({col_unsmth_L: surf_error,
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/generic.py", line 5989, in __getattr__
+    return object.__getattribute__(self, name)
+AttributeError: 'Series' object has no attribute 'append'
+2025-10-02 08:48:00 - ERROR - An error occurred: 'Series' object has no attribute 'append'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1118, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 763, in ctx_maps
+    pths_series = pths_series.append(pd.Series({col_unsmth_L: surf_error,
+  File "/host/verges/tank/data/daniel/software/miniconda3/envs/tTsT_py38/lib/python3.8/site-packages/pandas/core/generic.py", line 5989, in __getattr__
+    return object.__getattribute__(self, name)
+AttributeError: 'Series' object has no attribute 'append'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:48:00 (run duration: 00:05 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_DEBUG_log_02Oct2025-085014.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:50:14
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 2.5% subset of demographics (5 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 4...
+
+7T sub-PNC025 ses-a1
+		[ctx_maps] 7T PNC025-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:15 - WARNING - 		[ctx_maps] 7T PNC025-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC025-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+2025-10-02 08:50:16 - WARNING - 		[ctx_maps] 7T PNC025-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC025/ses-a1/maps ).
+
+[idToMap] 1 of 4...
+
+7T sub-PNC006 ses-02
+		[ctx_maps] 7T PNC006-02 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:17 - WARNING - 		[ctx_maps] 7T PNC006-02 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC006/ses-02  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC006-02 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+		[ctx_maps] 7T PNC006-02 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+2025-10-02 08:50:18 - WARNING - 		[ctx_maps] 7T PNC006-02 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC006/ses-02/maps ).
+
+[idToMap] 2 of 4...
+
+3T sub-PX242 ses-01
+		[ctx_maps] 3T PX242-01 (thickness, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (thickness, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (thickness, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:19 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:20 - WARNING - 		[ctx_maps] 3T PX242-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:21 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:22 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:22 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 3T PX242-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:50:22 - WARNING - 		[ctx_maps] 3T PX242-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_MICs/rawdata/sub-PX242/ses-01  ). Process with micapipe once resolved.
+
+[idToMap] 3 of 4...
+
+3T sub-PX168 ses-01
+		[ctx_maps] 3T PX168-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/maps ).
+
+2025-10-02 08:50:23 - WARNING - 		[ctx_maps] 3T PX168-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/maps ).
+
+		Unsmoothed maps:	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/maps/sub-PX168_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/maps/sub-PX168_ses-01_hemi-R_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		Added L unsmoothed path: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/maps/sub-PX168_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		Added L unsmoothed path: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/maps/sub-PX168_ses-01_hemi-L_surf-fsLR-5k_label-swm1.0mm_T1map.func.gii
+		[ctx_maps] 3T PX168-01 (T1map, swm1.0mm, fsLR-5k): Cortical nativepro surface not found. Skipping. Check micapipe processing ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/surf ). Missing: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/surf/sub-PX168_ses-01_hemi-L_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/surf/sub-PX168_ses-01_hemi-R_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii
+
+2025-10-02 08:50:23 - WARNING - 		[ctx_maps] 3T PX168-01 (T1map, swm1.0mm, fsLR-5k): Cortical nativepro surface not found. Skipping. Check micapipe processing ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/surf ). Missing: /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/surf/sub-PX168_ses-01_hemi-L_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii	/data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-PX168/ses-01/surf/sub-PX168_ses-01_hemi-R_space-nativepro_surf-fsLR-5k_label-swm1.0mm.surf.gii
+
+An error occurred: module 'pandas' has no attribute 'contact'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1119, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 763, in ctx_maps
+    pths_series = pd.contact([pths_series, pd.Series({col_unsmth_L: surf_error,
+AttributeError: module 'pandas' has no attribute 'contact'
+2025-10-02 08:50:23 - ERROR - An error occurred: module 'pandas' has no attribute 'contact'
+Traceback (most recent call last):
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 1119, in idToMap
+    df_demo = ctx_maps(out_dir=out_dir, study=study_item, df=df_demo,
+  File "/host/verges/tank/data/daniel/3T7T/z/code/analyses/tTsTGrpUtils.py", line 763, in ctx_maps
+    pths_series = pd.contact([pths_series, pd.Series({col_unsmth_L: surf_error,
+AttributeError: module 'pandas' has no attribute 'contact'
+
+[idToMap] idToMap completed at 02-Oct-2025 08:50:23 (run duration: 00:09 (mm:ss)).
+Log started for winComp function.
+[idToMap] Saving log to: /host/verges/tank/data/daniel/3T7T/z/outputs/02a_DEBUG_log_02Oct2025-085120.txt
+Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe.
+Start time: 2025-10-02 08:51:20
+	Parameters:	specs:{'prjDir_root': '/host/verges/tank/data/daniel/3T7T/z', 'prjDir_outs': '/outputs', 'prjDir_out_stats': '/outputs/stats', 'prjDir_out_figs': '/outputs/figures', 'prjDir_maps': '/maps', 'prjDir_dictLists': '/maps/dictLists', 'prjDir_mapPths': '/output/paths', 'ctx': True, 'surf_ctx': ['fsLR-5k'], 'parcellate': 'glasser', 'lbl_ctx': ['midthickness', 'pial', 'white', 'swm1.0mm'], 'ft_ctx': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_ctx': [5, 10], 'hipp': False, 'surf_hipp': ['0p5mm'], 'lbl_hipp': ['midthickness', 'inner', 'outer'], 'ft_hipp': ['thickness', 'T1map', 'flair', 'ADC', 'FA'], 'smth_hipp': [2, 5], 'col_grp': 'grp_detailed', 'z': True, 'w': True, 'covars': ['age', 'sex'], 'ipsiTo': 'L', 'newQC': False}
+	Number of rows to process: 200
+[TEST MODE] Running on random 2.5% subset of demographics (5 rows).
+	 Finding/computing smoothed maps for provided surface, label, feature and smoothing combinations. Adding paths to dataframe...
+[idToMap] 0 of 4...
+
+7T sub-PNE018 ses-a1
+		[ctx_maps] 7T PNE018-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:21 - WARNING - 		[ctx_maps] 7T PNE018-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:21 - WARNING - 		[ctx_maps] 7T PNE018-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:21 - WARNING - 		[ctx_maps] 7T PNE018-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:21 - WARNING - 		[ctx_maps] 7T PNE018-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:21 - WARNING - 		[ctx_maps] 7T PNE018-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:21 - WARNING - 		[ctx_maps] 7T PNE018-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE018-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+2025-10-02 08:51:22 - WARNING - 		[ctx_maps] 7T PNE018-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE018/ses-a1/maps ).
+
+[idToMap] 1 of 4...
+
+7T sub-PNC009 ses-01
+		[ctx_maps] 7T PNC009-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:23 - WARNING - 		[ctx_maps] 7T PNC009-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:23 - WARNING - 		[ctx_maps] 7T PNC009-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:23 - WARNING - 		[ctx_maps] 7T PNC009-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:23 - WARNING - 		[ctx_maps] 7T PNC009-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:23 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, midthickness, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, pial, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, white, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps missing due to MISSING RAW DATA. Check raw data (  /data/mica3/BIDS_PNI/rawdata/sub-PNC009/ses-01  ). Process with micapipe once resolved.
+
+		[ctx_maps] 7T PNC009-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:24 - WARNING - 		[ctx_maps] 7T PNC009-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:25 - WARNING - 		[ctx_maps] 7T PNC009-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:25 - WARNING - 		[ctx_maps] 7T PNC009-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:25 - WARNING - 		[ctx_maps] 7T PNC009-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:25 - WARNING - 		[ctx_maps] 7T PNC009-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+		[ctx_maps] 7T PNC009-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+2025-10-02 08:51:25 - WARNING - 		[ctx_maps] 7T PNC009-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC009/ses-01/maps ).
+
+[idToMap] 2 of 4...
+
+7T sub-PNC038 ses-a1
+		[ctx_maps] 7T PNC038-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:26 - WARNING - 		[ctx_maps] 7T PNC038-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:26 - WARNING - 		[ctx_maps] 7T PNC038-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:26 - WARNING - 		[ctx_maps] 7T PNC038-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:26 - WARNING - 		[ctx_maps] 7T PNC038-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:26 - WARNING - 		[ctx_maps] 7T PNC038-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:26 - WARNING - 		[ctx_maps] 7T PNC038-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:27 - WARNING - 		[ctx_maps] 7T PNC038-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+		[ctx_maps] 7T PNC038-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+2025-10-02 08:51:28 - WARNING - 		[ctx_maps] 7T PNC038-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNC038/ses-a1/maps ).
+
+[idToMap] 3 of 4...
+
+3T sub-HC130 ses-01
+		[ctx_maps] 3T HC130-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:28 - WARNING - 		[ctx_maps] 3T HC130-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:29 - WARNING - 		[ctx_maps] 3T HC130-01 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:30 - WARNING - 		[ctx_maps] 3T HC130-01 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:30 - WARNING - 		[ctx_maps] 3T HC130-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:30 - WARNING - 		[ctx_maps] 3T HC130-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:30 - WARNING - 		[ctx_maps] 3T HC130-01 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+		[ctx_maps] 3T HC130-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+2025-10-02 08:51:30 - WARNING - 		[ctx_maps] 3T HC130-01 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_MICs/derivatives/micapipe_v0.2.0/sub-HC130/ses-01/maps ).
+
+[idToMap] 4 of 4...
+
+7T sub-PNE013 ses-a1
+		[ctx_maps] 7T PNE013-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (T1map, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (T1map, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (flair, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:31 - WARNING - 		[ctx_maps] 7T PNE013-a1 (flair, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (ADC, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (ADC, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (FA, pial, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+		[ctx_maps] 7T PNE013-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+2025-10-02 08:51:32 - WARNING - 		[ctx_maps] 7T PNE013-a1 (FA, swm1.0mm, fsLR-5k): Unsmoothed maps MISSING in MICAPIPE OUTPUTS. Check micapipe outputs ( /data/mica3/BIDS_PNI/derivatives/micapipe_v0.2.0/sub-PNE013/ses-a1/maps ).
+
+[idToMap] DataFrame with map paths saved to /host/verges/tank/data/daniel/3T7T/z/outputs/TEST_TEST_02a_DEBUG_02Oct2025-085132.csv
+
+[idToMap] idToMap completed at 02-Oct-2025 08:51:32 (run duration: 00:11 (mm:ss)).
