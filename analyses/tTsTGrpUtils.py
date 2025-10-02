@@ -2046,6 +2046,7 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
     else:
         return pth_noSmth
 
+
 def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, verbose=False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
@@ -2383,6 +2384,74 @@ def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study'
             print(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items.")
     
     return out_dl
+
+def parcellate_items(dl, df_key_in, parc, region= ['cortex'], parc_lbl=None, verbose=False):
+    """
+    Input:
+        dl [lst]: list of dicts
+            Each dict should contain:
+                'study'
+                'grp'
+                'grp_labels'
+                'label'
+                'feature'
+                'map_pths': pd.DataFrame with columns for subject ID, session, date and map_paths
+                    Assumes map path is missing if either : map_pth
+        df_key_in [str]: name of key holding df to parcellate (should be in form of IDs (rows) by vertex (cols))
+        parc [str]: name of parcellation to apply. Options: 'glasser', <eventually: 'schaefer100'>
+        region [list]: list of region names to apply parcellation. Default: ['cortex']
+        parc_lbl [str]: how to return parcellated index naming. Default = None (allowing default of parcellation function)
+        verbose (bool): whether to print progress and warnings
+    """
+    import datetime
+
+    start_time = datetime.datetime.now()
+    
+    dl_out = [] # initiate output list
+    dl_iterate = dl.copy()
+
+    if parc == 'glasser':
+        parc_name_shrt = "glsr"
+    assert parc in ['glasser'], f"[parcellate_items] Unknown parcellation: {parc}. Currently supported: 'glasser'."
+
+    print(f"{start_time}: Applying `{parc}` parcellation for df `{df_key_in}` in dictionry list of length {len(dl)}.\n\tReturning parcellation naming type: `{parc_name_shrt}`")
+    
+    for idx, item in enumerate(dl_iterate):
+        if verbose:
+            print(f"\t{printItemMetadata(item, return_txt=True)}")
+        
+        if item.get('region', None) not in region:
+            if verbose:
+                print(f"[parcellate_items] Skipping item {idx} with region {item.get('region', None)} not in {region}.")
+            continue
+
+        surf = item['surf']
+        df = item.get(df_key_in, None)
+        
+        if df is None:
+            print(f"[parcellate_items] WARNING. Key {df_key_in} not found in item {idx}. Skipping.")
+            continue
+        if df.shape[0] == 0:
+            print(f"[parcellate_items] WARNING. No data found in item {idx} for key {df_key_in}. Skipping.")
+            continue
+
+        if parc == 'glasser':
+            parc_name_shrt = "glsr"
+            if parc_lbl is None:
+                df_parc = apply_glasser(df=df, surf=surf, addHemiLbl = True)
+            else:
+                df_parc = apply_glasser(df=df, surf=surf, labelType=parc_lbl, addHemiLbl = True)
+        else: # for implementation of other parcellations
+            pass
+
+        item[f'{df_key_in}_parc-{parc_name_shrt}'] = df_parc
+        dl_out.append(item)
+
+    end_time = datetime.datetime.now()
+    elapsed = end_time - start_time
+    print(f"{end_time}: Parcellation complete. Elapsed time: {elapsed}.")
+    return dl_out
+
 
 def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", label="midthickness", hemi="LR", space="nativepro", surf="fsLR-5k"):
     """
@@ -3537,6 +3606,8 @@ def print_dict(dict, df_print=False, idx=None, verbose=False, return_txt=False):
             print(f"\t{k}: {v}")
 
     if idx is not None:
+        if type(idx) is int:
+            idx = [idx]
         if verbose:
             print(f"\n Printing the following {len(idx)} indices: {idx}")
             print(f"\tKeys: {list(d.keys())}")
@@ -4043,7 +4114,7 @@ def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=
             options:
                 - 'glasser_int': integer [0:360] indicating glasser region
                 - 'glasser_name_short': string with short glasser region name (e.g. 'V1', 'V2', etc)
-                - 'glasser_name_long': string with long glasser region name (e.g. 'V1d', 'V1v', etc)
+                - 'glasser_name_long': string with long glasser region name (e.g. 'Primary_Visual_Cortex', 'Second_Visual_Area', etc)
                 - 'lobe': string with lobe name ('Occ', 'Fr', 'Par', 'Temp')
                 - 'lobelong': string with long lobe name ('occipital', 'frontal', 'parietal', 'temporal')
 
@@ -4099,10 +4170,11 @@ def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=
                 else:
                     raise ValueError("[apply_glasser] Invalid ipsiTo value. Choose 'L' or 'R'.")
 
-                renaming_df['hemi'] = renaming_df[hemi_col].replace({ipsi: 'ipsi', contra: 'contra'})
+                renaming_df = renaming_df.copy() # avoid SettingWithCopyWarning
+                renaming_df.loc[:,'hemi'] = renaming_df[hemi_col].replace({ipsi: 'ipsi', contra: 'contra'})
                 hemi_col = 'hemi'
 
-            renaming_df[gd_col] = renaming_df.apply(lambda row: f"{row[gd_col]}_{row[hemi_col]}", axis=1)
+            renaming_df.loc[:,gd_col] = renaming_df.apply(lambda row: f"{row[gd_col]}_{row[hemi_col]}", axis=1)
 
         else:
             renaming_df = glasser_details[['regionIDX', gd_col]] 
