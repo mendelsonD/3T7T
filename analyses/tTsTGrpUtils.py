@@ -4033,45 +4033,83 @@ def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
     df_renamed = df_renamed[sorted_cols]
     return df_renamed
 
-def apply_glasser(df, ipsiTo=None, labelType='glasser_int'):
+def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=None):
     """
     Input:
         df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
             should be fsLR-32k (32492 vertices per hemisphere) 
-        labelType: final label to return. options:
-            - 'glasser_int': integer [0:360] indicating glasser region
-            - 'glasser_str': string with glasser region name
-            - 'glasser_long': string with long glasser region name (e.g. 'V1d', 'V1v', etc)
-            - 'lobe': string with lobe name (e.g. 'frontal', 'parietal', etc)
+        surf: 'fsLR-32k' or 'fsLR-5k'
+        labelType (case insensitive): final label to return. 
+            options:
+                - 'glasser_int': integer [0:360] indicating glasser region
+                - 'glasser_name_short': string with short glasser region name (e.g. 'V1', 'V2', etc)
+                - 'glasser_name_long': string with long glasser region name (e.g. 'V1d', 'V1v', etc)
+                - 'lobe': string with lobe name ('Occ', 'Fr', 'Par', 'Temp')
+                - 'lobelong': string with long lobe name ('occipital', 'frontal', 'parietal', 'temporal')
+
+        addHemiLbl: if True, adds hemisphere label to the output label.
+        ipsiTo: how ipsi/contra is mapped to L/R.
+            if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
+            the hemisphere specified by ipsiTo ('L' or 'R'). If not provided, assumes columns end with '_L' and '_R'.
+        
+        
     Returns:
         df_glasser: mean values per region for the glasser atlas.
        
     """
     import pandas as pd
-
-    glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
-    df_relbl = relabel_vertex_cols(df, ipsiTo) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
+    
+    hemi_col = 'LHemi' # could also be SHemi (for short name)
+    
+    if surf == 'fsLR-32k':
+        glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+    elif surf == 'fsLR-5k':
+        glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_fsLR-5k.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+    else:
+        raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
+    
+    df_relbl = relabel_vertex_cols(df, ipsiTo, n_vertices=df.shape[0]/2) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
     
     df_relbl.columns = glasser_df['glasser'].values[df_relbl.columns.astype(int)]
 
-    if labelType != 'glasser_int':
+    if labelType.lower() != 'glasser_int': # replace region codes with human interpretable strings
         glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser_details.csv")
-        if labelType == 'glasser_str':
-            gd_col  = 'RegionName'
-        elif labelType == 'glasser_long':
-            gd_col = 'regionLongName'
-        elif labelType == 'lobe':
-            gd_col = 'Lobe'
-        elif labelType == 'cortex':
-            gd_col = 'cortex'
-        elif labelType == 'LobeLong':
-            gd_col = 'LobeLong'
-        elif labelType == 'Lobe_hemi':
-            gd_col = 'Lobe_hemi'
-    
+        if labelType.lower() == 'glasser_name_short':
+            gd_col  = 'SName'
+        elif labelType.lower() == 'glasser_name_long':
+            gd_col = 'LName'
+        elif labelType.lower() == 'lobe':
+            gd_col = 'SLobe'
+        elif labelType.lower() == 'longlobe':
+            gd_col = 'LLobe'
+        else:
+            raise ValueError("[apply_glasser] Invalid labelType value. Choose from 'glasser_int', 'glasser_name_short', 'glasser_name_long', 'lobe', or 'lobelong'.")
+
+        if addHemiLbl:
+            
+            renaming_df = glasser_details[['regionIDX', gd_col, hemi_col]] 
+
+            if ipsiTo is not None: # replace L/R with ipsi/contra
+                if ipsiTo.upper() == 'L':
+                    ipsi = 'left'
+                    contra = 'right'
+                elif ipsiTo.upper() == 'R':
+                    ipsi = 'right'
+                    contra = 'left'
+                else:
+                    raise ValueError("[apply_glasser] Invalid ipsiTo value. Choose 'L' or 'R'.")
+
+                renaming_df['hemi'] = renaming_df[hemi_col].replace({ipsi: 'ipsi', contra: 'contra'})
+                hemi_col = 'hemi'
+
+            renaming_df[gd_col] = renaming_df.apply(lambda row: f"{row[gd_col]}_{row[hemi_col]}", axis=1)
+
+        else:
+            renaming_df = glasser_details[['regionIDX', gd_col]] 
+
         df_relbl.columns = df_relbl.columns.map(
-            lambda x: glasser_details.loc[glasser_details['regionID'] == x, gd_col].values[0]
-            if x in glasser_details['regionID'].values else x
+            lambda x: renaming_df.loc[renaming_df['regionIDX'] == x, gd_col].values[0]
+            if x in renaming_df['regionIDX'].values else x
         )
 
     return df_relbl
