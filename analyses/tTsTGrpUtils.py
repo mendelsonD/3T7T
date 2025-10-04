@@ -1669,7 +1669,11 @@ def clean_ses(df_in, col_ID="UID", method="oldest", save=None, col_study=None, v
             "newest": use most recent session
             "oldest": use oldest session in the list - equivalent to taking the first session
             {number}: session code to use (e.g., '01' or 'a1' etc)
-
+        save: str
+            Path to save cleaned dataframe. If None, do not save.
+        col_study: str
+           TODO. Confirm role of studies col: Column name for study information. If None, choosing single session from repeated IDs 
+            
     output:
         currently:
         df: pd.dataframe with only one session per subject, same columns as before
@@ -2385,7 +2389,7 @@ def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study'
     
     return out_dl
 
-def parcellate_items(dl, df_key_in, parc, region= ['cortex'], parc_lbl=None, verbose=False):
+def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=None, verbose=False, test=False):
     """
     Input:
         dl [lst]: list of dicts
@@ -2397,54 +2401,109 @@ def parcellate_items(dl, df_key_in, parc, region= ['cortex'], parc_lbl=None, ver
                 'feature'
                 'map_pths': pd.DataFrame with columns for subject ID, session, date and map_paths
                     Assumes map path is missing if either : map_pth
-        df_key_in [str]: name of key holding df to parcellate (should be in form of IDs (rows) by vertex (cols))
+        df_keys [lst]: 
+            list of strings of keys holding df to parcellate (should be in form of IDs (rows) by vertex (cols))
         parc [str]: name of parcellation to apply. Options: 'glasser', <eventually: 'schaefer100'>
         region [list]: list of region names to apply parcellation. Default: ['cortex']
         parc_lbl [str]: how to return parcellated index naming. Default = None (allowing default of parcellation function)
-        verbose (bool): whether to print progress and warnings
+        stat: str
+            whether and how to summarise parcellated maps. 
+            Options: 
+                None - returns relabeled vertex names
+                'mean', 'median', 'max', 'min', 'std','iqr'
+        verbose: bool
+            whether to print progress and warnings
+        test: bool 
+            if True, only apply parcellation to first item in dl and first df_key in df_keys
+
+    Output:
+        dl_out [lst]: list of dicts
+            Each dict is same as input dl, but with additional key:
+                '{df_keys}_parc-{parc_name_shrt}': pd.DataFrame of identical size to df in df_keys
+                    vertex names renamed according to parcellation
+                    
     """
     import datetime
-
+    
     start_time = datetime.datetime.now()
+    
+    assert parc in ['glasser'], f"\t[parcellate_items] Unknown parcellation: {parc}. Currently supported: 'glasser'."
+    assert type(dl) == list, f"\t[parcellate_items] dl should be a list of dicts. Found {type(dl)}."
+    if type(region) == str:
+        region = [region]
+    if type(df_keys) == str:
+        df_keys = [df_keys]
+
+    if parc == 'glasser':
+        parc_name_shrt = "glsr"
+    
+    if test:
+        # choose two random idx in df
+        idx_rdm = [0,6]
+        print(f"{start_time}: TEST MODE. Applying parcellation to two random items in dl: indices {idx_rdm}.")
+        dl = [dl[i] for i in idx_rdm]
+    else:
+        print(f"{start_time}: Applying `{parc}` parcellation for df `{df_keys}` in dictionry list of length {len(dl)}.\n\tReturning parcellation naming type: `{parc_name_shrt}`")
     
     dl_out = [] # initiate output list
     dl_iterate = dl.copy()
 
-    if parc == 'glasser':
-        parc_name_shrt = "glsr"
-    assert parc in ['glasser'], f"[parcellate_items] Unknown parcellation: {parc}. Currently supported: 'glasser'."
+    if stat is not None:
+        key_outs = [f'{key}_parc_{parc_name_shrt}_{stat}' for key in df_keys]
+    else:
+        key_outs = [f'{key}_parc-{parc_name_shrt}' for key in df_keys]
+    print(f"\tCreating df keys : {key_outs}")
 
-    print(f"{start_time}: Applying `{parc}` parcellation for df `{df_key_in}` in dictionry list of length {len(dl)}.\n\tReturning parcellation naming type: `{parc_name_shrt}`")
-    
     for idx, item in enumerate(dl_iterate):
-        if verbose:
-            print(f"\t{printItemMetadata(item, return_txt=True)}")
-        
+              
         if item.get('region', None) not in region:
             if verbose:
-                print(f"[parcellate_items] Skipping item {idx} with region {item.get('region', None)} not in {region}.")
+                print(f"\t[parcellate_items] Skipping item {idx} with region {item.get('region', None)} not in reion(s): {region}.")
             continue
 
         surf = item['surf']
-        df = item.get(df_key_in, None)
+
+
+        for key, k_out in zip(df_keys, key_outs):
         
-        if df is None:
-            print(f"[parcellate_items] WARNING. Key {df_key_in} not found in item {idx}. Skipping.")
-            continue
-        if df.shape[0] == 0:
-            print(f"[parcellate_items] WARNING. No data found in item {idx} for key {df_key_in}. Skipping.")
-            continue
+            df = item.get(key, None)
+            
+            if df is None:
+                print(f"\t[parcellate_items] WARNING. Key {key} not found in item {idx}. Skipping.")
+                continue
+            if df.shape[0] == 0:
+                print(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {key}. Skipping.")
+                continue
+            
+            if verbose:
+                print(f"\t\t{printItemMetadata(item, return_txt=True)}")
 
-        if parc == 'glasser':
-            parc_name_shrt = "glsr"
-            if parc_lbl is None:
-                df_parc = apply_glasser(df=df, surf=surf, addHemiLbl = True)
-            else:
-                df_parc = apply_glasser(df=df, surf=surf, labelType=parc_lbl, addHemiLbl = True)
-        else: # for implementation of other parcellations
-            pass
-
-        item[f'{df_key_in}_parc-{parc_name_shrt}'] = df_parc
+            if parc == 'glasser':
+                parc_name_shrt = "glsr"
+                if parc_lbl is None:
+                    df_parc = apply_glasser(df=df, surf=surf)
+                else:
+                    df_parc = apply_glasser(df=df, surf=surf, labelType=parc_lbl, addHemiLbl = True)
+            else: # for implementation of other parcellations
+                pass
+            
+            if stat is not None:
+                if stat == 'mean':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
+                elif stat == 'median' or stat == 'mdn':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
+                elif stat == 'max':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).max()
+                elif stat == 'min':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).min()
+                elif stat == 'std':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).std()
+                elif stat == 'iqr':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
+                else:
+                    raise ValueError(f"\t[parcellate_items] Unknown stat: {stat}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
+            item[k_out] = df_parc
+        
         dl_out.append(item)
 
     end_time = datetime.datetime.now()
@@ -4018,15 +4077,19 @@ def catToDummy(df, exclude_cols=None, verbose = False):
     
     return df_converted, conversion_log
 
-def printItemMetadata(item, return_txt = False, idx=None, clean = False):
+def printItemMetadata(item, return_txt = False, idx=None, clean = False, printStudy = True):
     """
     Print metadata of a dictionary item in a readable format.
     
     Parameters:
     item: Dictionary containing metadata
+    return_txt: If True, returns the formatted string instead of printing it
+    idx: Optional index to include in the output
+    clean: If True, removes tabs and problematic characters from the output
+    printStudy: If True, includes the study name in the output
     
     Returns:
-    None
+        txt or print statement
     """
     import pandas as pd
     
@@ -4039,9 +4102,15 @@ def printItemMetadata(item, return_txt = False, idx=None, clean = False):
     label = item.get('label', None)
     smth = item.get('smth', None)
     if idx is not None:
-        txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
+        if printStudy == True:
+            txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
+        else:
+            txt = f"{region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
     else:
-        txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm"
+        if printStudy == True:
+            txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm"
+        else:
+            txt = f"{region}: {feature}, {surf}, {label}, {smth}mm"
     
     if clean:
         txt = txt.replace('\t', '')
@@ -4055,54 +4124,65 @@ def printItemMetadata(item, return_txt = False, idx=None, clean = False):
     else:
         print(txt)
         
-def relabel_vertex_cols(df, ipsiTo=None, n_vertices=32492):
+def relabel_vertex_cols(df, ipsiTo=None, verbose = False):
     """
-    Take df with columns '{idx}_{hemi}' and rename to just contain an index. By convention, L hemi then R hemi. 
-    ipsiTo provides correspondence between ipsi suffix and hemisphere. ipsiTo also indicates if the columns are ipsi/contra flipped.
+    Take df with columns '{idx}_{hemi}' and return two dfs, split according to hemisphere suffix.
+    Supports ipsi/contra labelled columns if ipsiTo is provided.
 
     Input:
         df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
             Number of columns per hemisphere should be 32492 for fsLR-32k
-        n_vertices: number of vertices per hemisphere (default is 32492 for fsLR-32k)
-        ipsiTo: if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
-    """
-      
-    new_cols = []
-    for col in df.columns:
-        if ipsiTo is not None:
-            if col.endswith('_ipsi'):
-                idx = int(col.replace('_ipsi', ''))
-                if ipsiTo == 'L':
-                    new_cols.append(idx)
-                elif ipsiTo == 'R':
-                    new_cols.append(idx + n_vertices)
-            elif col.endswith('_contra'):
-                idx = int(col.replace('_contra', ''))
-                if ipsiTo == 'L':
-                    new_cols.append(idx + n_vertices)
-                elif ipsiTo == 'R':
-                    new_cols.append(idx)
         
-        else: # columns are in the format '{idx}_L' and '{idx}_R'
-            if col.endswith('_L'):
-                idx = int(col.replace('_L', ''))
-                new_cols.append(idx)
-            elif col.endswith('_R'):
-                idx = int(col.replace('_R', '')) + n_vertices
-                new_cols.append(idx)
-            else:
-                new_cols.append(col)  # keep as is if not a vertex column
+        ipsiTo: if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
+        
+    """
+    import numpy as np
+
+    if verbose:
+        print(f"[rlbl_vrtx] Input cols: {list(dict.fromkeys(df.columns))}")
+    # split df into cols for each hemi
+    if ipsiTo is not None:
+        # seperate by ipsi and contra
+        df_hemiIpsi = df[[col for col in df.columns if col.endswith('_ipsi')]]
+        df_hemiContra = df[[col for col in df.columns if col.endswith('_contra')]]
+
+        # replace suffixes
+        df_hemiIpsi.columns = [col.replace('_ipsi', '') for col in df_hemiIpsi.columns]
+        df_hemiContra.columns = [col.replace('_contra', '') for col in df_hemiContra.columns]
+
+        # assign L and R
+        if ipsiTo == 'L':
+            df_hemiL = df_hemiIpsi
+            df_hemiR = df_hemiContra
+        elif ipsiTo == 'R':
+            df_hemiR = df_hemiIpsi
+            df_hemiL = df_hemiContra
+
+    else:
+        df_hemiL = df[[col for col in df.columns if col.endswith('_L')]]
+        df_hemiR = df[[col for col in df.columns if col.endswith('_R')]]
+
+        # replace suffixes
+        df_hemiL.columns = [col.replace('_L', '') for col in df_hemiL.columns]
+        df_hemiR.columns = [col.replace('_R', '') for col in df_hemiR.columns]
+
+    # combine left and right dfs. Adding 
+    assert len(df_hemiL.columns) == len(df_hemiR.columns), f"[relabel_vertex_cols] Number of columns in L and R hemispheres do not match. {len(df_hemiL.columns)} != {len(df_hemiR.columns)}"
+        
+    df_hemiR.columns = df_hemiR.columns.astype(int) + len(df_hemiL.columns) # shift R indices to be continuous with L
+    df_out = df_hemiL.join(df_hemiR, how='outer') # join L and R dfs
     
-    # Create a mapping of old to new columns
-    col_map = dict(zip(df.columns, new_cols))
+    if verbose:    
+        print(f"\tTotal vertices per hemi: {len(df_hemiL.columns)}")
+        print(f"\tL: n unique, min, max = {len(np.unique(df_hemiL.columns.astype(int)))}, {min(df_hemiL.columns.astype(int))}, {max(df_hemiL.columns.astype(int))}")
+        print(f"\tR: n unique, min, max = {len(np.unique(df_hemiR.columns.astype(int)))}, {min(df_hemiR.columns.astype(int))}, {max(df_hemiR.columns.astype(int))}")
+
+        print(f"\tCombined: n unique, min, max = {len(np.unique(df_out.columns.astype(int)))}, {min(df_out.columns.astype(int))}, {max(df_out.columns.astype(int))}")
+        print(f"\tTotal vertices combined: {len(df_out.columns)}")
+        print(f"\tObs: {list(dict.fromkeys(df_out.columns.astype(int)))}")
+        print(f"\tCnt: {list(range(len(df_out.columns)))}")
     
-    # Sort column
-    sorted_cols = sorted([c for c in new_cols if isinstance(c, int)]) + [c for c in new_cols if not isinstance(c, int)]
-    
-    # Reindex dataframe columns
-    df_renamed = df.rename(columns=col_map)
-    df_renamed = df_renamed[sorted_cols]
-    return df_renamed
+    return df_out
 
 def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=None):
     """
@@ -4134,13 +4214,17 @@ def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=
     
     if surf == 'fsLR-32k':
         glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+        nvtx = 32492
     elif surf == 'fsLR-5k':
         glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_fsLR-5k.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+        nvtx = 4842
     else:
         raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
     
-    df_relbl = relabel_vertex_cols(df, ipsiTo, n_vertices=df.shape[0]/2) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
+    assert df.shape[1] == nvtx*2, f"[apply_glasser] Input dataframe has {df.shape[1]} columns. Expected {nvtx*2} columns for surf {surf}."
     
+    df_relbl = relabel_vertex_cols(df, ipsiTo, verbose = False) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
+
     df_relbl.columns = glasser_df['glasser'].values[df_relbl.columns.astype(int)]
 
     if labelType.lower() != 'glasser_int': # replace region codes with human interpretable strings
@@ -4200,7 +4284,7 @@ def glasser_mean(df_glasserLbl):
 
 ######################### VISUALIZATION FUNCTIONS #########################
 
-def plotMatrices(dl, df_key, name_append=None, sessions = None, show=False, save_pth=None, test=False):
+def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, test=False):
     """
     Plot matrix visualizations for map values from corresponding study
 
@@ -4212,8 +4296,6 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, show=False, save
         if provided, append this string to the filename when saving
     sessions: (list of ints)
         if provided, will plot different sessions next to eachother rather than different studies
-    show:
-        if True, show the plots interactively
     save_pth:
         if provided, save the plots to this path instead of showing them interactively
     """
@@ -4424,9 +4506,9 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, show=False, save
 
         # Plot the matrices
         visMatrix(df_one, feature=feature_one, title=title_one, 
-                return_fig=False, show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+                show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
         visMatrix(df_two, feature=feature_two, title=title_two, 
-                return_fig=False, show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+                show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
 
         # Add a colorbar between the plots
         cmap_title = feature_one
@@ -4457,9 +4539,6 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, show=False, save
             fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
         else:
             fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
-        
-        if show:
-            plot.show()
 
         if save_pth is not None:
             if name_append is not None:
@@ -4476,7 +4555,7 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, show=False, save
             break
 
 def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
-              cmap='seismic', return_fig=True, show_index=False, ax=None, nan_color='green', nan_side="right"):
+              cmap='seismic', show_index=False, ax=None, nan_color='green', nan_side="right"):
     """
     Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
     Parameters
@@ -4493,8 +4572,6 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None,
         Maximum value for colormap scaling. If None, uses the maximum of the data.
     cmap : str or matplotlib.colors.Colormap, optional
         Colormap to use for visualization (default is 'seismic').
-    return_fig : bool, optional
-        If True, returns the matplotlib Figure object; otherwise, returns the Axes object.
     show_index : bool, optional
         If True, displays DataFrame index labels on the y-axis.
     ax : matplotlib.axes.Axes, optional
@@ -4506,8 +4583,10 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None,
         The figure or axes containing the visualization, depending on `return_fig`.
     """
     
-    import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib import use
+    import matplotlib.pyplot as plt
+    use('Agg')
 
     if df is None or df.shape[0] == 0 or df.shape[1] == 0:
         print("[visMatrix] WARNING: DataFrame is empty or None. Skipping visualization.")
@@ -4587,12 +4666,9 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None,
         ax.set_yticklabels(df.index.astype(str), fontsize=8)
         ax.tick_params(axis='y', pad=5, labelsize=14)
 
-    if return_fig:
-        return fig
-    else:
-        if ax is None:
-            plt.show()
-        return ax
+
+    plt.close(fig)
+    return ax
     
 def pngs2pdf(fig_dir, output=None, verbose=False):
     """
@@ -4718,83 +4794,119 @@ def sortCols(df):
     df_sorted = df[sorted_cols]
     return df_sorted
 
-def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, hline = None, marks = False, offset = 5, return_fig = True):
+def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, 
+                   parc = None, stat=None, hline = None, marks = False, 
+                   hline_idx = None,
+                   offset = 3, alpha = 0.3):
     """
     Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
 
 
     Input:
         df_a, df_b:         DataFrames with identical columns and identical row indices.
-                                NOTE. Index should be sorted 
+                                NOTE. Numerical indeces should be sorted 
         lbl_a, lbl_b:       Labels for the two groups
         title:              Title for the plot
-
+        
+        <optionals>
+        parc:               Indicate how the surface has been parcellated. If None, assumes vertex names have suffix '_L', '_R' 
+            Options: 'glasser', None
+        stat:  str             If parcellation is provided, this  provided, this variable is added to the x-axis label 
+            (made for when multiple vertices are summarised with a statistic for a single value per parcel)
         hline: <int or None> if provided, draw a horizontal line at this y-value. 
         marks:              Whether to use marks instead of lines
         offset:             Vertical distance between plots
-        return_fig:         if True, return figure object. If False, return axis object.
     
     Output:
-        figure object
+        axis object
     """
 
-    import matplotlib.pyplot as plt
     import numpy as np
+    from matplotlib import use
+    import matplotlib.pyplot as plt
+    use('Agg')  # Use a non-interactive backend, prevents memory build up.
 
+    ipsi_contra = False
     n = df_a.shape[0]
     
     # sort columns
     df_a_sort = sortCols(df_a)
     df_b_sort = sortCols(df_b)
+
     # Reverse the order of rows so the top row of the plot corresponds to the top row of the DataFrame
     df_a_sort = df_a_sort.iloc[::-1]
     df_b_sort = df_b_sort.iloc[::-1]
     
     vertices = df_a_sort.columns
 
-    fig_length = 3 * df_a_sort.shape[0]
+    fig_length = 2 * df_a_sort.shape[0]
     fig_width = 100
     fig, ax = plt.subplots(figsize=(fig_width, fig_length))
     
-    for i in range(n):            
+    for i in range(n): # iterate through each participant        
         y_a = df_a_sort.iloc[i].values + i * offset
         y_b = df_b_sort.iloc[i].values + i * offset
         
         if marks:
-            ax.scatter(vertices, y_a, color='red', alpha=0.2, s=10, label=lbl_a if i == 0 else "")
-            ax.scatter(vertices, y_b, color='blue', alpha=0.2, s=10, label=lbl_b if i == 0 else "")
+            ax.scatter(vertices, y_a, color='red', alpha=alpha, s=12, label=lbl_a if i == 0 else "")
+            ax.scatter(vertices, y_b, color='blue', alpha=alpha, s=12, label=lbl_b if i == 0 else "")
         else:
-            ax.plot(vertices, y_a, color='red', alpha=0.2, linewidth = 3, label=lbl_a if i == 0 else "")
-            ax.plot(vertices, y_b, color='blue', alpha=0.2, linewidth = 3, label=lbl_b if i == 0 else "")
+            ax.plot(vertices, y_a, color='red', alpha=alpha, linewidth = 3, label=lbl_a if i == 0 else "")
+            ax.plot(vertices, y_b, color='blue', alpha=alpha, linewidth = 3, label=lbl_b if i == 0 else "")
         if hline is not None:
             ax.axhline(y=i * offset + hline, color='black', linestyle='--', linewidth=1, alpha=0.4)
 
     # Annotate hemisphere change
-    split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
-    if split_idx is None:
-        split_idx = next((k for k, col in enumerate(vertices) if '_ipsi' in col), None)
-        if split_idx is not None:
-            ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=5)
-            ax.text(split_idx / 2, -offset * 1.5, "Contralateral", fontsize=80, ha='center', va='top')
-            ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Ipsilateral", fontsize=80, ha='center', va='top')
+    
+    if parc is None:
+        split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
+        if split_idx is None: # assume ipsi contra labels instead
+            split_idx = next((k for k, col in enumerate(vertices) if '_ipsi' in col), None)
+            if split_idx is not None:
+                ipsi_contra = True
+            else:
+                # assume split idx is half way through
+                split_idx = len(vertices) // 2
+                print("[plot_ridgeLine] WARNING: Could not determine hemisphere split from column names. Assuming halfway split.")
+                
+    elif parc.lower() == "glasser" or parc.lower() == "glsr":
+        split_idx = 181
     else:
-        ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=5)
+        ValueError("[plot_ridgeLine] Invalid parc value. Choose 'glasser' or None.")
+    
+    ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=5)
+    
+    if not ipsi_contra:
         ax.text(split_idx / 2, -offset * 1.5, "Left", fontsize=80, ha='center', va='top')
         ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Right", fontsize=80, ha='center', va='top')
+    else:
+        ax.text(split_idx / 2, -offset * 1.5, "Contralateral", fontsize=80, ha='center', va='top')
+        ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Ipsilateral", fontsize=80, ha='center', va='top')
+    
+    if hline_idx is not None: # plot hlines at each provided index
+         for idx in hline_idx:
+            ax.axvline(x=idx, color='gray', linestyle='--', linewidth=5, alpha=0.3)
 
     # Set title and labels
-    ax.set_title(title, fontsize=100)
+    ax.set_title(title, fontsize=100, pad = 50)
 
     ax.set_yticks([(i) * offset for i in range(n)])
     ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=50)
 
-    ax.legend(fontsize=80, markerscale=15, loc='upper right')
+    ax.legend(fontsize=80, markerscale=30, loc='upper right')
     
     xticks = np.linspace(0, len(vertices) - 1, 3)
     ax.set_xticks(xticks)
-    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=50, rotation=45, ha='right')
-    ax.tick_params(axis='x', labelsize=50)
-    ax.set_xlabel("Vertex", fontsize=50)
+    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=65, rotation=45, ha='right')
+    ax.tick_params(axis='x', labelsize=65)
+
+    if parc is not None:
+        if stat is not None:
+            ax.set_xlabel(f"{parc.upper()} ({stat})", fontsize=90)
+        else:
+            ax.set_xlabel(parc, fontsize=90)
+    else:
+        ax.set_xlabel("Vertex", fontsize=90)
     
     # remove y-axis line
     ax.spines['left'].set_visible(False)
@@ -4802,15 +4914,15 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, hline = None, marks = False,
     ax.spines['top'].set_visible(False)
     ax.yaxis.set_ticks_position('none')
 
-    if return_fig:
-            return fig
-    else:
-        if ax is None:
-            plt.show()
-        return ax
+    ax.margins(x=0, y=0) # remove excess margins
+    fig.tight_layout(rect=[0, 0, 1, 0.95]) # add padding aroung title
 
-def plotLine(dl, df_key = 'df_maps', marks=True,
-            show = False, name_append=None, save_pth=None, 
+    return fig
+
+def plotLine(dl, df_key = 'df_maps', marks=True, 
+            parc=None, stat =None,
+            alpha = 0.02,
+            hline_idx = None, name_append=None, save_pth=None, 
             verbose = False, test = False):
     
     """
@@ -4819,26 +4931,30 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
     Input:
         dl:           list of dict items with dataframes to plot
         df_key:        key in dict items for dataframe to plot
-    
-        show:           whether to show plots
+        marks:          whether to use marks instead of lines
+        parc:           indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
+        stat:       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
+        hline_idx: lst  list of indices to draw horitzontal lines at
         name_append:    string to append to saved file names
         save_pth:       path to save figures. If None, will not save.
         verbose:        whether to print item metadata  
         test:           whether to run in test mode (only first 2 items in dl)
+    
     Output:
-        
+        saves plot to path    
     """
     import matplotlib.pyplot as plt
     import datetime
 
     skip_idx = []
     counter = 0
-
+    start_time = datetime.datetime.now()
+    print(f"[{start_time}] Plotting ridgeline plots for {df_key}...")
+    
     for idx in range(len(dl)):
 
         if idx in skip_idx:
             continue
-        print(f"\n")
         counter += 1
 
         skip_idx.append(idx)
@@ -4851,10 +4967,9 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
         idx_tT, idx_sT = determineStudy(dl, idx = idx, idx_other = idx_other, study_key = 'study')
         item_tT = dl[idx_tT]
         item_sT = dl[idx_sT]
-        if verbose:
-            printItemMetadata(item_tT, idx=idx, return_txt=False)
-            printItemMetadata(item_sT, idx=idx_other, return_txt=False)
-
+        
+        print(f"\t[idx 3T, 7T: {idx_tT}, {idx_sT}] {printItemMetadata(item_tT, return_txt = True, clean = True, printStudy = False)}")
+       
         # extract df
         df_tT = item_tT.get(df_key, None)
         df_sT = item_sT.get(df_key, None)
@@ -4912,10 +5027,10 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
             title = title + " [standardized]"
 
         # ridge line plot
-        fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", hline=hline, marks=marks, title=title)
-        
-        if show:
-            plt.show()
+        fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
+                             hline=hline, marks=marks, title=title, 
+                             parc=parc, stat=stat, alpha=alpha, 
+                             hline_idx = hline_idx)
 
         if save_pth is not None:
             if name_append is not None:
@@ -4929,7 +5044,9 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
 
         if test and counter >= 1:
             break
-
+    end_time = datetime.datetime.now()
+    print(f"[{end_time}] Complete. Duration: {end_time - start_time}")
+    
 def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
     """
     Given a dict item and a list of dicts, return a list of indices in dictlist
@@ -5311,23 +5428,23 @@ def showBrain(lh, rh, region = "ctx",
     data = np.hstack(np.concatenate([lh, rh], axis=0))
     #print(data.shape)
 
-    lbl_text = {'top': title}
-    
+    #lbl_text = {'top': [title if title else '', '','',''], 'bottom': [feature_lbl if feature_lbl else '', '','','']}
+    lbl_text = {}
     if ipsiTo is not None and ipsiTo == "L":
-        lbl_text = {
+        lbl_text.update({
             'left': 'ipsi',
             'right': 'contra'
-        }    
+        })    
     elif ipsiTo is not None and ipsiTo == "R":
-        lbl_text = {
+        lbl_text.update({
             'left': 'contra',
             'right': 'ipsi'
-        }
+        })
     else:
-        lbl_text = {
+        lbl_text.update({
             'left': 'L',
             'right': 'R'
-        }
+        })
 
     # Ensure all values are strings (robust against accidental lists/arrays)
     lbl_text = {k: str(v) for k, v in lbl_text.items()}
@@ -5350,7 +5467,7 @@ def showBrain(lh, rh, region = "ctx",
             surf_lh, surf_rh, array_name=data, 
             size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
             nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
-            #, label_text = lbl_text
+            label_text = lbl_text
         )
 
     return fig
