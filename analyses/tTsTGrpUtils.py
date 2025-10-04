@@ -4838,26 +4838,38 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     df_b_sort = df_b_sort.iloc[::-1]
     
     vertices = df_a_sort.columns
-
-    fig_length = 2 * df_a_sort.shape[0]
-    fig_width = 100
+    n_rows = df_a_sort.shape[0]
+    fig_length = min(50, 0.75 * n_rows) # max height of 50
+    fig_width = 55
     fig, ax = plt.subplots(figsize=(fig_width, fig_length))
     
+    # relative font sizes
+    scale = fig_width / 100
+    sizes = {
+        'linewdth': 2,
+        'mrkrsize': 4,
+        'title': 100,
+        'legend': 70,
+        'y_tick': 50,
+        'x_tick': 65,
+        'x_lbl': 90,
+        'annot': 80,
+    }
+
     for i in range(n): # iterate through each participant        
         y_a = df_a_sort.iloc[i].values + i * offset
         y_b = df_b_sort.iloc[i].values + i * offset
         
         if marks:
-            ax.scatter(vertices, y_a, color='red', alpha=alpha, s=12, label=lbl_a if i == 0 else "")
-            ax.scatter(vertices, y_b, color='blue', alpha=alpha, s=12, label=lbl_b if i == 0 else "")
+            ax.scatter(vertices, y_a, color='red', alpha=alpha, s=sizes['mrkrsize'], label=lbl_a if i == 0 else "")
+            ax.scatter(vertices, y_b, color='blue', alpha=alpha, s=sizes['mrkrsize'], label=lbl_b if i == 0 else "")
         else:
-            ax.plot(vertices, y_a, color='red', alpha=alpha, linewidth = 3, label=lbl_a if i == 0 else "")
-            ax.plot(vertices, y_b, color='blue', alpha=alpha, linewidth = 3, label=lbl_b if i == 0 else "")
+            ax.plot(vertices, y_a, color='red', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_a if i == 0 else "")
+            ax.plot(vertices, y_b, color='blue', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_b if i == 0 else "")
+        
         if hline is not None:
             ax.axhline(y=i * offset + hline, color='black', linestyle='--', linewidth=1, alpha=0.4)
 
-    # Annotate hemisphere change
-    
     if parc is None:
         split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
         if split_idx is None: # assume ipsi contra labels instead
@@ -4874,39 +4886,117 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     else:
         ValueError("[plot_ridgeLine] Invalid parc value. Choose 'glasser' or None.")
     
-    ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=5)
-    
-    if not ipsi_contra:
-        ax.text(split_idx / 2, -offset * 1.5, "Left", fontsize=80, ha='center', va='top')
-        ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Right", fontsize=80, ha='center', va='top')
-    else:
-        ax.text(split_idx / 2, -offset * 1.5, "Contralateral", fontsize=80, ha='center', va='top')
-        ax.text((split_idx + len(vertices)) / 2, -offset * 1.5, "Ipsilateral", fontsize=80, ha='center', va='top')
-    
-    if hline_idx is not None: # plot hlines at each provided index
-         for idx in hline_idx:
-            ax.axvline(x=idx, color='gray', linestyle='--', linewidth=5, alpha=0.3)
+    # Set title
+    fig.suptitle(title, fontsize=int(sizes['title'] * scale), y=0.995)
 
-    # Set title and labels
-    ax.set_title(title, fontsize=100, pad = 50)
+    # Legend (lay entries out horizontally next to title)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ncol = max(1, len(labels))  # typically 2 (lbl_a, lbl_b); adjust if more labels appear
+        legend_x = 0.85  # tune to move legend horizontally; closer to 1.0 moves it to the right edge
+        legend_y = 0.995  # just under the top of the figure (near title)
+        fig.legend(handles, labels,
+                   loc='upper right',
+                   bbox_to_anchor=(legend_x, legend_y),
+                   ncol=ncol,
+                   frameon=False,
+                   fontsize=int(sizes['legend'] * scale),
+                   markerscale=max(1, sizes['mrkrsize'] * scale))
+        
+    """ place legend just outside the right side with the same visual spacing
+    ax.legend(fontsize=sizes['legend']*scale,
+              markerscale=max(1, sizes['mrkrsize']*2),
+              loc='upper left',
+              bbox_to_anchor=(1.0 + pad_frac, 1.0),
+              borderaxespad=0)
+    """
 
-    ax.set_yticks([(i) * offset for i in range(n)])
-    ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=50)
-
-    ax.legend(fontsize=80, markerscale=30, loc='upper right')
+    # y ticks
+    ytick_positions = [i * offset + 0.5 * offset for i in range(n)]
+    ax.set_yticks(ytick_positions)
+    labels = ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=int(sizes['y_tick'] * scale))
     
+    for lbl in labels: # ensure vertical alignment is centered for all tick label Text objects
+        lbl.set_va('center')
+    
+    ax.tick_params(axis='y', which='major', pad=max(2, int(4 * scale))) # horizontal padding so labels don't touch axis
+
+    approx_char_width_px = (sizes['x_tick'] * scale) * 0.6
+    pad_px = approx_char_width_px * 5  # 5 characters worth of space
+
+    # figure physical width in pixels
+    fig_w_in, _ = fig.get_size_inches()
+    dpi = fig.dpi if hasattr(fig, "dpi") else plt.rcParams.get("figure.dpi", 100)
+    fig_w_px = fig_w_in * dpi
+
+    # fraction of figure width to reserve on each side
+    pad_frac = pad_px / fig_w_px
+
+    # convert fraction -> data units (x-axis runs from 0 .. len(vertices)-1)
+    x_min = 0
+    x_max = max(0, len(vertices) - 1)
+    data_span = x_max - x_min if x_max > x_min else 1.0
+    pad_data = pad_frac * data_span
+    
+    ax.set_xlim(x_min - pad_data, x_max + pad_data) # set x-limits so data starts/ends with the requested padding
+    ax.margins(x=0)
+
+    # xtick placement/labels (keep using vertex labels at three positions)
     xticks = np.linspace(0, len(vertices) - 1, 3)
     ax.set_xticks(xticks)
-    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=65, rotation=45, ha='right')
-    ax.tick_params(axis='x', labelsize=65)
-
+    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=sizes['x_tick']*scale, rotation=45, ha='right')
+    ax.tick_params(axis='x', labelsize=sizes['x_tick']*scale)
     if parc is not None:
         if stat is not None:
-            ax.set_xlabel(f"{parc.upper()} ({stat})", fontsize=90)
+            ax.set_xlabel(f"{parc.upper()} ({stat})", fontsize=sizes['x_lbl']*scale)
         else:
-            ax.set_xlabel(parc, fontsize=90)
+            ax.set_xlabel(parc, fontsize=sizes['x_lbl']*scale)
     else:
-        ax.set_xlabel("Vertex", fontsize=90)
+        ax.set_xlabel("Vertex", fontsize=sizes['x_lbl']*scale)
+
+    # Hemisphere labels
+    x0, x1 = ax.get_xlim()
+    data_span_eff = x1 - x0 if (x1 - x0) != 0 else 1.0
+    left_data = (split_idx / 2.0)
+    right_data = ((split_idx + len(vertices)) / 2.0)
+    left_frac = (left_data - x0) / data_span_eff
+    right_frac = (right_data - x0) / data_span_eff
+    
+    # clamp to avoid text going off-figure
+    left_frac = min(1.0, max(0.0, left_frac))
+    right_frac = min(1.0, max(0.0, right_frac))
+    
+    # axes fraction for vertical placement (negative = below axis)
+    y_ax_frac = -0.03  # tweak if you want labels further/from the axis
+    label_fs = int(sizes['annot'] * scale)
+    va_setting = 'top'  # anchor the top of the text at the y coordinate so it sits below the axis
+    if not ipsi_contra:
+        ax.text(left_frac, y_ax_frac, "Left",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+        ax.text(right_frac, y_ax_frac, "Right",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+    else:
+        ax.text(left_frac, y_ax_frac, "Contralateral",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+        ax.text(right_frac, y_ax_frac, "Ipsilateral",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+
+    # add vertical lines
+    row_offsets = (np.arange(n) * offset)[:, None]  # shape (n,1)
+    y_a_all = (df_a_sort.values + row_offsets).reshape(-1)
+    y_b_all = (df_b_sort.values + row_offsets).reshape(-1)
+    y_all = np.hstack([y_a_all, y_b_all])
+    y_min = float(np.nanmin(y_all))
+    y_max = float(np.nanmax(y_all))
+    pad = max(0.5, 0.1 * offset)  # small padding so lines don't touch markers
+    ax.set_ylim(y_min - pad, y_max + pad)
+
+    ax.axvline(x=split_idx, ymin = y_min - pad, ymax = y_max + pad, 
+               color='black', linestyle='--', linewidth=sizes['mrkrsize']*0.75, alpha=0.4)
+    if hline_idx is not None: # plot hlines at each provided index
+         for idx in hline_idx:
+            ax.axvline(x=idx, ymin = y_min - pad, ymax = y_max + pad,
+                       color='gray', linestyle='--', linewidth=sizes['mrkrsize']*0.75, alpha=0.3)
     
     # remove y-axis line
     ax.spines['left'].set_visible(False)
@@ -4914,8 +5004,9 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     ax.spines['top'].set_visible(False)
     ax.yaxis.set_ticks_position('none')
 
-    ax.margins(x=0, y=0) # remove excess margins
-    fig.tight_layout(rect=[0, 0, 1, 0.95]) # add padding aroung title
+    ax.margins(x=fig_width*0.01, y=fig_width*0.01)
+    fig.tight_layout(rect=[0, 0, 1, 1]) # add padding
+    fig.subplots_adjust(top=0.97) # lower values move title up more
 
     return fig
 
@@ -4945,6 +5036,7 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
     """
     import matplotlib.pyplot as plt
     import datetime
+    import os
 
     skip_idx = []
     counter = 0
@@ -5038,8 +5130,9 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
             else:
                 save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
             
-            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
-            print(f"\tSaved: {save_pth}/{save_name}.png")
+            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight', pad_inches = 0.08)
+            file_size = os.path.getsize(f"{save_pth}/{save_name}.png") / (1024 * 1024)  # size in MB
+            print(f"\t\tSaved ({file_size:0.1f} MB): {save_pth}/{save_name}.png")
             plt.close(fig)
 
         if test and counter >= 1:
