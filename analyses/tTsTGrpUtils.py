@@ -16,7 +16,7 @@ def loadPickle(pth, verbose=True, dlPrint=False):
     with open(pth, "rb") as f:
             obj = pickle.load(f)
     if verbose:
-        print(f"[loadPickle] Loaded smoothed maps from {pth}")
+        print(f"[loadPickle] Loaded pickle object: {pth}")
     if dlPrint:
         print('-'*100)
         print_dict(obj)
@@ -71,6 +71,48 @@ def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True):
         print(f"\t[pkl_save] Saved object to {pth}")
 
     return pth
+
+def _get_file_logger(name, log_file_path):
+    """
+    Return a logger configured to write to log_file_path.
+    Handlers are only added once per logger instance to avoid duplicate logs.
+    """
+    import logging, os
+
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.INFO)
+
+    # Ensure directory exists
+    log_dir = os.path.dirname(log_file_path) or '.'
+    os.makedirs(log_dir, exist_ok=True)
+
+    abs_path = os.path.abspath(log_file_path)
+    for h in logger.handlers:
+        if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == abs_path:
+            return logger
+        
+    # Info handler (general messages)
+    info_handler = logging.FileHandler(log_file_path)
+    info_handler.setLevel(logging.INFO)
+    info_formatter = logging.Formatter("%(message)s")
+    info_handler.setFormatter(info_formatter)
+
+    # Warning handler (different formatter with timestamp)
+    warn_handler = logging.FileHandler(log_file_path)
+    warn_handler.setLevel(logging.WARNING)
+    warn_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%d %b %Y-%H:%M:%S")
+    warn_handler.setFormatter(warn_formatter)
+
+    logger.addHandler(info_handler)
+    logger.addHandler(warn_handler)
+
+    # Prevent propagation to root logger to avoid duplicate console output
+    logger.propagate = False
+
+    # mark as configured
+    logger._tTsT_configured = True
+
+    return logger
 
 ################### DATA PREPERATION ####################################
 def add_date(demo_pths, demo):
@@ -193,11 +235,11 @@ def get_surf_pth(root, sub, ses, lbl, space="nativepro", surf="fsLR-32k", verbos
         if verbose: print("Hipp detected")
         # Note: for MICA studies, hippocampal maps are in 'T1w' space which is equivalent to nativepro space 
         if lbl == "thickness" or lbl == "hipp_thickness":
-            lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-{space}_den-{surf}_label-hipp_thickness.shape.gii"
-            rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-{space}_den-{surf}_label-hipp_thickness.shape.gii"
+            lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-{space}_{surf}_label-hipp_thickness.shape.gii"
+            rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-{space}_{surf}_label-hipp_thickness.shape.gii"
         else:
-            lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-{space}_den-{surf}_label-hipp_{lbl}.surf.gii"
-            rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-{space}_den-{surf}_label-hipp_{lbl}.surf.gii"
+            lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-{space}_{surf}_label-hipp_{lbl}.surf.gii"
+            rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-{space}_{surf}_label-hipp_{lbl}.surf.gii"
     else:
         raise ValueError("[get_surf_path] Unknown root directory. Choose from 'micapipe' or 'hippunfold'.")
 
@@ -2437,7 +2479,8 @@ def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study'
     
     return out_dl
 
-def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=None, verbose=False, test=False):
+def parcellate_items(dl, df_keys, parc_region, stat=None, save_pth=None, save_name=None,
+                     verbose=False, test=False):
     """
     Input:
         dl [lst]: list of dicts
@@ -2447,18 +2490,28 @@ def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=N
                 'grp_labels'
                 'label'
                 'feature'
+                'region'
                 'map_pths': pd.DataFrame with columns for subject ID, session, date and map_paths
                     Assumes map path is missing if either : map_pth
         df_keys [lst]: 
             list of strings of keys holding df to parcellate (should be in form of IDs (rows) by vertex (cols))
-        parc [str]: name of parcellation to apply. Options: 'glasser', <eventually: 'schaefer100'>
-        region [list]: list of region names to apply parcellation. Default: ['cortex']
-        parc_lbl [str]: how to return parcellated index naming. Default = None (allowing default of parcellation function)
+        parc_region [lst]: list of dicts
+            Each dict should have keys:
+                'region':       region that following settings apply to (should correspond to region value in dl items)
+                'parcellate':   name of parcellation, Options: 'glasser', 'DK25' <eventually: 'schaefer100'>
+                                False if not to parcellate
+                'parc_lbl':     how to return parcellated index naming. Default = None (allowing default of parcellation function)        
         stat: str
             whether and how to summarise parcellated maps. 
             Options: 
-                None - returns relabeled vertex names
+                None - returns relabeled vertex names without summarising
                 'mean', 'median', 'max', 'min', 'std','iqr'
+
+        save_pth: str
+            path to save the .pkl file to. If None, do not save.
+        save_name: str
+            name of the .pkl file to save
+                
         verbose: bool
             whether to print progress and warnings
         test: bool 
@@ -2472,46 +2525,70 @@ def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=N
                     
     """
     import datetime
+    import numpy as np
     
     start_time = datetime.datetime.now()
     
-    assert parc in ['glasser'], f"\t[parcellate_items] Unknown parcellation: {parc}. Currently supported: 'glasser'."
     assert type(dl) == list, f"\t[parcellate_items] dl should be a list of dicts. Found {type(dl)}."
-    if type(region) == str:
-        region = [region]
+    assert type(parc_region) == list, f"\t[parcellate_items] parc_region should be a list of dicts. Found {type(parc_region)}."
+
     if type(df_keys) == str:
         df_keys = [df_keys]
-
-    if parc == 'glasser':
-        parc_name_shrt = "glsr"
     
+
+    parc_regions = [pr['region'] for pr in parc_region if pr.get('parcellate', False) != False]
+
     if test:
-        # choose two random idx in df
-        idx_rdm = [0,6]
-        print(f"{start_time}: TEST MODE. Applying parcellation to two random items in dl: indices {idx_rdm}.")
+        idx_len = 2
+        idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
+        print(f"{start_time}: TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
         dl = [dl[i] for i in idx_rdm]
     else:
-        print(f"{start_time}: Applying `{parc}` parcellation for df `{df_keys}` in dictionry list of length {len(dl)}.\n\tReturning parcellation naming type: `{parc_name_shrt}`")
+        print(f"{start_time}: Applying parcellations for regions {parc_regions} in dictionry list of length {len(dl)}.\n\tSummarising with stat: {stat}.")
     
     dl_out = [] # initiate output list
     dl_iterate = dl.copy()
 
-    if stat is not None:
-        key_outs = [f'{key}_parc_{parc_name_shrt}_{stat}' for key in df_keys]
-    else:
-        key_outs = [f'{key}_parc-{parc_name_shrt}' for key in df_keys]
-    print(f"\tCreating df keys : {key_outs}")
-
     for idx, item in enumerate(dl_iterate):
-              
-        if item.get('region', None) not in region:
+        if verbose:
+            print(f"\t\t{printItemMetadata(item, return_txt=True)}")
+
+        itm_region = item.get('region', None)
+        itm_surf = item['surf'] # should raise error if this key doesnt exist
+        
+        if itm_region in parc_regions:
+            
+            # extract correct values from dictionary based on region
+            # get the right dict item
+            pr = parc_region[parc_regions.index(itm_region)]
+            parc = pr.get('parcellate', None)
+
+            if parc is None:
+                if verbose:
+                    print(f"\t[parcellate_items] Skipping item {idx} with region `{itm_region}` not set to parcellate.")
+                dl_out.append(item)
+                continue
+            elif parc == 'glasser':
+                parc_name_shrt = "glsr"
+            elif parc.lower() == 'dk25':
+                parc_name_shrt = "dk25"
+            else:
+                raise ValueError(f"\t[parcellate_items] Unknown parcellation: {parc}. Supported: 'glasser', 'dk25'.")
+
+            parc_lbl = pr.get('parc_lbl', None)
+            
+            if stat is None:
+                key_outs = [f'{key}_parc-{parc_name_shrt}' for key in df_keys]
+            else:
+                key_outs = [f'{key}_parc_{parc_name_shrt}_{stat}' for key in df_keys]
+        
+        else:
             if verbose:
-                print(f"\t[parcellate_items] Skipping item {idx} with region {item.get('region', None)} not in reion(s): {region}.")
+                print(f"\t[parcellate_items] Skipping item {idx} with region {itm_region} not in regions to parcellate.")
+            dl_out.append(item)
             continue
-
-        surf = item['surf']
-
-
+        
+        
         for key, k_out in zip(df_keys, key_outs):
         
             df = item.get(key, None)
@@ -2522,23 +2599,19 @@ def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=N
             if df.shape[0] == 0:
                 print(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {key}. Skipping.")
                 continue
-            
-            if verbose:
-                print(f"\t\t{printItemMetadata(item, return_txt=True)}")
 
             if parc == 'glasser':
-                parc_name_shrt = "glsr"
-                if parc_lbl is None:
-                    df_parc = apply_glasser(df=df, surf=surf)
-                else:
-                    df_parc = apply_glasser(df=df, surf=surf, labelType=parc_lbl, addHemiLbl = True)
-            else: # for implementation of other parcellations
+                df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
+                item['parcellation'] = 'glasser'
+            elif parc == 'DK25': # for implementation of other parcellations
+                df_parc = apply_DK25(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
+                item['parcellation'] = 'DK25'
+            else:
                 pass
             
             if stat is not None:
                 if stat == 'mean':
-                    # compute skewness. if highly skewed, then maybe not normal distribution, write a warning
-
+                    # TODO. compute skewness. if highly skewed, then maybe not normal distribution, write a warning
                     df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
                 elif stat == 'median' or stat == 'mdn':
                     df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
@@ -2552,15 +2625,23 @@ def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=N
                     df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
                 else:
                     raise ValueError(f"\t[parcellate_items] Unknown stat: {stat}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
-            
+            else:
+                pass
+
             # TODO. Save df_parc to pickle and put path into item
             item[k_out] = df_parc
         
         dl_out.append(item)
-
+    
     end_time = datetime.datetime.now()
     elapsed = end_time - start_time
     print(f"{end_time}: Parcellation complete. Elapsed time: {elapsed}.")
+    
+    if save_pth is not None and save_name is not None:
+        if stat is not None:
+            save_name = save_name + "-" + stat    
+        out_pth = savePickle(obj = dl_out, root = save_pth, name = save_name, test = test)
+
     return dl_out
 
 
@@ -2648,9 +2729,10 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
 
 ######################### ANALYSIS FUNCTIONS ####################################
 
-def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
-            save=True, save_pth=None, save_name="05a_stats_winStudy", test=False, 
-            verbose=False, dlPrint=False):
+def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, 
+            stat=['z'], key_demo = "df_demo", 
+            save=True, save_pth=None, save_name="05a_stats_winStudy",  
+            test=False, verbose=False, dlPrint=False):
     """
     Compute within study comparisons between control distribution and all participants
 
@@ -2666,6 +2748,8 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
             statistics to compute. Options:
                 'z' - z-score relative to control group <default>
                 'w' - w-score relative to control group, adjusting for covariates
+        key_demo: (str) <default: "df_demo">
+            key in the dict items of dl that contains the demographics dataframe
         col_grp: (str) name of the grouping column in demographics dataframe
         save: (bool) <default: True>
             whether to save the output dict list as a pickle file
@@ -2695,79 +2779,80 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
         save_pth = os.getcwd()  # Default to current working directory
     if not os.path.exists(save_pth):
         os.makedirs(save_pth)
+    if test:
+        save_name = f"TEST_{save_name}"
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
-    print(f"[winComp] Saving log to: {log_file_path}")
     
-    # Configure logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Create handlers
-    info_handler = logging.FileHandler(log_file_path)
-    info_handler.setLevel(logging.INFO)
-    warning_handler = logging.FileHandler(log_file_path)
-    warning_handler.setLevel(logging.WARNING)
-
-    # Create formatters
-    info_formatter = logging.Formatter("%(message)s")  # No timestamp, level name for INFO
-    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
-
-    # Assign formatters to handlers
-    info_handler.setFormatter(info_formatter)
-    warning_handler.setFormatter(warning_formatter)
-
-    # Add handlers to logger
-    logger.addHandler(info_handler)
-    logger.addHandler(warning_handler)
-
-    # Log the start of the function
+    # Configure module logger (handlers added once)
+    logger = _get_file_logger(__name__, log_file_path)
     logger.info("Log started for winComp function.")
+    print(f"[winComp] Saving log to: {log_file_path}")
+
+    dl_out = []
 
     try:
         logger.info(f"[winComp] Saving log to: {log_file_path}")
-        logger.info(f"Computing within study comparisons. Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"\tParameters: z={z}, w={w}, covars={covars}, col_grp={col_grp}, ctrl_grp={ctrl_grp}")
+        logger.info(f"\nComputing within study comparisons. Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"\tParameters: stats={stat}, covars={covars}, col_grp={col_grp}, ctrl_grp={ctrl_grp}")
         logger.info(f"\tDemographics columns: {demographics}")
-        logger.info(f"\tNumber of dictionary items to process: {len(dl)}")
 
         ctrl_values = [val for sublist in ctrl_grp.values() for val in sublist]
 
         if test:
             idx_len = 2 # number of indices
             idx = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
-            dl_winStats = dl.copy()
             dl_iterate = [dl[i] for i in idx]
-            logger.info(f"[TEST MODE] Running z-scoring on {idx_len} randomly selected dict items: {idx}")
+            logger.info(f"\t[TEST MODE] Running z-scoring on {idx_len} randomly selected dict items: {idx}")
         else:
-            dl_winStats = dl.copy()
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
-            
+            logger.info(f"\tNumber of dictionary items to process: {len(dl)}")
+        
+        z_key_out = key_maps + "_z"
+        w_key_out = key_maps + "_w"
+        wMdl_key_out = key_maps + "_wModels"
+        
+        stat = [s.lower() for s in stat] # make all strings in stat lower case
+
         for i, item in enumerate(dl_iterate): # can be parallelized
             
             study = item['study']
             col_ID = get_IDCol(study, demographics) # determine ID col name based on study name
 
-            if test: printItemMetadata(item, idx = idx[i], return_txt=True)
-            else: printItemMetadata(item, idx = i, return_txt=True)
-                
-            demo = item[f'df_demo'].copy() # contains all participants
-            maps = item[f'df_maps'].copy() # contains all participants, indexed by <IUD_>ID_SES
+            if test:
+                txt = printItemMetadata(item, idx = idx[i], return_txt=True)
+            else:
+                txt = printItemMetadata(item, idx = i, return_txt=True)
+            logger.info(f"\n{txt}")
+
+            df_demo = item.get(key_demo, None) # contains all participants
+            df_maps = item.get(key_maps, None) # contains all participants, indexed by <IUD_>ID_SES
+            if df_demo is None:
+                logger.warning(f"Key '{key_demo}' is either not in dictionary or is a `None` object. Skipping this dict item.")
+                continue
+            elif df_demo.shape[0] == 0:
+                logger.warning(f"Key '{key_demo}' has no rows. Skipping this dict item.")
+                continue
+
+            if df_maps is None or df_maps.shape[0] == 0:
+                logger.warning(f"Key '{key_maps}' is either not in dictionary or is a `None` object. Skipping this dict item.")
+                continue
+            elif df_maps.shape[0] == 0:
+                logger.warning(f"Key '{key_maps}' has no rows. Skipping this dict item.")
+                continue
+            
 
             if verbose: 
-                logger.info(f"\tInput shapes:\t\t[demo] {demo.shape} | [maps] {maps.shape}")
-            if demo.shape[0] == 0 or maps.shape[0] == 0:
-                logger.warning(f"\tWARNING. No data in demo or maps dataframe. Skipping this dict item.")
-                continue
+                logger.info(f"\tInput shapes:\t\t[df_demo] {df_demo.shape} | [df_maps] {df_maps.shape}")
 
             # 0.i Index appropriately
             col_ID = get_IDCol(study, demographics)
             col_SES = demographics['SES']
-            if 'UID' in demo.columns:
-                demo['UID_ID_SES'] = demo['UID'].astype(str) + '_' + demo[col_ID].astype(str) + '_' + demo[col_SES].astype(str) # concat UID, ID and SES into single col 
-                demo.set_index('UID_ID_SES', inplace=True)
+            if 'UID' in df_demo.columns:
+                df_demo['UID_ID_SES'] = df_demo['UID'].astype(str) + '_' + df_demo[col_ID].astype(str) + '_' + df_demo[col_SES].astype(str) # concat UID, ID and SES into single col 
+                df_demo.set_index('UID_ID_SES', inplace=True)
             else:
-                demo['ID_SES'] = demo[col_ID].astype(str) + '_' + demo[col_SES].astype(str) # concat ID and SES into single col
-                demo.set_index('ID_SES', inplace=True)
+                df_demo['ID_SES'] = df_demo[col_ID].astype(str) + '_' + df_demo[col_SES].astype(str) # concat ID and SES into single col
+                df_demo.set_index('ID_SES', inplace=True)
 
             # 0.ii Prepare covars
             if covars is None: # set defaults
@@ -2779,23 +2864,25 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
                     logger.warning(f"\tWARNING. Covariate '{c}' not a key in the demographics dictionary. Skipping this covar.")
                     covars_copy.remove(c)
                     continue
-                if c not in demo.columns: # ensure covar column exists in demo dataframe
+                if c not in df_demo.columns: # ensure covar column exists in demo dataframe
                     logger.warning(f"\tWARNING. Covariate '{c}' not found in demographics dataframe. Skipping this covar.")
                     covars_copy.remove(c)
                     continue
 
             # 0.iia Format covar to numeric, dummy code if categorical
-            exclude_cols = [col for col in demo.columns if col not in covars_copy]  # exclude all columns but covars
-            demo_numeric, catTodummy_log = catToDummy(demo, exclude_cols = exclude_cols)
-            logger.info(f"\tConverted categorical covariates to dummy variables: \n\t{catTodummy_log}")
+            exclude_cols = [col for col in df_demo.columns if col not in covars_copy]  # exclude all columns but covars
+            demo_numeric, catTodummy_log = catToDummy(df_demo, exclude_cols = exclude_cols)
+            logger.info(f"\tConverted categorical covariates to dummy variables: \t{catTodummy_log}")
 
-            # 0.iib Remove rows with missing covariate data
+            # 0.iib Handle covariates
             missing_idx = []
+            
+
             if 'w' in stat and (covars_copy == [] or covars_copy is None):
                 logger.warning("[winComp] WARNING. No valid covariates specified. Skipping w-scoring.")
                 w_internal = False
                 demo_num = demo_numeric.copy() # keep all rows in demo_numeric
-            elif 'w' in stat:
+            elif 'w' in stat: # Remove rows with missing covariate data
                 w_internal = True
                 covar_cols = [demographics[c] for c in covars_copy]
                 demo_num = demo_numeric.loc[:, covar_cols].copy() # keep only covariate columns in demo dataframe
@@ -2806,25 +2893,28 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
                     missing_idx = demo_num.index[demo_num.isnull().any(axis=1)].tolist()
                     logger.warning(f"\t[winComp] WARNING. {demo_num.isnull().any(axis=1).sum()} indices with missing covariate values: {missing_idx}")
                     demo_num_clean = demo_num.dropna().copy()
-                    maps_clean = maps.loc[demo_num_clean.index, :].copy()
+                    maps_clean = df_maps.loc[demo_num_clean.index, :].copy()
                 else:
                     missing_idx = []
                     demo_num_clean = demo_num.copy()
-                    maps_clean = maps.copy()
-            else: # remove rows with missing covariate data
+                    maps_clean = df_maps.copy()
+                
+                if demo_num_clean.shape[0] < 5: # Skip w-scoring if insufficient cases
+                    logger.warning("[winComp] WARNING. Skipping w-scoring, ≤5 controls.")
+                    w_internal = False
+
+            else: # Do not drop cases for missing covariate data
+                demo_num_clean = demo_numeric.copy()
+                maps_clean = df_maps.copy()
                 w_internal = False
             
-            if w_internal and demo_num_clean.shape[0] < 5:
-                logger.warning("[winComp] WARNING. Skipping w-scoring, ≤5 controls.")
-                w = False
-            
             # A. Create control and comparison subsets
-            ids_ctrl = [j for j in demo[demo[col_grp].isin(ctrl_values)].index if j not in missing_idx]
-            demo_ctrl = demo_num_clean.loc[ids_ctrl].copy() # extract indices from demo_num_clean
-            maps_ctrl = maps_clean.loc[ids_ctrl].copy() # extract indices from maps_clean
+            ids_ctrl = [j for j in df_demo[df_demo[col_grp].isin(ctrl_values)].index if j not in missing_idx]
+            df_demo_ctrl = demo_num_clean.loc[ids_ctrl].copy() # extract indices from demo_num_clean
+            df_maps_ctrl = maps_clean.loc[ids_ctrl].copy() # extract indices from maps_clean
 
             if verbose: 
-                logger.info(f"\tControl group shapes:\t[demo] {demo_ctrl.shape} | [maps] {maps_ctrl.shape}")
+                logger.info(f"\tControl group shapes:\t[demo] {df_demo_ctrl.shape} | [maps] {df_maps_ctrl.shape}")
             
             demo_test = demo_num_clean.copy()
             maps_test = maps_clean.copy()
@@ -2835,91 +2925,85 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
             if verbose: 
                 logger.info(f"\tTest group shapes:\t[demo] {demo_test.shape} | [maps] {maps_test.shape}")
             
-            demo_ctrl = demo_numeric.loc[demo_ctrl.index, :].copy() # keep only rows in demo_ctrl
+            df_demo_ctrl = demo_numeric.loc[df_demo_ctrl.index, :].copy() # keep only rows in demo_ctrl
             demo_test = demo_numeric.loc[demo_test.index, :].copy() # keep only rows in demo_test
 
-            if not test: # add ctrl_IDS to output dictionary item
-                dl_winStats[i][f'ctrl_IDs'] = maps_ctrl.index # TODO. format to a list rather than an index object
-            else:
-                dl_winStats[idx[i]][f'ctrl_IDs'] = maps_ctrl.index
+            item[f'ctrl_IDs'] = list(df_maps_ctrl.index) # add ctrl_IDS to output dictionary item
             
             # B. Calculate statistics    
             # B.i. Prepare output dataframes
-            df_out = pd.DataFrame(index=maps_test.index, columns=maps.columns)
+            df_out = pd.DataFrame(index=maps_test.index, columns=df_maps.columns)
+            
             if verbose:
                 logger.info(f"\tOutput shape:\t\t[map stats] {df_out.shape}")
             
-            if 'z' in stat and demo_ctrl.shape[0] > 3:
-                logger.info(f"\tComputing z scores [{demo_ctrl.shape[0]} controls]...")
+            if 'z' in stat and df_demo_ctrl.shape[0] > 3:
+                logger.info(f"\n\tComputing z scores [{df_demo_ctrl.shape[0]} controls]...")
                 start_time = time.time()
                 
-                z_scores = get_z(x = maps_test, ctrl = maps_ctrl)
-                if not test:
-                    dl_winStats[i]['df_z'] = z_scores
-                else: dl_winStats[idx[i]]['df_z'] = z_scores
+                z_scores = get_z(x = maps_test, ctrl = df_maps_ctrl)
+                
+                item[z_key_out] = z_scores
+
                 duration = time.time() - start_time
-                logger.info(f"\t\tZ-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+                logger.info(f"\t\tComputed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
             elif 'z' in stat:
-                if not test:
-                    dl_winStats[i]['df_z'] = None
-                else: dl_winStats[idx[i]]['df_z'] = None
+                item[z_key_out] = None
                 logger.warning("\tWARNING. Skipping z-score: ≤2 controls.")
 
-            if w_internal and demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
-                logger.info(f"\tComputing w scores [{demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
+            if w_internal and df_demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
+                logger.info(f"\tComputing w scores [{df_demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
                 start_time = time.time()
-                if demo_ctrl.shape[0] < 10 * len(covars_copy):
+                if df_demo_ctrl.shape[0] < 10 * len(covars_copy):
                     logger.warning(f"\t\tWARNING. INTERPRET WITH CAUTION: Few participants for number of covariates. Linear regression likely to be biased.")
 
                 df_w_out = df_out.copy() # n row by p map cols
                 
-                df_w_out, w_models = get_w(map_ctrl = maps_ctrl, demo_ctrl=demo_ctrl, map_test = maps_test, demo_test = demo_test, covars=covars_copy)
-                if not test:
-                    dl_winStats[i]['df_w'] = df_w_out
-                    dl_winStats[i]['df_w_models'] = w_models
-                else: 
-                    dl_winStats[idx[i]]['df_w'] = df_w_out
-                    dl_winStats[idx[i]]['df_w_models'] = w_models
+                df_w_out, w_models = get_w(map_ctrl = df_maps_ctrl, demo_ctrl=df_demo_ctrl, map_test = maps_test, demo_test = demo_test, covars=covars_copy)
+                
+                item[w_key_out] = df_w_out
+                item[wMdl_key_out] = w_models
+               
                 duration = time.time() - start_time
                 logger.info(f"\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
             elif w_internal:
-                if not test:
-                    dl_winStats[i]['df_w'] = None
-                    dl_winStats[i]['df_w_models'] = None
-                else:
-                    dl_winStats[idx[i]]['df_w'] = None
-                    dl_winStats[idx[i]]['df_w_models'] = None
-                logger.warning(f"\tWARNING. Skipping w-scoring, ≤{5 * len(covars_copy)} controls (5 * number of covars).\n\t\tInsufficient number of controls for number of covariates. [{demo_ctrl.shape[0]} controls, {len(covars_copy)} covars].\n\t\tGuidelines suggest at least 5-10 controls per covariate to ensure stable regression estimates.")
+                item[w_key_out] = None
+                item[wMdl_key_out] = None
+               
+                logger.warning(f"\tWARNING. Skipping w-scoring, ≤{5 * len(covars_copy)} controls (5 * number of covars).\n\t\tInsufficient number of controls for number of covariates. [{df_demo_ctrl.shape[0]} controls, {len(covars_copy)} covars].\n\t\tGuidelines suggest at least 5-10 controls per covariate to ensure stable regression estimates.")
+            else:
+                pass
+
+            # add item to output dl
+            dl_out.append(item)
 
         # Save dictlist to pickle file
-        if save:
+        if save and len(dl_out) > 0:
             date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-            if test:
-                save_name = f"TEST_{save_name}"
             out_pth = f"{save_pth}/{save_name}_{date}.pkl"
+            
             with open(out_pth, "wb") as f:
-                pickle.dump(dl_winStats, f)
-            logger.info(f"Saved map_dictlist with z-scores to {out_pth}")
-            print(f"Saved map_dictlist with z-scores to {out_pth}")
+                pickle.dump(dl_out, f)
+            
+            logger.info(f"\nSaved to {out_pth}")
+            print(f"Saved to {out_pth}")
         
         if dlPrint: # print summary of output dict list
             try:
-                if test:
-                    print_dict(dl_winStats, df_print=False, idx=idx)
-                else:
-                    print_dict(dl_winStats)
+                print_dict(dl_out)
             except Exception as e:
                 logger.error(f"Error printing dict: {e}")
-                logger.error(dl_winStats)
+                logger.error(dl_out)
 
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
 
-    logger.info(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    return dl_winStats
+    logger.info(f"Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    return dl_out
 
 def search_df(df, ptrn, out_cols, search_col='grp_detailed', searchType='end'): 
     """
@@ -4181,7 +4265,7 @@ def printItemMetadata(item, return_txt = False, idx=None, clean = False, printSt
     else:
         print(txt)
         
-def relabel_vertex_cols(df, ipsiTo=None, verbose = False):
+def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
     """
     Take df with columns '{idx}_{hemi}' and return two dfs, split according to hemisphere suffix.
     Supports ipsi/contra labelled columns if ipsiTo is provided.
@@ -4191,12 +4275,17 @@ def relabel_vertex_cols(df, ipsiTo=None, verbose = False):
             Number of columns per hemisphere should be 32492 for fsLR-32k
         
         ipsiTo: if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
-        
+        split: 
+            If true, returns two dataframes, one for each hemisphere. 
+            If false, returns a single dataframe with combined hemispheres (adding length of df_l to indices on the right).
+        verbose:
+            If print additional information
     """
     import numpy as np
 
     if verbose:
-        print(f"[rlbl_vrtx] Input cols: {list(dict.fromkeys(df.columns))}")
+        cols_list = list(dict.fromkeys(df.columns))
+        print(f"[rlbl_vrtx] Input cols (first 5 and last 5 cols): ({list(cols_list[:5] + cols_list[-5:])})")
     # split df into cols for each hemi
     if ipsiTo is not None:
         # seperate by ipsi and contra
@@ -4221,27 +4310,32 @@ def relabel_vertex_cols(df, ipsiTo=None, verbose = False):
 
         # replace suffixes
         df_hemiL.columns = [col.replace('_L', '') for col in df_hemiL.columns]
-        df_hemiR.columns = [col.replace('_R', '') for col in df_hemiR.columns]
+        df_hemiR.columns = [col.replace('_R', '') for col in df_hemiR.columns]  
+    
+        if verbose:
+            print(f"\tTotal vertices per hemi: {len(df_hemiL.columns)}")
+            print(f"\tL: n unique, min, max = {len(np.unique(df_hemiL.columns.astype(int)))}, {min(df_hemiL.columns.astype(int))}, {max(df_hemiL.columns.astype(int))}")
+            print(f"\tR: n unique, min, max = {len(np.unique(df_hemiR.columns.astype(int)))}, {min(df_hemiR.columns.astype(int))}, {max(df_hemiR.columns.astype(int))}")
 
-    # combine left and right dfs. Adding 
-    assert len(df_hemiL.columns) == len(df_hemiR.columns), f"[relabel_vertex_cols] Number of columns in L and R hemispheres do not match. {len(df_hemiL.columns)} != {len(df_hemiR.columns)}"
+    if split:
+        if verbose:
+            print("\t[relabel_vertex_cols] Returning two dataframes, one for each hemisphere.")
+        return df_hemiL, df_hemiR
+    else:
+        assert len(df_hemiL.columns) == len(df_hemiR.columns), f"[relabel_vertex_cols] Number of columns in L and R hemispheres do not match. {len(df_hemiL.columns)} != {len(df_hemiR.columns)}"
+        df_hemiR.columns = df_hemiR.columns.astype(int) + len(df_hemiL.columns) # shift R indices to be continuous with L
+        df_out = df_hemiL.join(df_hemiR, how='outer') # join L and R dfs
         
-    df_hemiR.columns = df_hemiR.columns.astype(int) + len(df_hemiL.columns) # shift R indices to be continuous with L
-    df_out = df_hemiL.join(df_hemiR, how='outer') # join L and R dfs
-    
-    if verbose:    
-        print(f"\tTotal vertices per hemi: {len(df_hemiL.columns)}")
-        print(f"\tL: n unique, min, max = {len(np.unique(df_hemiL.columns.astype(int)))}, {min(df_hemiL.columns.astype(int))}, {max(df_hemiL.columns.astype(int))}")
-        print(f"\tR: n unique, min, max = {len(np.unique(df_hemiR.columns.astype(int)))}, {min(df_hemiR.columns.astype(int))}, {max(df_hemiR.columns.astype(int))}")
+        if verbose:
+            print(f"\tCombined: n unique, min, max = {len(np.unique(df_out.columns.astype(int)))}, {min(df_out.columns.astype(int))}, {max(df_out.columns.astype(int))}")
+            print(f"\tTotal vertices combined: {len(df_out.columns)}")
+            #print(f"\tObs: {list(dict.fromkeys(df_out.columns.astype(int)))}")
+            #print(f"\tCnt: {list(range(len(df_out.columns)))}")
+            print("\t[relabel_vertex_cols] Returning single dataframe with combined hemispheres.")
+        
+        return df_out
 
-        print(f"\tCombined: n unique, min, max = {len(np.unique(df_out.columns.astype(int)))}, {min(df_out.columns.astype(int))}, {max(df_out.columns.astype(int))}")
-        print(f"\tTotal vertices combined: {len(df_out.columns)}")
-        print(f"\tObs: {list(dict.fromkeys(df_out.columns.astype(int)))}")
-        print(f"\tCnt: {list(range(len(df_out.columns)))}")
-    
-    return df_out
-
-def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=None):
+def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, verbose=False):
     """
     Input:
         df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
@@ -4270,22 +4364,24 @@ def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=
     hemi_col = 'SHemi' # could also be SHemi (for short name)
     
     if surf == 'fsLR-32k':
-        glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+        glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser-360_conte69.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
         nvtx = 32492
     elif surf == 'fsLR-5k':
-        glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser-360_fsLR-5k.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
+        glasser_df = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser-360_fsLR-5k.csv", header=None, names=["glasser"]) # index is vertex num, value is region number
         nvtx = 4842
     else:
         raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
     
     assert df.shape[1] == nvtx*2, f"[apply_glasser] Input dataframe has {df.shape[1]} columns. Expected {nvtx*2} columns for surf {surf}."
     
-    df_relbl = relabel_vertex_cols(df, ipsiTo, verbose = False) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
+    df_relbl = relabel_vertex_cols(df, ipsiTo, split = False, verbose = verbose) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
 
     df_relbl.columns = glasser_df['glasser'].values[df_relbl.columns.astype(int)]
 
-    if labelType.lower() != 'glasser_int': # replace region codes with human interpretable strings
-        glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser_details.csv")
+    if labelType.lower() == 'glasser_int' or labelType is None: # replace region codes with human interpretable strings
+        pass
+    else:
+        glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser_details.csv")
         if labelType.lower() == 'glasser_name_short':
             gd_col  = 'SName'
         elif labelType.lower() == 'glasser_name_long':
@@ -4326,7 +4422,96 @@ def apply_glasser(df, surf, labelType='glasser_int', addHemiLbl = False, ipsiTo=
         )
 
     return df_relbl
-            
+
+def apply_DK25(df, surf, labelType = None, addHemiLbl = True, ipsiTo=None, verbose = False):
+    """
+    Parcellation of hippocampus into 25 regions. https://github.com/jordandekraker/hippomaps/tree/master/hippomaps/resources/parc-DeKraker25
+    DK25: DeKraker25
+
+    Input:
+        df
+        surf: str
+            Options:
+            den-0p5mm
+            den-1mm
+            den-2mm
+
+        
+        labelType
+        addHemiLbl
+        ipsiTo
+        verbose: bool
+            If True, print progress messages.
+    
+    Returns:
+        df_parc: 
+    """
+    import pandas as pd
+    import nibabel as nb
+    import numpy as np
+    
+    if surf not in ['den-0p5mm', 'den-1mm', 'den-2mm']:
+        if surf in ['0p5mm', '1mm', '2mm']:
+            surf = f'den-{surf}'
+        else:
+            raise ValueError("[apply_DK25] Invalid surf value. Choose from 'den-0p5mm', 'den-1mm', 'den-2mm'.")
+    
+    #sub-bigbrain_hemi-R_label-dentate_den-0p5mm_DeKraker25.label.gii
+    dk25_rt = '/host/verges/tank/data/daniel/parcellations/DeKraker25/'
+    lbl_file = f"sub-bigbrain_hemi-R_label-hipp_{surf}_DeKraker25.label.gii"
+
+    lbl = nb.load(f"{dk25_rt}/{lbl_file}").darrays[0].data
+    
+    if verbose:
+        print(f"[apply_DK25] Label file has length {len(lbl)} (unique: {len(set(lbl))}). Path: {lbl_file}")
+
+    df_l, df_r = relabel_vertex_cols(df, ipsiTo=None, verbose = verbose, split = True)  # strip suffixes from column names   
+    
+    # apply labels
+    df_l.columns = lbl[df_l.columns.astype(int)]
+    df_r.columns = lbl[df_r.columns.astype(int)]
+   
+    
+    # index to appropriate labelType
+    if labelType is None or labelType == 'idx': # keep index
+        pass
+    else:
+        dk25_details = pd.read_csv(f"{dk25_rt}/DK25_details.csv")
+        label_col = labelType.lower()
+        
+        if label_col not in ['label']: # add additional columns in DK25_details.csv is needed
+            raise ValueError("[apply_DK25] Invalid labelType value. Currently only 'label' is supported.")
+        else: 
+            df_l.columns = df_l.columns.map(
+                lambda x: dk25_details.loc[dk25_details['idx'] == x, label_col].values[0]
+                if x in dk25_details['idx'].values else x
+            )
+            df_r.columns = df_r.columns.map(
+                lambda x: dk25_details.loc[dk25_details['idx'] == x, label_col].values[0]
+                if x in dk25_details['idx'].values else x
+            )
+
+    if addHemiLbl:
+        if ipsiTo:
+            if ipsiTo.upper() == 'L':
+                hemi_l = 'ipsi'
+                hemi_r = 'contra'
+            elif ipsiTo.upper() == 'R':
+                hemi_l = 'contra'
+                hemi_r = 'ipsi'
+        else:
+            hemi_l = 'L'
+            hemi_r = 'R'
+        
+    df_l.columns = [f"{col:g}_{hemi_l}" if isinstance(col, (int, float, np.integer, np.floating)) else f"{col}_{hemi_l}" for col in df_l.columns]
+    df_r.columns = [f"{col:g}_{hemi_r}" if isinstance(col, (int, float, np.integer, np.floating)) else f"{col}_{hemi_r}" for col in df_r.columns]
+        
+    #print(f"Num unique (L, R): ({len(set(df_l))}, {len(set(df_r))})")
+    
+    df_parc = pd.concat([df_l, df_r], axis=1)
+    return df_parc
+
+
 def glasser_mean(df_glasserLbl):
     """
     Calculate the mean values per region for the glasser atlas.
