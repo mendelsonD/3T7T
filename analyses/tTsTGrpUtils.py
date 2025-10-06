@@ -23,6 +23,54 @@ def loadPickle(pth, verbose=True, dlPrint=False):
         print('='*100)
     return obj
 
+def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True):
+    """
+    Save an object to a pickle file.
+    
+    Parameters:
+    - obj: object
+        The object to be saved.
+    - root: str
+        Directory where the pickle file will be saved.
+    - name: str
+        Name of the pickle file (without extension).
+    - timeStamp: bool
+        If True, appends a timestamp to the filename.
+    - test: bool
+        If True, appends 'TEST_' to the filename.
+    - verbose: bool
+        If True, prints status messages.
+
+    Output:
+        Saves file.
+    Returns:
+        - pth: str
+            Path to the saved pickle file.
+    """
+    import pickle
+    import os
+    import datetime
+    
+    # Ensure root directory exists
+    dir_name = os.path.dirname(root)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+        if verbose:
+            print(f"\t[savePickle] Created directory: {dir_name}")
+
+    if test: 
+        name = f"TEST_{name}"
+    if timeStamp:
+        name = f"{name}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+
+    pth = os.path.join(root, f"{name}.pkl")
+    
+    with open(pth, "wb") as f:
+        pickle.dump(obj, f)
+    if verbose:
+        print(f"\t[pkl_save] Saved object to {pth}")
+
+    return pth
 
 ################### DATA PREPERATION ####################################
 def add_date(demo_pths, demo):
@@ -2489,6 +2537,8 @@ def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=N
             
             if stat is not None:
                 if stat == 'mean':
+                    # compute skewness. if highly skewed, then maybe not normal distribution, write a warning
+
                     df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
                 elif stat == 'median' or stat == 'mdn':
                     df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
@@ -2502,6 +2552,8 @@ def parcellate_items(dl, df_keys, parc, region=['cortex'], parc_lbl=None, stat=N
                     df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
                 else:
                     raise ValueError(f"\t[parcellate_items] Unknown stat: {stat}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
+            
+            # TODO. Save df_parc to pickle and put path into item
             item[k_out] = df_parc
         
         dl_out.append(item)
@@ -4685,6 +4737,7 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
     import os
     import re
     from PIL import Image
+    import datetime
     
     if output is None:
         output = fig_dir
@@ -4721,7 +4774,8 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
 
         # Output PDF path
         base_name = re.sub(r"\.png$", "", base_name)  # Remove the .png extension using re
-        output_pdf = os.path.join(output, f"{base_name}.pdf")
+        time_stmp = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+        output_pdf = os.path.join(output, f"{base_name}_{time_stmp}.pdf")
 
         # Open images and save them directly to a PDF
         images = []
@@ -4735,8 +4789,7 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
         # Save all images to a single PDF
         if images:
             images[0].save(output_pdf, save_all=True, append_images=images[1:])
-            if verbose:
-                print(f"\tPDF created: {output_pdf}")
+            print(f"\tPDF created: {output_pdf}")
 
 def sortCols(df):
     """
@@ -5689,6 +5742,9 @@ def plot_ridgeplot(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2), Xlab="
     import matplotlib as mpl    
     import numpy as np
     import pandas as pd
+    from matplotlib import use
+    use('Agg')  # Use non-interactive backend for compatibility
+
     # If input is DataFrame, convert to numpy array
     if hasattr(matrix, "values"):
         matrix_np = matrix.values
@@ -5779,5 +5835,8 @@ def plot_ridgeplot(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2), Xlab="
 
     if save_path:
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
     else:
         plt.show()
+        plt.close()
+
