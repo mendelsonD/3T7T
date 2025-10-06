@@ -369,16 +369,17 @@ def parcel_stats(dl, key, sv_root, meth = 'perc', test = False):
 
         txt = tsutil.printItemMetadata(item, return_txt = True)
         print(txt)
+        log += f"\n{txt}"
+
         df = item.get(key, None)
-        log += f"\n\n{txt}\tShape: {df.shape}\n"
-        
-        
+               
         if df is None:
             log += f"\tNo data found for key '{key}'. Skipping."
             continue
         if not isinstance(df, (pd.DataFrame, np.ndarray)):
             log += f"\tData for key '{key}' is not a DataFrame or ndarray. Skipping."
             continue
+        log += f"\tShape: {df.shape}"
         
         parc = key.split('-')[-1]
         

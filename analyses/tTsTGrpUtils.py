@@ -2648,7 +2648,7 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
 
 ######################### ANALYSIS FUNCTIONS ####################################
 
-def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp, 
+def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, stat=['z'],
             save=True, save_pth=None, save_name="05a_stats_winStudy", test=False, 
             verbose=False, dlPrint=False):
     """
@@ -2657,12 +2657,16 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
     Input:
         dl: (list) of dictionaries with map and demographic data for each comparison
         demographics: (dict) with demographic column names
+        key_maps: (str)
+            key in the dict items of dl that contains the maps to compute statistics on (eg. df_maps, df_maps_parc-glsr)
         ctrl_grp: (dict) with all control group patterns in the grouping column
-        z: (bool) whether to compute z-scores
-        w: (bool) whether to compute w-scores
         covars: (list) of covariates to ensure complete data for and to include in w-scoring.
+        
+        stat: (lst) of str
+            statistics to compute. Options:
+                'z' - z-score relative to control group <default>
+                'w' - w-score relative to control group, adjusting for covariates
         col_grp: (str) name of the grouping column in demographics dataframe
-
         save: (bool) <default: True>
             whether to save the output dict list as a pickle file
         save_name: (str) <default: "05a_stats_winStudy">
@@ -2676,6 +2680,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
     Output:
         dl_winStats: (list) of dictionaries with map and demographic data for each comparison, with added z and/or w score columns
     """
+
     import numpy as np
     import pandas as pd
     import os
@@ -2786,11 +2791,11 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
 
             # 0.iib Remove rows with missing covariate data
             missing_idx = []
-            if w and (covars_copy == [] or covars_copy is None):
+            if 'w' in stat and (covars_copy == [] or covars_copy is None):
                 logger.warning("[winComp] WARNING. No valid covariates specified. Skipping w-scoring.")
                 w_internal = False
                 demo_num = demo_numeric.copy() # keep all rows in demo_numeric
-            elif w:
+            elif 'w' in stat:
                 w_internal = True
                 covar_cols = [demographics[c] for c in covars_copy]
                 demo_num = demo_numeric.loc[:, covar_cols].copy() # keep only covariate columns in demo dataframe
@@ -2844,7 +2849,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
             if verbose:
                 logger.info(f"\tOutput shape:\t\t[map stats] {df_out.shape}")
             
-            if z and demo_ctrl.shape[0] > 3:
+            if 'z' in stat and demo_ctrl.shape[0] > 3:
                 logger.info(f"\tComputing z scores [{demo_ctrl.shape[0]} controls]...")
                 start_time = time.time()
                 
@@ -2855,7 +2860,7 @@ def winComp(dl, demographics, ctrl_grp, z, w, covars, col_grp,
                 duration = time.time() - start_time
                 logger.info(f"\t\tZ-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
-            elif z:
+            elif 'z' in stat:
                 if not test:
                     dl_winStats[i]['df_z'] = None
                 else: dl_winStats[idx[i]]['df_z'] = None
