@@ -23,7 +23,7 @@ def loadPickle(pth, verbose=True, dlPrint=False):
         print('='*100)
     return obj
 
-def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True, rtn_txt = False):
+def savePickle(obj, root, name, timeStamp = True, append=None, test=False, verbose = True, rtn_txt = False):
     """
     Save an object to a pickle file.
     
@@ -36,6 +36,8 @@ def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True, rt
         Name of the pickle file (without extension).
     - timeStamp: bool
         If True, appends a timestamp to the filename.
+    - append: str or None
+        If provided, appends this string to the filename (before timeStamp)
     - test: bool
         If True, appends 'TEST_' to the filename.
     - verbose: bool
@@ -61,6 +63,8 @@ def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True, rt
 
     if test: 
         name = f"TEST_{name}"
+    if append is not None:
+        name = f"{name}_{append}"
     if timeStamp:
         name = f"{name}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
 
@@ -2881,7 +2885,6 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
     import numpy as np
     import pandas as pd
     import os
-    import pickle
     import time
     import datetime
 
@@ -2893,7 +2896,9 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
         os.makedirs(save_pth)
     if test:
         save_name = f"TEST_{save_name}"
-    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    
+    start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
     
     # Configure module logger (handlers added once)
     logger = _get_file_logger(__name__, log_file_path)
@@ -2904,7 +2909,7 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
 
     try:
         logger.info(f"[winComp] Saving log to: {log_file_path}")
-        logger.info(f"\nComputing within study comparisons. Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"\nComputing within study comparisons. Start time: {start}")
         logger.info(f"\tParameters: stats={stat}, covars={covars}, col_grp={col_grp}, ctrl_grp={ctrl_grp}")
         logger.info(f"\tDemographics columns: {demographics}")
 
@@ -2944,6 +2949,8 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
 
             df_demo = item.get(key_demo, None) # contains all participants
             
+            item_orig = item.copy() # keep original item to compare changes
+
             for key in keys_maps:
                 
                 df_maps = item.get(key, None) # contains all participants, indexed by <IUD_>ID_SES
@@ -3081,7 +3088,9 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
                     else:
                         z_name = f"{i}_{z_key_out}"
                     
-                    z_scores_pth, log = savePickle(obj = z_scores, root = out_df_save_pth, name = z_name, timeStamp = True, rtn_txt=True, verbose = False)
+                    z_scores_pth, log = savePickle(obj = z_scores, root = out_df_save_pth, name = z_name, 
+                                                   timeStamp = False, append = start,
+                                                    rtn_txt=True, verbose = False)
                     logger.info(f"\t\t\t{log}")
                     item[z_key_out] = z_scores_pth
 
@@ -3090,7 +3099,6 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
                         logger.info(f"\t\t\tComputed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
                 elif 'z' in stat:
-                    item[z_key_out] = None
                     logger.warning("\tWARNING. Skipping z-score: ≤2 controls.")
 
                 if w_internal and df_demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
@@ -3111,8 +3119,12 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
                         w_name = f"{i}_{w_key_out}"
                         wMdl_name = f"{i}_{wMdl_key_out}"
 
-                    df_w_pth, log_w = savePickle(obj = df_w_out, root = out_df_save_pth, name = w_name, timeStamp = True, rtn_txt=True, verbose = False)
-                    df_w_mdls_pth, log_wMdl = savePickle(obj = w_models, root = out_df_save_pth, name = wMdl_name, timeStamp = True, rtn_txt=True, verbose = False)
+                    df_w_pth, log_w = savePickle(obj = df_w_out, root = out_df_save_pth, name = w_name, 
+                                                 timeStamp = False, append = start,
+                                                 rtn_txt=True, verbose = False)
+                    df_w_mdls_pth, log_wMdl = savePickle(obj = w_models, root = out_df_save_pth, name = wMdl_name, 
+                                                         timeStamp = True, append = start, 
+                                                         rtn_txt=True, verbose = False)
                     logger.info(f"\t\t\t{log_w}")
                     logger.info(f"\t\t\t{log_wMdl}")
                     item[w_key_out] = df_w_pth
@@ -3122,20 +3134,18 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
                     if duration > 60:
                         logger.info(f"\t\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
 
-                elif w_internal:
-                    item[w_key_out] = None
-                    item[wMdl_key_out] = None
-                
+                elif w_internal:               
                     logger.warning(f"Skipping w-scoring: {df_demo_ctrl.shape[0]} controls ≤{5 * len(covars_copy)} controls (5 * number of covars [{len(covars_copy)}]).")
                 else:
                     pass
-
-            # add item to output dl
-            dl_out.append(item)
+            
+            dl_out.append(item) # add item to output dl
 
         # Save dictlist to pickle file
         if save and len(dl_out) > 0:
-            out_pth, txt = savePickle(obj = dl_out, root = save_pth, name = save_name, timeStamp = True, rtn_txt = True, verbose = True)            
+            out_pth, txt = savePickle(obj = dl_out, root = save_pth, name = save_name,
+                                      timeStamp = False, append = start,
+                                    rtn_txt = True, verbose = True)            
             logger.info(f"{txt}")
         
         if dlPrint: # print summary of output dict list
@@ -3176,6 +3186,7 @@ def search_df(df, ptrn, out_cols, search_col='grp_detailed', searchType='end'):
     import pandas as pd
 
     # Check that all required columns exist in the dataframe
+
     if isinstance(out_cols, str): # Ensure out_col is a list
         out_cols = [out_cols]
     else:
@@ -3218,7 +3229,6 @@ def toIC(df_r, df_l):
     out shape: (n_r + n_l) x n_vertices [assuming both inputs have identical column names]
     """
     import pandas as pd
-    print(f"r: {df_r}, l: {df_l}")
     # if pathology on R then col names ending with _R --> ipsi, _L --> contra
     df_r_ic = df_r.rename(columns=lambda x: x.replace('_R', '_ipsi').replace('_L', '_contra') if x.endswith('_R') or x.endswith('_L') else x)
     # if pathology on L then col names ending with _L --> ipsi, _R --> contra
@@ -3229,7 +3239,7 @@ def toIC(df_r, df_l):
     return df_ic
 
 def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
-             save=True, save_pth=None, save_name="05b_stats_winStudy_grp", test=False, verbose=False, dlPrint=False):
+             save=True, save_pth=None, save_name="05b_stats_winStudy_grp", test=False, verbose=False):
     """
     Group participants and ipsi/contra flip maps according to side of lesion.
 
@@ -3264,7 +3274,8 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
         os.makedirs(save_pth)
     if test:
         save_name = f"TEST_{save_name}"
-    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
     print(f"[grp_flip] Saving log to: {log_file_path}")
 
     # Configure module logger (handlers added per-file by _get_file_logger)
@@ -3279,6 +3290,8 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
         if test:
             idx_len = 1 # number of indices
+            if idx_len > len(dl):
+                idx_len = len(dl)
             idx = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
             dl_iterate = [dl[i] for i in idx]
             dl_grp_ic = copy.deepcopy([dl[i] for i in idx])
@@ -3293,10 +3306,10 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
             if counter % 10 == 0:
                 print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processing {counter} of {len(dl_iterate)}...")
             if test: 
-                logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
+                index = idx[i]
             else: 
-                logging.info(printItemMetadata(item, idx=i, return_txt=True))
-            logger.info(printItemMetadata(item, return_txt=True))
+                index = i
+            logger.info(f"\n{printItemMetadata(item, idx=i, return_txt=True)}")
             
             df_demo = item[f'df_demo'].copy() # contains all participants
             IDs_ctrl = item.get('ctrl_IDs', None)
@@ -3315,7 +3328,7 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                 
             for grp_val in goi: # for each group
                 if verbose:
-                    print(f"\tGrouping {grp_val}")
+                    logger.info(f"\tGrouping {grp_val}")
                 # extract IDs for grp_L and grp_R
                 demo_grp = df_demo[df_demo[col_grp].str.contains(grp_val)].copy() # extract only participants in group of interest
                 IDs_right = search_df(df=demo_grp, ptrn='R', searchType='end', search_col=col_grp, out_cols=[col_ID, col_SES])
@@ -3326,7 +3339,7 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                 dl_grp_ic[i][f'{grp_val}_IDs_L'] = IDs_left
 
                 logger.info(f"\tCtrl: {len(IDs_ctrl)}")
-                if verbose: 
+                if verbose:
                     logger.info(f"\t\tIDs Ctrl: {IDs_ctrl}")
                 logger.info(f"\tGroup {grp_val}: {len(IDs_left)} L | {len(IDs_right)} R")
                 if verbose:
@@ -3341,19 +3354,31 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
                     # Create df_{stat} for each side
                     df_stat = item.get(key, None)
+                    print(type(df_stat))
                     if type(df_stat) is str:
                         df_stat = loadPickle(df_stat, verbose = False)
+                    else: # if is none
+                        print(f"\t\tKey '{key}' is either not in dictionary or is a `None` object. Skipping.")
+                        logger.info(f"\t\tKey '{key}' is either not in dictionary or is a `None` object. Skipping.")
+                        continue
 
-                    if df_stat is not None:  # split according to grps
+                    if df_stat is None:
+                        if verbose:
+                            logger.info(f"\t\t\tKey '{key}' is None object. Skipping.")
+                        continue
+                    elif df_stat.shape[0] == 0:
+                        if verbose:
+                            logger.info(f"\t\t\tKey '{key}' has no rows. Skipping.")
+                        continue
+                    else:  # split according to grps
                         if df_stat.shape[0] == 0:
-                            logger.info(f"\t\tKey '{key}' has no rows. Skipping this key.")
+                            logger.info(f"\t\tKey '{key}' has no rows. Skipping.")
                             continue
                         
                         df_stat_grp = df_stat.copy() # search indexes of df_z for values in IDs_right. No need to split by SES, as df_z index is UID_ID_SES
                         df_stat_r = df_stat_grp[df_stat_grp.index.isin(IDs_right)]
                         df_stat_l = df_stat_grp[df_stat_grp.index.isin(IDs_left)]
-                        print(f"Type of df_stat_r: {type(df_stat_r)}")
-                        print(f"Type of df_stat_l: {type(df_stat_l)}")
+                        
                         df_stat_ic = toIC(df_r = df_stat_r, df_l = df_stat_l)
                         
                         if verbose:
@@ -3363,7 +3388,9 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                         # save these dfs, add path to output dictionary item
                         for df, suffix in zip([df_stat_r, df_stat_l, df_stat_ic], ['R', 'L', 'ic']):
                             name = f"{key}_{grp_val}_{suffix}"
-                            pth = savePickle(obj = df, root = save_pth_df, name = f"{i}_{name}", timeStamp = True, rtn_txt=False, verbose = False)
+                            pth = savePickle(obj = df, root = save_pth_df, name = f"{i}_{name}", 
+                                            timeStamp = False, append = start,
+                                            rtn_txt=False, verbose = False)
                             dl_grp_ic[i][name] = pth
                             if verbose:
                                 logger.info(f"\t\t\t{suffix} : {pth}")
@@ -3379,36 +3406,26 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                             
                             if verbose:
                                 logger.info(f"\t\t\tControl group {key} shape {df_stat_ctrl.shape} : {pth}")
-                    else:
-                        if verbose:
-                            logger.info(f"\t\t\tKey '{key}' is either not in dictionary or is a `None` object or has no rows. Skipping this key.")
-                        continue
 
-        # Save the updated map_dictlist to a pickle file
-        # TODO. Save periodically during loop
+        # Save dl to a pickle file
         if save:
-            out_pth, log = savePickle(obj = dl_grp_ic, root = save_pth, name = save_name, timeStamp = True, rtn_txt=True, verbose = True)
+            out_pth, log = savePickle(obj = dl_grp_ic, root = save_pth, name = save_name, 
+                                      timeStamp = False, append = start, 
+                                      rtn_txt=True, verbose = True)
             
             logger.info(log)
             print(log)
 
-        logger.info(f"\nCompleted grp_flip.")
+        logger.info(f"\n[grp_flip] Completed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\n[grp_flip] Completed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        if dlPrint:
-            print('-'*100)
-            try:
-                if test:
-                    print_dict(dl_grp_ic, df_print=False, idx=idx)
-                else:
-                    print_dict(dl_grp_ic)
-            except:
-                print(dl_grp_ic)
+
 
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
+        print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} EXITED WITH ERROR, see log.")
+    
 
-    logger.info(f"End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return dl_grp_ic
 
 def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats_winD", verbose=False, test=False, test_len=1, dlPrint=False ):
