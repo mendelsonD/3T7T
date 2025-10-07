@@ -93,12 +93,26 @@ def _get_file_logger(name, log_file_path):
     # Ensure directory exists
     log_dir = os.path.dirname(log_file_path) or '.'
     os.makedirs(log_dir, exist_ok=True)
-
     abs_path = os.path.abspath(log_file_path)
+
     for h in logger.handlers:
-        if isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", None) == abs_path:
-            return logger
-        
+        if isinstance(h, logging.FileHandler):
+            try:
+                if getattr(h, "baseFilename", None) == abs_path:
+                    logger.propagate = False
+                    logger._tTsT_configured = abs_path
+                    return logger
+            except Exception:
+                continue
+
+    # Remove old handlers (close them)
+    for h in list(logger.handlers):
+        try:
+            logger.removeHandler(h)
+            h.close()
+        except Exception:
+            pass
+
     # Info handler (general messages)
     info_handler = logging.FileHandler(log_file_path)
     info_handler.setLevel(logging.INFO)
@@ -2134,8 +2148,8 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                append_name = None, region=None, verbose=False, test = False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
-    
-    TODO. Log this function.
+
+    TODO. Add number of surfaces with no data, print at end of extractMap
 
     Input:
         df_mapPaths: pd.DataFrame 
@@ -2190,7 +2204,7 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
     
     log_name = f"04b_extractMap"
     if region is not None:
-        log_name = f"{region}_{log_name}"
+        log_name = f"{log_name}_{region}"
     if append_name is not None:
         log_name = f"{log_name}_{append_name}"
     if test:
@@ -2245,7 +2259,7 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
         for col_L, col_R in zip(cols_L, cols_R):
             counter += 1
             if counter % 10 == 0:
-                print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {counter} of {len(cols_L)}...")
+                print(f"\t{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {counter} of {len(cols_L)}...")
             
             assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
             
@@ -2290,11 +2304,10 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                 if verbose:
                     logger.info(f"\t[{study_code}] {len(df_tmp_study)} rows")
 
-                maps = get_maps(df_tmp_study, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=verbose)
+                maps = get_maps(df_tmp_study, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=False)
                 if maps.shape[0] == 0:
                     logger.info(f"\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
                     continue
-
                 
                 map_name = f"{study_code}_{commonName}"
                 if append_name is not None:
@@ -2303,8 +2316,9 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                 if test:
                     map_name = f"TEST_{map_name}"
                 
-                maps_pth = savePickle(obj = maps, root = save_df_pth, name = map_name, verbose=verbose)
-                
+                maps_pth, save_stmt = savePickle(obj = maps, root = save_df_pth, name = map_name, verbose=False, rtn_txt = True)
+                logger.info(f"\t{save_stmt}")
+
                 # add to dict list
                 surf = col_L.split('surf-')[1].split('_label')[0]
                 lbl = col_L.split('_label-')[1].split('_')[0]
@@ -2330,7 +2344,7 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                 })
         
         if verbose:
-            logger.info(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
+            logger.info(f"[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
         
     except Exception as e:
         logger.error(f"An error occurred in extractMap: {e}", exc_info=True)
@@ -2542,6 +2556,10 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
                      stats=None, save_pth=None, save_name=None,
                      verbose=False, test=False):
     """
+    Parcellate vertex-wise dataframes.
+
+    TODO. Log
+
     Input:
         dl [lst]: list of dicts
             Each dict should contain:
@@ -2605,7 +2623,6 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
     parc_regions = [pr['region'] for pr in parcellationSpecs if pr.get('parcellate', False) != False]
 
     for index, region in enumerate(parcellationSpecs):
-        
         parc = region.get('parcellate', None)
 
         if parc is None:
@@ -2618,8 +2635,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
             raise ValueError(f"\t[parcellate_items] Unknown parcellation: {parc}. Supported: 'glasser', 'dk25'.")
        
         parcellationSpecs[index]['parc_name_shrt'] = parc_name_shrt
-                
-                
+             
     if test:
         idx_len = 2
         idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
@@ -2672,7 +2688,9 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
                 key_outs.append(key_out)
 
                 df = item.get(df_key, None)
-                
+                if type(df) == str:
+                    df = loadPickle(df, verbose=False)
+
                 if df is None:
                     print(f"\t[parcellate_items] WARNING. Key {df_key} not found in item {idx}. Skipping.")
                     continue
@@ -2929,6 +2947,9 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
             for key in keys_maps:
                 
                 df_maps = item.get(key, None) # contains all participants, indexed by <IUD_>ID_SES
+                if type(df_maps) == str:
+                    df_maps = loadPickle(df_maps, verbose=False)
+                
                 logger.info(f"\n")
 
                 if df_demo is None:
