@@ -94,7 +94,7 @@ tail -n +$((idx_start + 1)) "$input_csv" | while IFS=',' read -ra row; do
         
         echo "  $column_name: $path"
 
-        mrview -load "$path" -mode 2 -plane 1 -voxel 125,0,0 -noannotations
+        mrview -load "$path" -mode 2 -plane 1 -voxel 125,0,0 -noannotations -interpolation 0
         
         if [[ $? -ne 0 ]]; then
             exit 0

@@ -637,6 +637,8 @@ def idToMap(df_demo, studies, dict_demo, specs,
             save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
             verbose=False):
     """
+    TODO. SAVE df intermittently (robust against interruptions). Save with time stamp. 
+        Then, at the end save the final version, find all files matching the naming pattern with times greater than the start time and less than current time and delete these intermediate files.
     From demographic info, add path to unsmoothed, smoothed maps. If smoothed map does not exist, compute. 
     Do this for all parameter combinations (surface, label, feature, smoothing kernel) provided in a dictionary item.
 
@@ -1344,8 +1346,7 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
         df: DataFrame with columns for ID, SES, Date, and paths to left and right hemisphere maps.
             NOTE. Asusme path columns end with '_L' and '_R' for left and right hemisphere respectively.
         mapCols: List of column names in df that contain paths to the maps.
-        col_grp: Column name for group in the DataFrame. Default is 'grp'.
-        col_ID: Column name for participant ID in the DataFrame. Default is 'MICS_ID'.
+        col_ID: Column name for participant ID in the DataFrame. Default is 'UID'.
         col_study: If not none, uses values in this column in the index
     
     Output:
@@ -1374,7 +1375,7 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
 
     # read in the maps and append to df_maps
     if 'UID' in df.columns:
-        if col_study is not None:
+        if col_study is not None and col_study != 'UID':
             df_maps = df[['UID', col_study, col_ID, 'SES', col_L, col_R]]
         else:
             df_maps = df[['UID', col_ID, 'SES', col_L, col_R]]
@@ -1836,7 +1837,7 @@ def clean_ses(df_in, col_ID="UID", method="oldest", save=None, col_study=None, v
             sub_df = df[df[col_study] == study]
             repeated_ids_study = sub_df[sub_df.duplicated(subset=col_ID, keep=False)][col_ID].unique()
             if len(repeated_ids_study) > 0:
-                if verbose: print(f"\t[study] {len(repeated_ids_study)} IDs with multiple sessions found. Processing...")
+                if verbose: print(f"\t[{study}] {len(repeated_ids_study)} IDs with multiple sessions found. Processing...")
                 if method == "newest":
                     for id in repeated_ids_study:
                         sub_sub_df = sub_df[sub_df[col_ID] == id]
@@ -2144,6 +2145,8 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
 def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, verbose=False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
+    
+    TODO. Log this function.
 
     Input:
         df_mapPaths: pd.DataFrame 
@@ -2250,8 +2253,10 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, 
             if verbose:
                 print(f"\t[{study_code}] {len(df_tmp_study)} rows")
 
-            maps = get_maps(df_tmp_study, mapCols=[col_L, col_R], col_grp = demographics['grp'], col_ID = col_ID, verbose=verbose)
-            
+            maps = get_maps(df_tmp_study, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=verbose)
+            if maps.shape[0] == 0:
+                print(f"\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
+                continue
             # add to dict list
             surf = col_L.split('surf-')[1].split('_label')[0]
             lbl = col_L.split('_label-')[1].split('_')[0]
@@ -2479,7 +2484,7 @@ def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study'
     
     return out_dl
 
-def parcellate_items(dl, df_keys, parc_region, stat=None, save_pth=None, save_name=None,
+def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, save_name=None,
                      verbose=False, test=False):
     """
     Input:
@@ -2495,13 +2500,13 @@ def parcellate_items(dl, df_keys, parc_region, stat=None, save_pth=None, save_na
                     Assumes map path is missing if either : map_pth
         df_keys [lst]: 
             list of strings of keys holding df to parcellate (should be in form of IDs (rows) by vertex (cols))
-        parc_region [lst]: list of dicts
+        parcellationSpecs [lst]: list of dicts
             Each dict should have keys:
                 'region':       region that following settings apply to (should correspond to region value in dl items)
                 'parcellate':   name of parcellation, Options: 'glasser', 'DK25' <eventually: 'schaefer100'>
                                 False if not to parcellate
                 'parc_lbl':     how to return parcellated index naming. Default = None (allowing default of parcellation function)        
-        stat: str
+        stats: lst
             whether and how to summarise parcellated maps. 
             Options: 
                 None - returns relabeled vertex names without summarising
@@ -2522,6 +2527,7 @@ def parcellate_items(dl, df_keys, parc_region, stat=None, save_pth=None, save_na
             Each dict is same as input dl, but with additional key:
                 '{df_keys}_parc-{parc_name_shrt}': pd.DataFrame of identical size to df in df_keys
                     vertex names renamed according to parcellation
+        parcellationSpecs [lst]: same as input parcellationSpecs, but with additional keys
                     
     """
     import datetime
@@ -2530,107 +2536,114 @@ def parcellate_items(dl, df_keys, parc_region, stat=None, save_pth=None, save_na
     start_time = datetime.datetime.now()
     
     assert type(dl) == list, f"\t[parcellate_items] dl should be a list of dicts. Found {type(dl)}."
-    assert type(parc_region) == list, f"\t[parcellate_items] parc_region should be a list of dicts. Found {type(parc_region)}."
-
+    assert type(parcellationSpecs) == list, f"\t[parcellate_items] parc_region should be a list of dicts. Found {type(parcellationSpecs)}."
+    if type(stats) == str:
+        stats = [stats]
+    for s in stats:
+        assert s.lower() in ['mean', 'mdn', 'median', 'max', 'min', 'std','iqr', None], f"\t[parcellate_items] Unknown stat: {s}. Supported: 'mean', 'mdn', 'median', 'max', 'min', 'std','iqr', `None`."
+    
     if type(df_keys) == str:
         df_keys = [df_keys]
     
+    parc_regions = [pr['region'] for pr in parcellationSpecs if pr.get('parcellate', False) != False]
 
-    parc_regions = [pr['region'] for pr in parc_region if pr.get('parcellate', False) != False]
+    for index, region in enumerate(parcellationSpecs):
+        
+        parc = region.get('parcellate', None)
 
+        if parc is None:
+            continue
+        elif parc == 'glasser':
+            parc_name_shrt = "glsr"
+        elif parc.lower() == 'dk25':
+            parc_name_shrt = "dk25"
+        else:
+            raise ValueError(f"\t[parcellate_items] Unknown parcellation: {parc}. Supported: 'glasser', 'dk25'.")
+       
+        parcellationSpecs[index]['parc_name_shrt'] = parc_name_shrt
+                
+                
     if test:
         idx_len = 2
         idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
         print(f"{start_time}: TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
         dl = [dl[i] for i in idx_rdm]
     else:
-        print(f"{start_time}: Applying parcellations for regions {parc_regions} in dictionry list of length {len(dl)}.\n\tSummarising with stat: {stat}.")
+        print(f"{start_time}: Applying parcellations for regions {parc_regions} in dictionry list of length {len(dl)}.\n\tSummarising with stat: {stats}.")
     
     dl_out = [] # initiate output list
     dl_iterate = dl.copy()
 
     for idx, item in enumerate(dl_iterate):
-        if verbose:
-            print(f"\t\t{printItemMetadata(item, return_txt=True)}")
+        key_outs = []
+        print(f"\t{printItemMetadata(item, return_txt=True)}")
 
         itm_region = item.get('region', None)
         itm_surf = item['surf'] # should raise error if this key doesnt exist
         
         if itm_region in parc_regions:
-            
-            # extract correct values from dictionary based on region
-            # get the right dict item
-            pr = parc_region[parc_regions.index(itm_region)]
-            parc = pr.get('parcellate', None)
-
-            if parc is None:
-                if verbose:
-                    print(f"\t[parcellate_items] Skipping item {idx} with region `{itm_region}` not set to parcellate.")
-                dl_out.append(item)
-                continue
-            elif parc == 'glasser':
-                parc_name_shrt = "glsr"
-            elif parc.lower() == 'dk25':
-                parc_name_shrt = "dk25"
-            else:
-                raise ValueError(f"\t[parcellate_items] Unknown parcellation: {parc}. Supported: 'glasser', 'dk25'.")
+            pr = parcellationSpecs[parc_regions.index(itm_region)]
+            parc = pr['parcellate']
+            parc_name_shrt = pr['parc_name_shrt']
 
             parc_lbl = pr.get('parc_lbl', None)
             
-            if stat is None:
-                key_outs = [f'{key}_parc-{parc_name_shrt}' for key in df_keys]
-            else:
-                key_outs = [f'{key}_parc_{parc_name_shrt}_{stat}' for key in df_keys]
-        
         else:
             if verbose:
                 print(f"\t[parcellate_items] Skipping item {idx} with region {itm_region} not in regions to parcellate.")
             dl_out.append(item)
             continue
         
-        
-        for key, k_out in zip(df_keys, key_outs):
-        
-            df = item.get(key, None)
-            
-            if df is None:
-                print(f"\t[parcellate_items] WARNING. Key {key} not found in item {idx}. Skipping.")
-                continue
-            if df.shape[0] == 0:
-                print(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {key}. Skipping.")
-                continue
-
-            if parc == 'glasser':
-                df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
-                item['parcellation'] = 'glasser'
-            elif parc == 'DK25': # for implementation of other parcellations
-                df_parc = apply_DK25(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
-                item['parcellation'] = 'DK25'
-            else:
-                pass
-            
-            if stat is not None:
-                if stat == 'mean':
-                    # TODO. compute skewness. if highly skewed, then maybe not normal distribution, write a warning
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
-                elif stat == 'median' or stat == 'mdn':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
-                elif stat == 'max':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).max()
-                elif stat == 'min':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).min()
-                elif stat == 'std':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).std()
-                elif stat == 'iqr':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
+        for df_key in df_keys:
+            for s in stats:
+                
+                if s is None:
+                    key_out = f'{df_key}_parc-{parc_name_shrt}'
                 else:
-                    raise ValueError(f"\t[parcellate_items] Unknown stat: {stat}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
-            else:
-                pass
+                    s = s.lower()
+                    key_out = f'{df_key}_parc_{parc_name_shrt}_{s}'
+                key_outs.append(key_out)
 
-            # TODO. Save df_parc to pickle and put path into item
-            item[k_out] = df_parc
+                df = item.get(df_key, None)
+                
+                if df is None:
+                    print(f"\t[parcellate_items] WARNING. Key {df_key} not found in item {idx}. Skipping.")
+                    continue
+                if df.shape[0] == 0:
+                    print(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {df_key}. Skipping.")
+                    continue
+
+                if parc == 'glasser':
+                    df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
+                    item['parcellation'] = 'glasser'
+                elif parc == 'DK25': # for implementation of other parcellations
+                    df_parc = apply_DK25(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
+                    item['parcellation'] = 'DK25'
+                else:
+                    pass
+                
+                if s is None:
+                    pass
+                elif s == 'mean':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
+                elif s == 'median' or s == 'mdn':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
+                elif s == 'max':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).max()
+                elif s == 'min':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).min()
+                elif s == 'std':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).std()
+                elif s == 'iqr':
+                    df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
+                else: # this check should not be necessary considering above check
+                    raise ValueError(f"\t[parcellate_items] Unknown stat: {s}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
+
+                # TODO. Save df_parc to pickle and put path into item
+                item[key_out] = df_parc
         
+        parcellationSpecs[parc_regions.index(itm_region)]['key_outs'] = key_outs # TODO. Properly add these new keys such that the dict related to region has all unique keys created 
+
         dl_out.append(item)
     
     end_time = datetime.datetime.now()
@@ -2638,11 +2651,11 @@ def parcellate_items(dl, df_keys, parc_region, stat=None, save_pth=None, save_na
     print(f"{end_time}: Parcellation complete. Elapsed time: {elapsed}.")
     
     if save_pth is not None and save_name is not None:
-        if stat is not None:
-            save_name = save_name + "-" + stat    
+        if len(stats) == 1 and stats[0] is not None:
+            save_name = save_name + "-" + stats  [0]  
         out_pth = savePickle(obj = dl_out, root = save_pth, name = save_name, test = test)
 
-    return dl_out
+    return dl_out, parcellationSpecs
 
 
 def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", label="midthickness", hemi="LR", space="nativepro", surf="fsLR-5k"):
@@ -4532,8 +4545,8 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
 
     dl: 
         dictionary list with paired items from different studies
-    df_key:
-        key in the dictionary items to plot (e.g., 'map_smth')
+    df_key: lst
+        keys in the dictionary items to plot (e.g., 'map_smth')
     name_append:
         if provided, append this string to the filename when saving
     sessions: (list of ints)
@@ -4545,11 +4558,15 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
     from matplotlib import gridspec
     import numpy as np
     import datetime
+    import os
 
     skip_idx = []
     counter = 0
+    
+    if type(df_key) == str:
+        df_key = [df_key] 
 
-    print(f"Plotting matrices for {df_key}...")
+    print(f"Plotting matrices for {list(df_key)}...")
     
     if test:
         print("TEST MODE: Randomly choosing 2 pairs to plot")
@@ -4570,12 +4587,12 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
             if item.get('sesNum', None) not in sessions or item.get('sesNum', None) not in sessions:
                 continue
             
-    
         counter = counter+1
         
         idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
         
         skip_idx.append(idx_other)
+        
         if type(idx_other) == list:
             # get the indices whose session number is in 'sessions'. Add also the index 'idx'. 
             # If not in 'sessions' then, add to skip idx
@@ -4610,8 +4627,7 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
             continue
         
         if sessions is None:
-            study = item['study']
-            if study == 'MICs':
+            if item['study'] == 'MICs':
                 idx_one = idx
                 idx_two = idx_other
 
@@ -4648,150 +4664,159 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
             print(f"\tWARNING. Item_two is None: {item_two_txt}.\nSkipping.")
             continue
         
-        if item_one.get('study', None) and item_two.get('study', None):
-            title_one = f"{df_key} {item_one['study']} [idx: {idx_one}]"
-            title_two = f"{df_key} {item_two['study']} [idx: {idx_two}]"
+        if sessions is None:
+            print(f"\t[idx 3T, 7T: {idx_one}, {idx_two}] {printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
         else:
-            title_one = f"{df_key} SES num: {ses_one} [idx: {idx_one}]"
-            title_two = f"{df_key} SES num: {ses_two} [idx: {idx_two}]"
+            print(f"\t[ses 1, 2: {idx_one} ({ses_one}), {idx_two} ({ses_two})] {printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
         
-        feature_one = item_one['feature']
-        feature_two = item_two['feature']
-        
-        try:
-            df_one = item_one[df_key]
-        except KeyError:
-            print(f"\tWARNING: Could not access key '{df_key}' for item at index {idx_one}. Skipping.")
-            print_dict(dl, idx = [idx_one])
-            print('-'*50)
-            continue
-        except Exception as e:
-            print(f"\tERROR: Unexpected error while accessing key '{df_key}' for item at index {idx_one}: {e}")
-            print_dict(dl, idx=[idx_one])
-            print('-'*50)
-            continue
-        
-        try:
-            df_two = item_two[df_key]
-        except KeyError:
-            print(f"\tWARNING: Could not access key '{df_key}' for item at index {idx_two}. Skipping.")
-            print_dict(dl, idx = [idx_two])
-            print('-'*50)
-            continue
-        except Exception as e:
-            print(f"\tERROR: Unexpected error while accessing key '{df_key}' for item at index {idx_one}: {e}")
-            print_dict(dl, idx=[idx_one])
-            print('-'*50)
-            continue
-        
-        if df_one is None and df_two is None:
-            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-            item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-            print(f"\tWARNING. Missing key '{df_key}'. Skipping {item_one_txt} and {item_two_txt}\n")
-            print('-'*50)
-            continue
-        elif df_one is None:
-            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-            print(f"\tWARNING. Missing key '{df_key}' for {item_one_txt}. Skipping.\n")
-            print('-'*50)
-            continue
-        elif df_two is None:
-            item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-            print(f"\tWARNING. Missing key '{df_key}' for {item_two_txt}. Skipping.\n")
-            print('-'*50)
-            continue
+        for key in df_key:
 
-        # determine min and max values across both matrices for consistent color scaling
-        assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
-        assert item_one['region'] == item_two['region'], f"Regions do not match: {item_one['region']}, {item_two['region']}"
-        assert item_one['surf'] == item_two['surf'], f"Surfaces do not match: {item_one['surf']}, {item_two['surf']}"
-        assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
-        assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
-    
-        if "_z_" in df_key or "_w_" in df_key:
-            cmap = "seismic"
-            min_val = -3
-            max_val = 3
-        else:
-            cmap = 'inferno'
-            if feature_one.lower() == "thickness":
-                min_val = 0
-                max_val = 4
-                cmap = 'Blues'
-            elif feature_one.lower() == "flair":
-                min_val = -500
-                max_val = 500
+            if item_one.get('study', None) and item_two.get('study', None):
+                title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
+                title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
+            else:
+                title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
+                title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
+            
+            feature_one = item_one['feature']
+            feature_two = item_two['feature']
+            
+            try:
+                df_one = item_one[key]
+            except KeyError:
+                print(f"\tWARNING: Could not access key '{key}' for item at index {idx_one}. Skipping.")
+                print_dict(dl, idx = [idx_one])
+                print('-'*50)
+                continue
+            except Exception as e:
+                print(f"\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
+                print_dict(dl, idx=[idx_one])
+                print('-'*50)
+                continue
+            
+            try:
+                df_two = item_two[key]
+            except KeyError:
+                print(f"\tWARNING: Could not access key '{key}' for item at index {idx_two}. Skipping.")
+                print_dict(dl, idx = [idx_two])
+                print('-'*50)
+                continue
+            except Exception as e:
+                print(f"\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
+                print_dict(dl, idx=[idx_one])
+                print('-'*50)
+                continue
+            
+            if df_one is None and df_two is None:
+                item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+                item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
+                print(f"\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
+                print('-'*50)
+                continue
+            elif df_one is None:
+                item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
+                print(f"\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
+                print('-'*50)
+                continue
+            elif df_two is None:
+                item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
+                print(f"\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
+                print('-'*50)
+                continue
+
+            # determine min and max values across both matrices for consistent color scaling
+            assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
+            assert item_one['region'] == item_two['region'], f"Regions do not match: {item_one['region']}, {item_two['region']}"
+            assert item_one['surf'] == item_two['surf'], f"Surfaces do not match: {item_one['surf']}, {item_two['surf']}"
+            assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
+            assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
+        
+            if "_z_" in df_key or "_w_" in df_key:
                 cmap = "seismic"
-            elif feature_one.lower() == "t1map":
-                min_val = 1000
-                max_val = 2800
-                cmap = "inferno"
-            elif feature_one.lower() == "fa":
-                min_val = 0
-                max_val = 1
-                cmap="Blues"
-            elif feature_one.lower() == "adc": # units: mm2/s
-                min_val = 0
-                max_val = 0.0025
-                cmap = "Blues"
+                min_val = -3
+                max_val = 3
             else:
-                min_val = min(np.percentile(df_two.values, 95), np.percentile(df_one.values, 95))
-                max_val = max(np.percentile(df_two.values, 5), np.percentile(df_one.values, 5))
+                cmap = 'inferno'
+                if feature_one.lower() == "thickness":
+                    min_val = 0
+                    max_val = 4
+                    cmap = 'Blues'
+                elif feature_one.lower() == "flair":
+                    min_val = -500
+                    max_val = 500
+                    cmap = "seismic"
+                elif feature_one.lower() == "t1map":
+                    min_val = 1000
+                    max_val = 2800
+                    cmap = "inferno"
+                elif feature_one.lower() == "fa":
+                    min_val = 0
+                    max_val = 1
+                    cmap="Blues"
+                elif feature_one.lower() == "adc": # units: mm2/s
+                    min_val = 0
+                    max_val = 0.0025
+                    cmap = "Blues"
+                else:
+                    min_val = min(np.percentile(df_two.values, 95), np.percentile(df_one.values, 95))
+                    max_val = max(np.percentile(df_two.values, 5), np.percentile(df_one.values, 5))
 
-        # Create a grid layout with space for the colorbar
-        fig = plot.figure(figsize=(30, 25))
-        spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
+            # Create a grid layout with space for the colorbar
+            fig = plot.figure(figsize=(30, 25))
+            spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
 
-        # Create subplots
-        ax1 = fig.add_subplot(spec[0])
-        ax2 = fig.add_subplot(spec[2])
+            # Create subplots
+            ax1 = fig.add_subplot(spec[0])
+            ax2 = fig.add_subplot(spec[2])
 
-        # Plot the matrices
-        visMatrix(df_one, feature=feature_one, title=title_one, 
-                show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
-        visMatrix(df_two, feature=feature_two, title=title_two, 
-                show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+            # Plot the matrices
+            visMatrix(df_one, feature=feature_one, title=title_one, 
+                    show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+            visMatrix(df_two, feature=feature_two, title=title_two, 
+                    show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
 
-        # Add a colorbar between the plots
-        cmap_title = feature_one
+            # Add a colorbar between the plots
+            cmap_title = feature_one
 
-        if "_z_" in df_key:
-            cmap_title = f"Z-score [{cmap_title}]"
-        elif "_w_" in df_key:
-            cmap_title = f"W-score [{cmap_title}]"
-        else:
-            if feature_one.upper() == "ADC":
-                cmap_title = "ADC (mm²/s)"
-            elif feature_one.upper() == "T1MAP":
-                cmap_title = "T1 (ms)"
-        
-        cbar_ax = fig.add_subplot(spec[1])
-        norm = plot.Normalize(vmin=min_val, vmax=max_val)
-        cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
-        cbar.set_label(cmap_title, fontsize=20, labelpad=0)
-        cbar.ax.yaxis.set_label_position("left")
-        cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
-
-        # Add a common title
-        region = item_one['region']
-        surface = item_one['surf']
-        label = item_one['label']
-        smth = item_one['smth']
-        if sessions:
-            fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
-        else:
-            fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
-
-        if save_pth is not None:
-            if name_append is not None:
-                save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-            elif sessions:
-                save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            if "_z_" in df_key:
+                cmap_title = f"Z-score [{cmap_title}]"
+            elif "_w_" in df_key:
+                cmap_title = f"W-score [{cmap_title}]"
             else:
-                save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight')
-            print(f"\tSaved: {save_pth}/{save_name}.png")
-            plot.close(fig)
+                if feature_one.upper() == "ADC":
+                    cmap_title = "ADC (mm²/s)"
+                elif feature_one.upper() == "T1MAP":
+                    cmap_title = "T1 (ms)"
+            
+            cbar_ax = fig.add_subplot(spec[1])
+            norm = plot.Normalize(vmin=min_val, vmax=max_val)
+            cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
+            cbar.set_label(cmap_title, fontsize=20, labelpad=0)
+            cbar.ax.yaxis.set_label_position("left")
+            cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
+
+            # Add a common title
+            region = item_one['region']
+            surface = item_one['surf']
+            label = item_one['label']
+            smth = item_one['smth']
+            if sessions:
+                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
+            else:
+                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
+
+            if save_pth is not None:
+                if name_append is not None:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                elif sessions:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                else:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                fig_pth = f"{save_pth}/{save_name}.png"
+                fig.savefig(fig_pth, dpi=300, bbox_inches='tight')
+                file_size = os.path.getsize(fig_pth) / (1024 * 1024)  # size in MB
+                print(f"\tSaved ({file_size:0.1f} MB): {fig_pth}")
+                plot.close(fig)
         
         if test and counter >= 2:
             break
