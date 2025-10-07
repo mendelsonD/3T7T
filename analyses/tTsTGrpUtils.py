@@ -23,7 +23,7 @@ def loadPickle(pth, verbose=True, dlPrint=False):
         print('='*100)
     return obj
 
-def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True):
+def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True, rtn_txt = False):
     """
     Save an object to a pickle file.
     
@@ -40,6 +40,8 @@ def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True):
         If True, appends 'TEST_' to the filename.
     - verbose: bool
         If True, prints status messages.
+    - rtn_txt: bool
+        If True, returns the path and a status message.
 
     Output:
         Saves file.
@@ -52,11 +54,10 @@ def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True):
     import datetime
     
     # Ensure root directory exists
-    dir_name = os.path.dirname(root)
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
+    if not os.path.exists(root):
+        os.makedirs(root)
         if verbose:
-            print(f"\t[savePickle] Created directory: {dir_name}")
+            print(f"\t[savePickle] Created directory: {root}")
 
     if test: 
         name = f"TEST_{name}"
@@ -67,10 +68,17 @@ def savePickle(obj, root, name, timeStamp = True, test=False, verbose = True):
     
     with open(pth, "wb") as f:
         pickle.dump(obj, f)
-    if verbose:
-        print(f"\t[pkl_save] Saved object to {pth}")
+    
+    file_size = os.path.getsize(pth) / (1024 * 1024)  # size in MB
+    print_txt = f"[pkl_save] Saved object ({file_size:0.1f} MB) to {pth}"
 
-    return pth
+    if verbose:
+        print(print_txt)
+    
+    if rtn_txt:
+        return pth, print_txt
+    else:
+        return pth
 
 def _get_file_logger(name, log_file_path):
     """
@@ -685,30 +693,9 @@ def idToMap(df_demo, studies, dict_demo, specs,
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
     print(f"[idToMap] Saving log to: {log_file_path}")
     
-    # Configure logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-
-    # Create handlers
-    info_handler = logging.FileHandler(log_file_path)
-    info_handler.setLevel(logging.INFO)
-    warning_handler = logging.FileHandler(log_file_path)
-    warning_handler.setLevel(logging.WARNING)
-
-    # Create formatters
-    info_formatter = logging.Formatter("%(message)s")  # No timestamp, level name for INFO
-    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
-
-    # Assign formatters to handlers
-    info_handler.setFormatter(info_formatter)
-    warning_handler.setFormatter(warning_formatter)
-
-    # Add handlers to logger
-    logger.addHandler(info_handler)
-    logger.addHandler(warning_handler)
-
-    # Log the start of the function
-    logger.info("Log started for winComp function.")
+    # Configure module logger (handlers added per-file by _get_file_logger)
+    logger = _get_file_logger(__name__, log_file_path)
+    logger.info("Log started for idToMap function.")
 
     out_pth = ""
     match_on = ['UID', 'study', 'SES']
@@ -1937,11 +1924,11 @@ def get_mapCols(allCols, split=True, verbose=False):
 
     if split:
         if verbose:
-            print(f"{len(cols_L) + len(cols_R)} map columns found: {len(cols_L)} L | {len(cols_R)} R.")
+            print(f"[get_mapCols] {len(cols_L) + len(cols_R)} map columns found: {len(cols_L)} L | {len(cols_R)} R.")
         return cols_L, cols_R
     else:
         if verbose:
-            print(f"{len(cols_L) + len(cols_R)} map columns found.")
+            print(f"[get_mapCols] {len(cols_L) + len(cols_R)} map columns found.")
         return cols_L + cols_R
 
 def get_finalSES(dl, demo, save_pth=None, long=False, silent=True): 
@@ -2142,7 +2129,9 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
         return pth_noSmth
 
 
-def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, verbose=False):
+def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, 
+               save_df_pth, log_save_pth, 
+               append_name = None, region=None, verbose=False, test = False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
     
@@ -2156,21 +2145,23 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, 
         studies:
             list of dicts  regarding studies in the analysis.
             Each dict should contain:
-                'name'
-                'dir_root'
-                'study'
-                'dir_mp'
-                'dir_hu'
+                'name', 'dir_root', 'study', 'dir_mp','dir_hu'
         demographics: dict  regarding demographics file.
             Required keys:
-                'pth'
-                'ID_7T'
-                'ID_3T'
-                'SES'
-                'date'
-                'grp'
+                'pth', 'ID_7T', 'ID_3T', 'SES', 'date', 'grp'
+        save_df_pth: str
+            Path to save extracted dataframe.
+
+        append_name: str
+            string to append to the save name of the dataframe. If None, do not append anything.
+        log_save_pth: str
+            path to save log file to
         region: string, optional
             specify cortex or hippocampus. If none, all columns passed will be extracted and region=None will be added to dict item.
+        verbose: bool, optional
+            If True, print detailed processing information.
+        test: bool, optional
+            If True, prepend "TEST_" to the save_name and log file name.
 
         Returns:
         out_dl: list of dicts
@@ -2182,108 +2173,171 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, region=None, 
                 'feature': feature type (e.g., 'thickness', 'T1', 'FA', etc)
                 'smth': smoothing level (in mm)
                 'df_demo': pd.DataFrame with demographics and map paths for the specific map
-                'df_maps_unsmth': pd.DataFrame with only the unsmoothed map paths for the specific map (if applicable)
-                'df_maps_smth': pd.DataFrame with only the smoothed map paths for the specific map
+                'df_maps_unsmth': str
+                    path to pickle item holding pd.Dataframe with only the unsmoothed map paths for the specific map (if applicable)
+                'df_maps_smth': str
+                    path to pickle item holding pd.DataFrame with only the smoothed map paths for the specific map
     """
+    import datetime
+    import os
 
+    # Prepare log file path
+    if log_save_pth is None:
+        print("WARNING. Save path not specified. Defaulting to current working directory.")
+        log_save_pth = os.getcwd()  # Default to current working directory
+    if not os.path.exists(log_save_pth):
+        os.makedirs(log_save_pth)
+    
+    log_name = f"04b_extractMap"
+    if region is not None:
+        log_name = f"{region}_{log_name}"
+    if append_name is not None:
+        log_name = f"{log_name}_{append_name}"
+    if test:
+        log_name = f"TEST_{log_name}"
+
+    log_file_path = os.path.join(log_save_pth, f"{log_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    print(f"\n[extractMap] Saving log to: {log_file_path}")
+
+    # Configure module logger (handlers added per-file by _get_file_logger)
+    logger = _get_file_logger(__name__, log_file_path)
+    logger.info("Log started for extractMap function.")
+    logger.info("Parameters:")
+    logger.info(f"  region: {region}")
+    logger.info(f"  append_name: {append_name}")
+    logger.info(f"  test : {test}")
+    logger.info(f"  save_df_pth: {save_df_pth}")
     out_dl = []
     
-    if region is not None:
-        if region == "cortex" or region == "ctx":
-            region == "cortex"
-            subset = "ctx"
-        elif region == "hippocampus" or region == "hipp":
-            region == "hippocampus"
-            subset = "hipp"
+    try:
+    
+        if region is not None:
+            if region == "cortex" or region == "ctx":
+                region == "cortex"
+                subset = "ctx"
+            elif region == "hippocampus" or region == "hipp":
+                region == "hippocampus"
+                subset = "hipp"
+            else:
+                raise ValueError(f"[extractMap] Unknown region: {region}. Should be 'cortex' or 'hippocampus'.")
+            
+            cols_L = [col for col in cols_L if subset in col]
+            cols_R = [col for col in cols_R if subset in col]
+            logger.info(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {subset}).")
         else:
-            raise ValueError(f"[extractMap] Unknown region: {region}. Should be 'cortex' or 'hippocampus'.")
-        
-        cols_L = [col for col in cols_L if subset in col]
-        cols_R = [col for col in cols_R if subset in col]
-        print(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {subset}).")
-    else:
-        print(f"\n{len(cols_L) + len(cols_R)} map columns found.")
+            logger.info(f"\n{len(cols_L) + len(cols_R)} map columns found.")
 
-    if cols_L == [] or cols_R == []:
-        print("\n[extractMap] WARNING. No map columns found. Skipping.")
-        return out_dl
+        if cols_L == [] or cols_R == []:
+            logger.info("\n[extractMap] WARNING. No map columns found. Skipping.")
+            return out_dl
         
-    for col_L, col_R in zip(cols_L, cols_R):
-         
-        assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
+        if test:
+            import random
+            import numpy as np
+            idx_len = 2
+            idx_rdm = np.random.choice(len(cols_L), size=idx_len, replace=False).tolist()  # randomly choose index
+            cols_L = [cols_L[i] for i in idx_rdm]
+            cols_R = [cols_R[i] for i in idx_rdm]
+            logger.info(f"[extractMap]: TEST MODE. Extract maps from {idx_len} random maps: indices {idx_rdm}.")
         
-        # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
-        hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
-        commonName = col_L[hemi_L_idx:]
+        counter = 0
 
-        if verbose:
-            print(f"\n\tProcessing {commonName}... (cols: {col_L} {col_R})")
-        
-        df_tmp = df_mapPaths.dropna(subset=[col_L, col_R]) # remove IDs with missing values in col_L or col_R
-        if verbose:
-            print(f"\t\t{len(df_mapPaths) - len(df_tmp)} rows removed due to missing values for these maps. [{(len(df_mapPaths))} rows before, {len(df_tmp)} rows remain]")
-        
-        # Remove participants who do not have data for all MRI studies in this analysis
-        required_studies = [s['study'] for s in studies]
-        participant_counts = df_tmp.groupby('UID')['study'].nunique()
-        valid_ids = participant_counts[participant_counts == len(required_studies)].index.tolist()
-        df_tmp_drop = df_tmp[~df_tmp['UID'].isin(valid_ids)].copy()
-        df_tmp = df_tmp[df_tmp['UID'].isin(valid_ids)]
-
-        n_before = df_mapPaths['UID'].nunique()
-        n_after = df_tmp['UID'].nunique()
-        n_removed = n_before - n_after
-
-        if verbose:
-            if n_removed > 0:
-                print(f"\t\t{n_after} unique patients remain after removing {n_removed} IDs due to incomplete study.")
-                print(f"\t\tIDs removed: {sorted(df_tmp_drop['UID'].unique())}")
-        if n_after == 0:
-            print(f"\t\t[extractMap] WARNING. No participants remain after filtering for complete study data. Skipping this map.")
-            continue
-        
-        for study in studies:
-            study_name = study['name']
-            study_code = study['study']
+        for col_L, col_R in zip(cols_L, cols_R):
+            counter += 1
+            if counter % 10 == 0:
+                print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {counter} of {len(cols_L)}...")
             
-            col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+            assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
             
-            df_tmp_study = df_tmp[df_tmp['study'] == study_code] # filter for rows from this study
-            
+            # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
+            hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
+            commonName = col_L[hemi_L_idx:]
+
             if verbose:
-                print(f"\t[{study_code}] {len(df_tmp_study)} rows")
+                logger.info(f"\n\tProcessing {commonName}... (cols: {col_L} {col_R})")
+            
+            df_tmp = df_mapPaths.dropna(subset=[col_L, col_R]) # remove IDs with missing values in col_L or col_R
+            if verbose:
+                logger.info(f"\t\t{len(df_mapPaths) - len(df_tmp)} rows removed due to missing values for these maps. [{(len(df_mapPaths))} rows before, {len(df_tmp)} rows remain]")
+            
+            # Remove participants who do not have data for all MRI studies in this analysis
+            required_studies = [s['study'] for s in studies]
+            participant_counts = df_tmp.groupby('UID')['study'].nunique()
+            valid_ids = participant_counts[participant_counts == len(required_studies)].index.tolist()
+            df_tmp_drop = df_tmp[~df_tmp['UID'].isin(valid_ids)].copy()
+            df_tmp = df_tmp[df_tmp['UID'].isin(valid_ids)]
 
-            maps = get_maps(df_tmp_study, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=verbose)
-            if maps.shape[0] == 0:
-                print(f"\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
+            n_before = df_mapPaths['UID'].nunique()
+            n_after = df_tmp['UID'].nunique()
+            n_removed = n_before - n_after
+
+            if verbose:
+                if n_removed > 0:
+                    logger.info(f"\t\t{n_after} unique patients remain after removing {n_removed} IDs due to incomplete study.")
+                    logger.info(f"\t\tIDs removed: {sorted(df_tmp_drop['UID'].unique())}")
+            if n_after == 0:
+                logger.info(f"\t\t[extractMap] WARNING. No participants remain after filtering for complete study data. Skipping this map.")
                 continue
-            # add to dict list
-            surf = col_L.split('surf-')[1].split('_label')[0]
-            lbl = col_L.split('_label-')[1].split('_')[0]
-            if lbl == 'thickness':
-                ft = 'thickness'
-            else:
-                ft = col_L.split('_label-')[1].split('_')[1]
             
-            if '_unsmth' in commonName:
-                smth = 'NA'
-            else:
-                smth = col_L.split('_smth-')[1].split('mm')[0]
-            
-            out_dl.append({
-                'study': study_name,
-                'region': region,
-                'surf': surf,
-                'label': lbl,
-                'feature': ft,
-                'smth': smth,
-                'df_demo': df_tmp_study,
-                'df_maps': maps,
-            })
+            for study in studies:
+                study_name = study['name']
+                study_code = study['study']
+                
+                col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+                
+                df_tmp_study = df_tmp[df_tmp['study'] == study_code] # filter for rows from this study
+                
+                if verbose:
+                    logger.info(f"\t[{study_code}] {len(df_tmp_study)} rows")
+
+                maps = get_maps(df_tmp_study, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=verbose)
+                if maps.shape[0] == 0:
+                    logger.info(f"\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
+                    continue
+
+                
+                map_name = f"{study_code}_{commonName}"
+                if append_name is not None:
+                    map_name = f"{map_name}_{append_name}"
+                
+                if test:
+                    map_name = f"TEST_{map_name}"
+                
+                maps_pth = savePickle(obj = maps, root = save_df_pth, name = map_name, verbose=verbose)
+                
+                # add to dict list
+                surf = col_L.split('surf-')[1].split('_label')[0]
+                lbl = col_L.split('_label-')[1].split('_')[0]
+                if lbl == 'thickness':
+                    ft = 'thickness'
+                else:
+                    ft = col_L.split('_label-')[1].split('_')[1]
+                
+                if '_unsmth' in commonName:
+                    smth = 'NA'
+                else:
+                    smth = col_L.split('_smth-')[1].split('mm')[0]
+                
+                out_dl.append({
+                    'study': study_name,
+                    'region': region,
+                    'surf': surf,
+                    'label': lbl,
+                    'feature': ft,
+                    'smth': smth,
+                    'df_demo': df_tmp_study,
+                    'df_maps': maps_pth,
+                })
+        
+        if verbose:
+            logger.info(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
+        
+    except Exception as e:
+        logger.error(f"An error occurred in extractMap: {e}", exc_info=True)
+        print(f"[extractMap] ERROR: An error occurred. Check log file for details.")
     
-    if verbose:
-        print(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
-    
+    logger.info(f"Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"\n[extractMap] Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return out_dl
 
 def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study', coi = None, region=None, 
@@ -2484,7 +2538,8 @@ def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study'
     
     return out_dl
 
-def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, save_name=None,
+def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth, 
+                     stats=None, save_pth=None, save_name=None,
                      verbose=False, test=False):
     """
     Input:
@@ -2506,6 +2561,8 @@ def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, 
                 'parcellate':   name of parcellation, Options: 'glasser', 'DK25' <eventually: 'schaefer100'>
                                 False if not to parcellate
                 'parc_lbl':     how to return parcellated index naming. Default = None (allowing default of parcellation function)        
+        df_save_pth: str
+            path to save parcellated dataframes to.
         stats: lst
             whether and how to summarise parcellated maps. 
             Options: 
@@ -2574,9 +2631,19 @@ def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, 
     dl_out = [] # initiate output list
     dl_iterate = dl.copy()
 
+    counter = 0 
     for idx, item in enumerate(dl_iterate):
+        counter += 1
+        if counter % 10 == 0:
+            print(f"{datetime.datetime.now()}: Processing item {counter} of {len(dl_iterate)}...")
+        
         key_outs = []
-        print(f"\t{printItemMetadata(item, return_txt=True)}")
+        if test:
+            index = idx_rdm[idx]
+        else:
+            index = idx
+
+        print(f"\t{printItemMetadata(item, idx = index, return_txt=True)}")
 
         itm_region = item.get('region', None)
         itm_surf = item['surf'] # should raise error if this key doesnt exist
@@ -2612,6 +2679,9 @@ def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, 
                 if df.shape[0] == 0:
                     print(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {df_key}. Skipping.")
                     continue
+                
+                if verbose:
+                    print(f"\t\tApplying parcellation `{parc}` with statistics `{s}`")
 
                 if parc == 'glasser':
                     df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
@@ -2621,7 +2691,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, 
                     item['parcellation'] = 'DK25'
                 else:
                     pass
-                
+
                 if s is None:
                     pass
                 elif s == 'mean':
@@ -2639,8 +2709,9 @@ def parcellate_items(dl, df_keys, parcellationSpecs, stats=None, save_pth=None, 
                 else: # this check should not be necessary considering above check
                     raise ValueError(f"\t[parcellate_items] Unknown stat: {s}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
 
-                # TODO. Save df_parc to pickle and put path into item
-                item[key_out] = df_parc
+                df_save_name = f"{index}_{key_out}"
+                pth = savePickle(obj = df_parc, root = df_save_pth, name = df_save_name, test = test)
+                item[key_out] = pth
         
         parcellationSpecs[parc_regions.index(itm_region)]['key_outs'] = key_outs # TODO. Properly add these new keys such that the dict related to region has all unique keys created 
 
@@ -2742,31 +2813,40 @@ def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", 
 
 ######################### ANALYSIS FUNCTIONS ####################################
 
-def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars, 
+def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_pth,
             stat=['z'], key_demo = "df_demo", 
             save=True, save_pth=None, save_name="05a_stats_winStudy",  
             test=False, verbose=False, dlPrint=False):
     """
     Compute within study comparisons between control distribution and all participants
+    Save path to statistics pickle files in the item.
 
     Input:
-        dl: (list) of dictionaries with map and demographic data for each comparison
-        demographics: (dict) with demographic column names
-        key_maps: (str)
-            key in the dict items of dl that contains the maps to compute statistics on (eg. df_maps, df_maps_parc-glsr)
-        ctrl_grp: (dict) with all control group patterns in the grouping column
-        covars: (list) of covariates to ensure complete data for and to include in w-scoring.
-        
+        dl: (list)
+            list of dictionaries with map and demographic data for each comparison
+        demographics: (dict)
+            demographic column names
+        keys_maps: (lst)
+            keys in the dict items of dl that contains the maps to compute statistics on (eg. df_maps, df_maps_parc-glsr)
+        ctrl_grp: (dict) 
+            all control group patterns in the grouping column
+        covars: (list) 
+            covariates to ensure complete data for and to include in w-scoring.
+        out_df_save_pth: (str)
+            path to save vertex/parcel-wise z/w scores to avoid excessively large dictionary lists. 
+
         stat: (lst) of str
             statistics to compute. Options:
                 'z' - z-score relative to control group <default>
                 'w' - w-score relative to control group, adjusting for covariates
         key_demo: (str) <default: "df_demo">
             key in the dict items of dl that contains the demographics dataframe
-        col_grp: (str) name of the grouping column in demographics dataframe
+        col_grp: (str) 
+            name of the grouping column in demographics dataframe
         save: (bool) <default: True>
             whether to save the output dict list as a pickle file
         save_name: (str) <default: "05a_stats_winStudy">
+            where to save output dictionary list
         test: (bool) <default: False>
             whether to run in test mode (randomly select 2 dict items to run)
         verbose: (bool) <default: False>
@@ -2775,7 +2855,9 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars,
             whether to print summary of output dict list
     
     Output:
-        dl_winStats: (list) of dictionaries with map and demographic data for each comparison, with added z and/or w score columns
+        <saves computed statistics dfs>
+        dl_winStats: (list) 
+            list of dict items with path to dataframes in appropriately named keys
     """
 
     import numpy as np
@@ -2784,7 +2866,6 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars,
     import pickle
     import time
     import datetime
-    import logging
 
     # Prepare log file path
     if save_pth is None:
@@ -2813,6 +2894,8 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars,
 
         if test:
             idx_len = 2 # number of indices
+            if len(dl) < idx_len:
+                idx_len = len(dl)
             idx = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
             dl_iterate = [dl[i] for i in idx]
             logger.info(f"\t[TEST MODE] Running z-scoring on {idx_len} randomly selected dict items: {idx}")
@@ -2820,14 +2903,17 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars,
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
             logger.info(f"\tNumber of dictionary items to process: {len(dl)}")
         
-        z_key_out = key_maps + "_z"
-        w_key_out = key_maps + "_w"
-        wMdl_key_out = key_maps + "_wModels"
-        
         stat = [s.lower() for s in stat] # make all strings in stat lower case
 
+        counter = 0
+
         for i, item in enumerate(dl_iterate): # can be parallelized
-            
+            # print progress statements
+            counter += 1
+            if counter % 10 == 0:
+                now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                print(f"{now} : Processing {counter} of {len(dl_iterate)}...")
+
             study = item['study']
             col_ID = get_IDCol(study, demographics) # determine ID col name based on study name
 
@@ -2835,173 +2921,201 @@ def winComp(dl, demographics, key_maps, col_grp, ctrl_grp, covars,
                 txt = printItemMetadata(item, idx = idx[i], return_txt=True)
             else:
                 txt = printItemMetadata(item, idx = i, return_txt=True)
+
             logger.info(f"\n{txt}")
 
             df_demo = item.get(key_demo, None) # contains all participants
-            df_maps = item.get(key_maps, None) # contains all participants, indexed by <IUD_>ID_SES
-            if df_demo is None:
-                logger.warning(f"Key '{key_demo}' is either not in dictionary or is a `None` object. Skipping this dict item.")
-                continue
-            elif df_demo.shape[0] == 0:
-                logger.warning(f"Key '{key_demo}' has no rows. Skipping this dict item.")
-                continue
-
-            if df_maps is None or df_maps.shape[0] == 0:
-                logger.warning(f"Key '{key_maps}' is either not in dictionary or is a `None` object. Skipping this dict item.")
-                continue
-            elif df_maps.shape[0] == 0:
-                logger.warning(f"Key '{key_maps}' has no rows. Skipping this dict item.")
-                continue
             
+            for key in keys_maps:
+                
+                df_maps = item.get(key, None) # contains all participants, indexed by <IUD_>ID_SES
+                logger.info(f"\n")
 
-            if verbose: 
-                logger.info(f"\tInput shapes:\t\t[df_demo] {df_demo.shape} | [df_maps] {df_maps.shape}")
-
-            # 0.i Index appropriately
-            col_ID = get_IDCol(study, demographics)
-            col_SES = demographics['SES']
-            if 'UID' in df_demo.columns:
-                df_demo['UID_ID_SES'] = df_demo['UID'].astype(str) + '_' + df_demo[col_ID].astype(str) + '_' + df_demo[col_SES].astype(str) # concat UID, ID and SES into single col 
-                df_demo.set_index('UID_ID_SES', inplace=True)
-            else:
-                df_demo['ID_SES'] = df_demo[col_ID].astype(str) + '_' + df_demo[col_SES].astype(str) # concat ID and SES into single col
-                df_demo.set_index('ID_SES', inplace=True)
-
-            # 0.ii Prepare covars
-            if covars is None: # set defaults
-                covars = [demographics['age'], demographics['sex']]
-            
-            covars_copy = covars.copy()
-            for c in list(covars_copy): 
-                if c not in demographics.keys(): # ensure covar is a key in demographics dict
-                    logger.warning(f"\tWARNING. Covariate '{c}' not a key in the demographics dictionary. Skipping this covar.")
-                    covars_copy.remove(c)
+                if df_demo is None:
+                    logger.info(f"\t\tKey '{key_demo}' is either not in dictionary or is a `None` object. Skipping this dict item.")
                     continue
-                if c not in df_demo.columns: # ensure covar column exists in demo dataframe
-                    logger.warning(f"\tWARNING. Covariate '{c}' not found in demographics dataframe. Skipping this covar.")
-                    covars_copy.remove(c)
+                elif df_demo.shape[0] == 0:
+                    logger.info(f"\t\tKey '{key_demo}' has no rows. Skipping this dict item.")
                     continue
 
-            # 0.iia Format covar to numeric, dummy code if categorical
-            exclude_cols = [col for col in df_demo.columns if col not in covars_copy]  # exclude all columns but covars
-            demo_numeric, catTodummy_log = catToDummy(df_demo, exclude_cols = exclude_cols)
-            logger.info(f"\tConverted categorical covariates to dummy variables: \t{catTodummy_log}")
-
-            # 0.iib Handle covariates
-            missing_idx = []
-            
-
-            if 'w' in stat and (covars_copy == [] or covars_copy is None):
-                logger.warning("[winComp] WARNING. No valid covariates specified. Skipping w-scoring.")
-                w_internal = False
-                demo_num = demo_numeric.copy() # keep all rows in demo_numeric
-            elif 'w' in stat: # Remove rows with missing covariate data
-                w_internal = True
-                covar_cols = [demographics[c] for c in covars_copy]
-                demo_num = demo_numeric.loc[:, covar_cols].copy() # keep only covariate columns in demo dataframe
-                missing_cols = demo_num.columns[demo_num.isnull().any()]
-
-                if len(missing_cols) > 0:
-                    # count total number of cases with missing data
-                    missing_idx = demo_num.index[demo_num.isnull().any(axis=1)].tolist()
-                    logger.warning(f"\t[winComp] WARNING. {demo_num.isnull().any(axis=1).sum()} indices with missing covariate values: {missing_idx}")
-                    demo_num_clean = demo_num.dropna().copy()
-                    maps_clean = df_maps.loc[demo_num_clean.index, :].copy()
+                if df_maps is None or df_maps.shape[0] == 0:
+                    logger.info(f"\t\tKey '{key}' is either not in dictionary or is a `None` object. Skipping this dict item.")
+                    continue
+                elif df_maps.shape[0] == 0:
+                    logger.info(f"\t\tKey '{key}' has no rows. Skipping this dict item.")
+                    continue
                 else:
-                    missing_idx = []
-                    demo_num_clean = demo_num.copy()
-                    maps_clean = df_maps.copy()
+                    logger.info(f"\t\tProcessing maps in key '{key}' with shape {df_maps.shape}...")
                 
-                if demo_num_clean.shape[0] < 5: # Skip w-scoring if insufficient cases
-                    logger.warning("[winComp] WARNING. Skipping w-scoring, ≤5 controls.")
+                z_key_out = key + "_z"
+                w_key_out = key + "_w"
+                wMdl_key_out = key + "_wModels"
+
+                if verbose: 
+                    logger.info(f"\t\t\tInput shapes:\t\t[df_demo] {df_demo.shape} | [{key}] {df_maps.shape}")
+
+                # 0.i Index df_demo appropriately
+                col_ID = get_IDCol(study, demographics)
+                col_SES = demographics['SES']
+                
+                if 'UID' in df_demo.columns:
+                    df_demo['UID_ID_SES'] = df_demo['UID'].astype(str) + '_' + df_demo[col_ID].astype(str) + '_' + df_demo[col_SES].astype(str) # concat UID, ID and SES into single col 
+                    df_demo.set_index('UID_ID_SES', inplace=True)
+                else:
+                    df_demo['ID_SES'] = df_demo[col_ID].astype(str) + '_' + df_demo[col_SES].astype(str) # concat ID and SES into single col
+                    df_demo.set_index('ID_SES', inplace=True)
+
+                # 0.ii Prepare covars
+                if covars is None: # set defaults
+                    covars = [demographics['age'], demographics['sex']]
+                
+                covars_copy = covars.copy()
+                for c in list(covars_copy): 
+                    if c not in demographics.keys(): # ensure covar is a key in demographics dict
+                        logger.warning(f"Covariate '{c}' not a key in the demographics dictionary. Skipping this covar.")
+                        covars_copy.remove(c)
+                        continue
+                    if c not in df_demo.columns: # ensure covar column exists in demo dataframe
+                        logger.warning(f"Covariate '{c}' not found in demographics dataframe. Skipping this covar.")
+                        covars_copy.remove(c)
+                        continue
+
+                # 0.iia Format covar to numeric, dummy code if categorical
+                exclude_cols = [col for col in df_demo.columns if col not in covars_copy]  # exclude all columns but covars
+                demo_numeric, catTodummy_log = catToDummy(df_demo, exclude_cols = exclude_cols)
+                logger.info(f"\t\t\tConverted categorical covariates to dummy variables: \t{catTodummy_log}")
+
+                # 0.iib Handle covariates
+                missing_idx = []
+
+                if 'w' in stat and (covars_copy == [] or covars_copy is None):
+                    logger.warning("No valid covariates specified. Skipping w-scoring.")
                     w_internal = False
+                    demo_num = demo_numeric.copy() # keep all rows in demo_numeric
+                elif 'w' in stat: # Remove rows with missing covariate data
+                    w_internal = True
+                    covar_cols = [demographics[c] for c in covars_copy]
+                    demo_num = demo_numeric.loc[:, covar_cols].copy() # keep only covariate columns in demo dataframe
+                    missing_cols = demo_num.columns[demo_num.isnull().any()]
 
-            else: # Do not drop cases for missing covariate data
-                demo_num_clean = demo_numeric.copy()
-                maps_clean = df_maps.copy()
-                w_internal = False
-            
-            # A. Create control and comparison subsets
-            ids_ctrl = [j for j in df_demo[df_demo[col_grp].isin(ctrl_values)].index if j not in missing_idx]
-            df_demo_ctrl = demo_num_clean.loc[ids_ctrl].copy() # extract indices from demo_num_clean
-            df_maps_ctrl = maps_clean.loc[ids_ctrl].copy() # extract indices from maps_clean
+                    if len(missing_cols) > 0:
+                        # count total number of cases with missing data
+                        missing_idx = demo_num.index[demo_num.isnull().any(axis=1)].tolist()
+                        logger.warning(f"{demo_num.isnull().any(axis=1).sum()} indices with missing covariate values: {missing_idx}")
+                        demo_num_clean = demo_num.dropna().copy()
+                        maps_clean = df_maps.loc[demo_num_clean.index, :].copy()
+                    else:
+                        missing_idx = []
+                        demo_num_clean = demo_num.copy()
+                        maps_clean = df_maps.copy()
+                    
+                    if demo_num_clean.shape[0] < 5: # Skip w-scoring if insufficient cases
+                        logger.warning("Skipping w-scoring: ≤5 controls.")
+                        w_internal = False
 
-            if verbose: 
-                logger.info(f"\tControl group shapes:\t[demo] {df_demo_ctrl.shape} | [maps] {df_maps_ctrl.shape}")
-            
-            demo_test = demo_num_clean.copy()
-            maps_test = maps_clean.copy()
-
-            if col_grp in demo_num_clean.columns:
-                    demo_num_clean.drop(columns=[col_grp], inplace=True)
-
-            if verbose: 
-                logger.info(f"\tTest group shapes:\t[demo] {demo_test.shape} | [maps] {maps_test.shape}")
-            
-            df_demo_ctrl = demo_numeric.loc[df_demo_ctrl.index, :].copy() # keep only rows in demo_ctrl
-            demo_test = demo_numeric.loc[demo_test.index, :].copy() # keep only rows in demo_test
-
-            item[f'ctrl_IDs'] = list(df_maps_ctrl.index) # add ctrl_IDS to output dictionary item
-            
-            # B. Calculate statistics    
-            # B.i. Prepare output dataframes
-            df_out = pd.DataFrame(index=maps_test.index, columns=df_maps.columns)
-            
-            if verbose:
-                logger.info(f"\tOutput shape:\t\t[map stats] {df_out.shape}")
-            
-            if 'z' in stat and df_demo_ctrl.shape[0] > 3:
-                logger.info(f"\n\tComputing z scores [{df_demo_ctrl.shape[0]} controls]...")
-                start_time = time.time()
+                else: # Do not drop cases for missing covariate data
+                    demo_num_clean = demo_numeric.copy()
+                    maps_clean = df_maps.copy()
+                    w_internal = False
                 
-                z_scores = get_z(x = maps_test, ctrl = df_maps_ctrl)
+                # A. Create control and comparison subsets
+                ids_ctrl = [j for j in df_demo[df_demo[col_grp].isin(ctrl_values)].index if j not in missing_idx]
+                df_demo_ctrl = demo_num_clean.loc[ids_ctrl].copy() # extract indices from demo_num_clean
+                # print(f"Control IDs: {ids_ctrl}")
+                df_maps_ctrl = maps_clean.loc[ids_ctrl].copy() # extract indices from maps_clean
+
+                if verbose: 
+                    logger.info(f"\t\t\tControl group shapes:\t[demo] {df_demo_ctrl.shape} | [{key}] {df_maps_ctrl.shape}")
                 
-                item[z_key_out] = z_scores
+                demo_test = demo_num_clean.copy()
+                maps_test = maps_clean.copy()
 
-                duration = time.time() - start_time
-                logger.info(f"\t\tComputed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+                if col_grp in demo_num_clean.columns:
+                        demo_num_clean.drop(columns=[col_grp], inplace=True)
 
-            elif 'z' in stat:
-                item[z_key_out] = None
-                logger.warning("\tWARNING. Skipping z-score: ≤2 controls.")
-
-            if w_internal and df_demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
-                logger.info(f"\tComputing w scores [{df_demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
-                start_time = time.time()
-                if df_demo_ctrl.shape[0] < 10 * len(covars_copy):
-                    logger.warning(f"\t\tWARNING. INTERPRET WITH CAUTION: Few participants for number of covariates. Linear regression likely to be biased.")
-
-                df_w_out = df_out.copy() # n row by p map cols
+                if verbose: 
+                    logger.info(f"\t\t\tTest group shapes:\t[demo] {demo_test.shape} | [{key}] {maps_test.shape}")
                 
-                df_w_out, w_models = get_w(map_ctrl = df_maps_ctrl, demo_ctrl=df_demo_ctrl, map_test = maps_test, demo_test = demo_test, covars=covars_copy)
-                
-                item[w_key_out] = df_w_out
-                item[wMdl_key_out] = w_models
-               
-                duration = time.time() - start_time
-                logger.info(f"\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+                df_demo_ctrl = demo_numeric.loc[df_demo_ctrl.index, :].copy() # keep only rows in demo_ctrl
+                demo_test = demo_numeric.loc[demo_test.index, :].copy() # keep only rows in demo_test
 
-            elif w_internal:
-                item[w_key_out] = None
-                item[wMdl_key_out] = None
-               
-                logger.warning(f"\tWARNING. Skipping w-scoring, ≤{5 * len(covars_copy)} controls (5 * number of covars).\n\t\tInsufficient number of controls for number of covariates. [{df_demo_ctrl.shape[0]} controls, {len(covars_copy)} covars].\n\t\tGuidelines suggest at least 5-10 controls per covariate to ensure stable regression estimates.")
-            else:
-                pass
+                item[f'ctrl_IDs'] = list(df_maps_ctrl.index) # add ctrl_IDS to output dictionary item
+                
+                # B. Calculate statistics    
+                # B.i. Prepare output dataframes
+                df_out = pd.DataFrame(index=maps_test.index, columns=df_maps.columns)
+                
+                if verbose:
+                    logger.info(f"\t\t\tOutput shape:\t\t[map stats] {df_out.shape}")
+                
+                if 'z' in stat and df_demo_ctrl.shape[0] > 3:
+                    logger.info(f"\n\t\tComputing z scores [{df_demo_ctrl.shape[0]} controls]...")
+                    start_time = time.time()
+                    
+                    z_scores = get_z(x = maps_test, ctrl = df_maps_ctrl)
+                    
+                    # Save outputs as pickle objects and keep path to these files in the dictionary
+                    if test:
+                        z_name = f"TEST_{idx[i]}_{z_key_out}"
+                    else:
+                        z_name = f"{i}_{z_key_out}"
+                    
+                    z_scores_pth, log = savePickle(obj = z_scores, root = out_df_save_pth, name = z_name, timeStamp = True, rtn_txt=True, verbose = False)
+                    logger.info(f"\t\t\t{log}")
+                    item[z_key_out] = z_scores_pth
+
+                    duration = time.time() - start_time
+                    if duration > 60:
+                        logger.info(f"\t\t\tComputed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+
+                elif 'z' in stat:
+                    item[z_key_out] = None
+                    logger.warning("\tWARNING. Skipping z-score: ≤2 controls.")
+
+                if w_internal and df_demo_ctrl.shape[0] > 5 * len(covars_copy): #  SKIP if fewer than 5 controls per covariate
+                    logger.info(f"\n\t\tComputing w scores [{df_demo_ctrl.shape[0]} controls, {len(covars_copy)} covars]...")
+                    start_time = time.time()
+                    if df_demo_ctrl.shape[0] < 10 * len(covars_copy):
+                        logger.warning(f"INTERPRET W-SCORE WITH CAUTION: Few participants for number of covariates. Linear regression likely to be biased.")
+
+                    df_w_out = df_out.copy() # n row by p map cols
+                    
+                    df_w_out, w_models = get_w(map_ctrl = df_maps_ctrl, demo_ctrl=df_demo_ctrl, map_test = maps_test, demo_test = demo_test, covars=covars_copy)
+
+                    # Save outputs as pickle objects and keep path to these files in the dictionary
+                    if test:
+                        w_name = f"TEST_{idx[i]}_{w_key_out}"
+                        wMdl_name = f"TEST_{idx[i]}_{wMdl_key_out}"
+                    else:
+                        w_name = f"{i}_{w_key_out}"
+                        wMdl_name = f"{i}_{wMdl_key_out}"
+
+                    df_w_pth, log_w = savePickle(obj = df_w_out, root = out_df_save_pth, name = w_name, timeStamp = True, rtn_txt=True, verbose = False)
+                    df_w_mdls_pth, log_wMdl = savePickle(obj = w_models, root = out_df_save_pth, name = wMdl_name, timeStamp = True, rtn_txt=True, verbose = False)
+                    logger.info(f"\t\t\t{log_w}")
+                    logger.info(f"\t\t\t{log_wMdl}")
+                    item[w_key_out] = df_w_pth
+                    item[wMdl_key_out] = df_w_mdls_pth
+                
+                    duration = time.time() - start_time
+                    if duration > 60:
+                        logger.info(f"\t\t\tW-scores computed in {int(duration // 60):02d}:{int(duration % 60):02d} (mm:ss).")
+
+                elif w_internal:
+                    item[w_key_out] = None
+                    item[wMdl_key_out] = None
+                
+                    logger.warning(f"Skipping w-scoring: {df_demo_ctrl.shape[0]} controls ≤{5 * len(covars_copy)} controls (5 * number of covars [{len(covars_copy)}]).")
+                else:
+                    pass
 
             # add item to output dl
             dl_out.append(item)
 
         # Save dictlist to pickle file
         if save and len(dl_out) > 0:
-            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-            out_pth = f"{save_pth}/{save_name}_{date}.pkl"
-            
-            with open(out_pth, "wb") as f:
-                pickle.dump(dl_out, f)
-            
-            logger.info(f"\nSaved to {out_pth}")
-            print(f"Saved to {out_pth}")
+            out_pth, txt = savePickle(obj = dl_out, root = save_pth, name = save_name, timeStamp = True, rtn_txt = True, verbose = True)            
+            logger.info(f"{txt}")
         
         if dlPrint: # print summary of output dict list
             try:
@@ -3077,13 +3191,13 @@ def search_df(df, ptrn, out_cols, search_col='grp_detailed', searchType='end'):
 def toIC(df_r, df_l):
     """
     Take in two dataframes, one for patients with L sided pathology, one for R sided pathology.
-    Dataframes hold vertex numbers and end with _L or _R to indicate hemisphere.
+    Dataframes have column names ending with _L or _R to indicate hemisphere.
 
     Return dataframe with ipsi and contra columns.
     out shape: (n_r + n_l) x n_vertices [assuming both inputs have identical column names]
     """
     import pandas as pd
-    
+    print(f"r: {df_r}, l: {df_l}")
     # if pathology on R then col names ending with _R --> ipsi, _L --> contra
     df_r_ic = df_r.rename(columns=lambda x: x.replace('_R', '_ipsi').replace('_L', '_contra') if x.endswith('_R') or x.endswith('_L') else x)
     # if pathology on L then col names ending with _L --> ipsi, _R --> contra
@@ -3093,7 +3207,8 @@ def toIC(df_r, df_l):
 
     return df_ic
 
-def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name="05b_stats_winStudy_grp", test=False, verbose=False, dlPrint=False):
+def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
+             save=True, save_pth=None, save_name="05b_stats_winStudy_grp", test=False, verbose=False, dlPrint=False):
     """
     Group participants and ipsi/contra flip maps according to side of lesion.
 
@@ -3101,7 +3216,11 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
         dl: (list)              List of dictionary items, each with keys:
         demographics: (dict)    Demographics file path and column names.
         goi: (list)             Groups of interest. List of group names to extract from demographics file.
+        df_keys: (list)         Keys in the dict items to apply grouping and flipping to (eg. df_z, df_w).
+            NOTE. Indices of these dfs should be UID_ID_SES
         col_grp: (str)          Column name in demographics file with group labels.
+        save_pth_df: (str)
+            path to save vertex/parcel-wise z/w scores to avoid excessively large dictionary lists. 
 
         save: (bool)            Whether to save the output dictionary list.
         save_pth: (str)         Directory path to save the output dictionary list.
@@ -3113,10 +3232,8 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
     import os
     import pandas as pd
     import numpy as np
-    import pickle
     import copy
     import datetime
-    import logging
 
     # Prepare log file path
     if save_pth is None:
@@ -3124,39 +3241,20 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
         save_pth = os.getcwd()  # Default to current working directory
     if not os.path.exists(save_pth):
         os.makedirs(save_pth)
+    if test:
+        save_name = f"TEST_{save_name}"
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
     print(f"[grp_flip] Saving log to: {log_file_path}")
-    
-    # Configure logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
 
-    # Create handlers
-    info_handler = logging.FileHandler(log_file_path)
-    info_handler.setLevel(logging.INFO)
-    warning_handler = logging.FileHandler(log_file_path)
-    warning_handler.setLevel(logging.WARNING)
-
-    # Create formatters
-    info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
-    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
-
-    # Assign formatters to handlers
-    info_handler.setFormatter(info_formatter)
-    warning_handler.setFormatter(warning_formatter)
-
-    # Add handlers to logger
-    logger.addHandler(info_handler)
-    logger.addHandler(warning_handler)
-
-    # Log the start of the function
+    # Configure module logger (handlers added per-file by _get_file_logger)
+    logger = _get_file_logger(__name__, log_file_path)
     logger.info("Log started for winComp function.")
 
     try:
         logger.info(f"[grp_flip] Saving log to: {log_file_path}")
         logger.info(f"Performing two steps:\n\ta. Selecting patients belonging to {goi}.\n\tb. Ipsi/contra flip.")
         logger.info(f"Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"\tParameters:\n\tinput dl: shape: {dl.shape}, keys: {dl.keys}\n\tgoi: {goi}\n\tcol_grp: {col_grp}\n\ttest: {test}\n\tverbose: {verbose}")
+        logger.info(f"\tParameters:\n\tinput dl: {len(dl)}\n\tgoi: {goi}\n\tdf_keys: {df_keys}\n\tsave_pth_df: {save_pth_df}\n\tcol_grp: {col_grp}\n\ttest: {test}\n\tverbose: {verbose}\n")
 
         if test:
             idx_len = 1 # number of indices
@@ -3168,9 +3266,16 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
             dl_grp_ic = copy.deepcopy(dl)  # Create a copy of the original list for output and to iterate over
 
+        counter = 0 
         for i, item in enumerate(dl_iterate):
-            if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
-            else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
+            counter += 1
+            if counter % 10 == 0:
+                print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processing {counter} of {len(dl_iterate)}...")
+            if test: 
+                logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
+            else: 
+                logging.info(printItemMetadata(item, idx=i, return_txt=True))
+            logger.info(printItemMetadata(item, return_txt=True))
             
             df_demo = item[f'df_demo'].copy() # contains all participants
             IDs_ctrl = item.get('ctrl_IDs', None)
@@ -3188,7 +3293,8 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
                 continue
                 
             for grp_val in goi: # for each group
-            
+                if verbose:
+                    print(f"\tGrouping {grp_val}")
                 # extract IDs for grp_L and grp_R
                 demo_grp = df_demo[df_demo[col_grp].str.contains(grp_val)].copy() # extract only participants in group of interest
                 IDs_right = search_df(df=demo_grp, ptrn='R', searchType='end', search_col=col_grp, out_cols=[col_ID, col_SES])
@@ -3198,80 +3304,72 @@ def grp_flip(dl, demographics, goi, col_grp, save=True, save_pth=None, save_name
                 dl_grp_ic[i][f'{grp_val}_IDs_R'] = IDs_right
                 dl_grp_ic[i][f'{grp_val}_IDs_L'] = IDs_left
 
-                logger.info(f"\tCtrl: {len(IDs_ctrl.tolist())}")
+                logger.info(f"\tCtrl: {len(IDs_ctrl)}")
                 if verbose: 
                     logger.info(f"\t\tIDs Ctrl: {IDs_ctrl}")
                 logger.info(f"\tGroup {grp_val}: {len(IDs_left)} L | {len(IDs_right)} R")
                 if verbose:
                     logger.info(f"\t\tIDs L: {IDs_left}\n\t\tIDs R: {IDs_right}")
                 
-                # Create df_{stat} for each side
-                df_z = item.get('df_z', None)
-                df_w = item.get('df_w', None)
+                if type(df_keys) is str:
+                    df_keys = [df_keys]
 
-                if df_z is not None: # split according to grps
-                    df_z_grp = df_z.copy() # search indexes of df_z for values in IDs_right. No need to split by SES, as df_z index is UID_ID_SES
-                    df_z_r = df_z_grp[df_z_grp.index.isin(IDs_right)]
-                    df_z_l = df_z_grp[df_z_grp.index.isin(IDs_left)]
-                    df_z_ic = toIC(df_r = df_z_r, df_l = df_z_l)
-                    
+                for key in df_keys:
                     if verbose:
-                        logger.info(f"\t\tShapes of df_z: L {df_z_l.shape} | R {df_z_r.shape} | IC {df_z_ic.shape}")
+                        logger.info(f"\n\tProcesing key: {key}")
 
-                    dl_grp_ic[i][f'df_z_{grp_val}_R'] = df_z_r
-                    dl_grp_ic[i][f'df_z_{grp_val}_L'] = df_z_l
-                    dl_grp_ic[i][f'df_z_{grp_val}_ic'] = df_z_ic
+                    # Create df_{stat} for each side
+                    df_stat = item.get(key, None)
+                    if type(df_stat) is str:
+                        df_stat = loadPickle(df_stat, verbose = False)
 
-                    if dl_grp_ic[i].get('df_z_ctrl', None) is None: # if ctrl df not yet created, create it
-                        df_z_ctrl = df_z_grp[df_z_grp.index.isin(IDs_ctrl)]
-                        dl_grp_ic[i]['df_z_ctrl'] = df_z_ctrl
+                    if df_stat is not None:  # split according to grps
+                        if df_stat.shape[0] == 0:
+                            logger.info(f"\t\tKey '{key}' has no rows. Skipping this key.")
+                            continue
+                        
+                        df_stat_grp = df_stat.copy() # search indexes of df_z for values in IDs_right. No need to split by SES, as df_z index is UID_ID_SES
+                        df_stat_r = df_stat_grp[df_stat_grp.index.isin(IDs_right)]
+                        df_stat_l = df_stat_grp[df_stat_grp.index.isin(IDs_left)]
+                        print(f"Type of df_stat_r: {type(df_stat_r)}")
+                        print(f"Type of df_stat_l: {type(df_stat_l)}")
+                        df_stat_ic = toIC(df_r = df_stat_r, df_l = df_stat_l)
+                        
                         if verbose:
-                            logger.info(f"\t\tControl group df_z shape: {df_z_ctrl.shape}")
+                            logger.info(f"\t\tShapes of {key}: L {df_stat_l.shape} | R {df_stat_r.shape} | IC {df_stat_ic.shape}")
+                            logger.info(f"\t\t\tPaths:")
+                        
+                        # save these dfs, add path to output dictionary item
+                        for df, suffix in zip([df_stat_r, df_stat_l, df_stat_ic], ['R', 'L', 'ic']):
+                            name = f"{key}_{grp_val}_{suffix}"
+                            pth = savePickle(obj = df, root = save_pth_df, name = f"{i}_{name}", timeStamp = True, rtn_txt=False, verbose = False)
+                            dl_grp_ic[i][name] = pth
+                            if verbose:
+                                logger.info(f"\t\t\t{suffix} : {pth}")
 
-                    
-                    dl_grp_ic[i].pop('df_z', None) # remove original as it is saved elsewhere
-                else: # do nothing
-                    if verbose: 
-                        logger.warning(f"\t\tdf_z is None.")
-                    pass
+                        dl_grp_ic[i][f'{key}_{grp_val}_R'] = df_stat_r
+                        dl_grp_ic[i][f'{key}_{grp_val}_L'] = df_stat_l
+                        dl_grp_ic[i][f'{key}_{grp_val}_ic'] = df_stat_ic
 
-                if df_w is not None:
-                    df_w_grp = df_w.copy()
-                    
-                    df_w_r = df_w_grp[df_w_grp.index.isin(IDs_right)]
-                    df_w_l = df_w_grp[df_w_grp.index.isin(IDs_left)]
-                    df_w_ic = toIC(df_r = df_w_r, df_l = df_w_l)
-                    
-                    if verbose:
-                        logger.info(f"\t\tShapes of df_z: L {df_w_l.shape} | R {df_w_r.shape} | IC {df_w_ic.shape}")
-
-                    dl_grp_ic[i][f'df_w_{grp_val}_R'] = df_z_r
-                    dl_grp_ic[i][f'df_w_{grp_val}_L'] = df_z_l
-                    dl_grp_ic[i][f'df_w_{grp_val}_ic'] = df_z_ic
-                    
-                    if dl_grp_ic[i].get('df_w_ctrl', None) is None: # if ctrl df not yet created, create it
-                        df_w_ctrl = df_w_grp[df_w_grp.index.isin(IDs_ctrl)]
-                        dl_grp_ic[i]['df_w_ctrl'] = df_w_ctrl
+                        if dl_grp_ic[i].get(f'{key}_ctrl', None) is None: # if ctrl df not yet created, create it
+                            df_stat_ctrl = df_stat_grp[df_stat_grp.index.isin(IDs_ctrl)]
+                            pth = savePickle(obj = df_stat_ctrl, root = save_pth_df, name = f"{i}_{key}_ctrl", timeStamp = True, rtn_txt=False, verbose = False)
+                            dl_grp_ic[i][f'{key}_ctrl'] = pth
+                            
+                            if verbose:
+                                logger.info(f"\t\t\tControl group {key} shape {df_stat_ctrl.shape} : {pth}")
+                    else:
                         if verbose:
-                            logger.info(f"\t\tControl group df_z shape: {df_w_ctrl.shape}")
-                    
-                    dl_grp_ic[i].pop('df_w', None) # remove original as it is saved elsewhere
-                else:
-                    if verbose: 
-                        logger.warning(f"\t\tdf_w is None.")
-                    pass
+                            logger.info(f"\t\t\tKey '{key}' is either not in dictionary or is a `None` object or has no rows. Skipping this key.")
+                        continue
 
         # Save the updated map_dictlist to a pickle file
+        # TODO. Save periodically during loop
         if save:
-            if test:
-                save_name = f"TEST_{save_name}"
-            date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-            out_pth = f"{save_pth}/{save_name}_{date}.pkl"
-        
-            with open(out_pth, "wb") as f:
-                pickle.dump(dl_grp_ic, f)
-            logger.info(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
-            print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+            out_pth, log = savePickle(obj = dl_grp_ic, root = save_pth, name = save_name, timeStamp = True, rtn_txt=True, verbose = True)
+            
+            logger.info(log)
+            print(log)
 
         logger.info(f"\nCompleted grp_flip.")
 
@@ -3776,6 +3874,35 @@ def determineStudy(dl, idx, idx_other, study_key='study'):
 
     return idx_tT, idx_sT
 
+def df_head(obj, n=5):
+    """
+    Return a representation of the first n rows for a DataFrame/Series or for a pickled DataFrame path.
+    Falls back to str(obj) for other types.
+    """
+    import pandas as pd
+    # If it's a path to a pickle, try to load
+    if isinstance(obj, str):
+        try:
+            maybe_df = loadPickle(obj, verbose=False)
+            if isinstance(maybe_df, (pd.DataFrame, pd.Series)):
+                return maybe_df.head(n)
+            else:
+                return str(maybe_df)[:1000]
+        except Exception:
+            return f"<unreadable path: {obj}>"
+    if isinstance(obj, pd.Series):
+        return obj.head(n)
+    if isinstance(obj, pd.DataFrame):
+        return obj.head(n)
+    if isinstance(obj, list) and all(isinstance(x, pd.DataFrame) for x in obj):
+        # return list of heads for each dataframe
+        return [x.head(n) for x in obj]
+    # fallback
+    try:
+        return str(obj)
+    except Exception:
+        return "<unrepresentable object>"
+
 def print_dict(dict, df_print=False, idx=None, verbose=False, return_txt=False):
     """
     Print the contents of a dictionary with DataFrames in a readable format.
@@ -3803,10 +3930,23 @@ def print_dict(dict, df_print=False, idx=None, verbose=False, return_txt=False):
 
     def mainPrint(k, v, df_print):
         import pandas as pd
-        if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series):
-            print(f"\t{k}: <DataFrame shape={v.shape}>")
-            if df_print: print(f"\t{k}: {v}")
-        elif isinstance(v, list) and all(isinstance(x, pd.DataFrame) for x in v):
+        
+        if isinstance(v, pd.DataFrame) or isinstance(v, pd.Series): # value is dataframe
+            if df_print:
+                head = df_head(v, n=5)
+                print(f"\t{k}:\n\t\t<DataFrame shape={v.shape}>\n{head}")
+            else:
+                print(f"\t{k}:\n\t\t<DataFrame shape={v.shape}>")
+        
+        elif 'df_' in k and isinstance(v, str): # value is path to dataframe
+            v_df = loadPickle(v, verbose = False)
+            if df_print:
+                head = df_head(v_df, n=5)
+                print(f"\t{k}: {v}\n\t\t<DataFrame shape={v_df.shape}>\n{head}")
+            else:
+                print(f"\t{k}: {v}\n\t\t<DataFrame shape={v_df.shape}>")
+
+        elif isinstance(v, list) and all(isinstance(x, pd.DataFrame) for x in v): # value is list of dataframes
             if df_print:
                 for idx_df, df_v in enumerate(v):
                     print(f"\t{k}[{idx_df}]: {df_v}")
@@ -3815,7 +3955,7 @@ def print_dict(dict, df_print=False, idx=None, verbose=False, return_txt=False):
                 print(f"\t{k}: <list (len {len(v)}) of DataFrames. Shapes : {shapes}>")
             #print(f"\t{k}: <DataFrame shape={v.shape}>")
             if df_print: print(f"\t{k}: {v}")
-        else:
+        else: # other values
             print(f"\t{k}: {v}")
 
     if idx is not None:
@@ -4367,12 +4507,12 @@ def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, ver
             if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
             the hemisphere specified by ipsiTo ('L' or 'R'). If not provided, assumes columns end with '_L' and '_R'.
         
-        
     Returns:
         df_glasser: mean values per region for the glasser atlas.
        
     """
     import pandas as pd
+    import numpy as np
     
     hemi_col = 'SHemi' # could also be SHemi (for short name)
     
@@ -4386,53 +4526,55 @@ def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, ver
         raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
     
     assert df.shape[1] == nvtx*2, f"[apply_glasser] Input dataframe has {df.shape[1]} columns. Expected {nvtx*2} columns for surf {surf}."
-    
     df_relbl = relabel_vertex_cols(df, ipsiTo, split = False, verbose = verbose) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
 
-    df_relbl.columns = glasser_df['glasser'].values[df_relbl.columns.astype(int)]
+    # map vertex index -> region index (glasser region per vertex)
+    vtx_idx = df_relbl.columns.astype(int)
+    region_idxs = glasser_df['glasser'].values[vtx_idx]  # length == n_columns
 
-    if labelType.lower() == 'glasser_int' or labelType is None: # replace region codes with human interpretable strings
-        pass
-    else:
-        glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser_details.csv")
+    # load region details and build base name lookup
+    glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser_details.csv")
+    glasser_details.columns = [str(c).strip().replace('\ufeff', '') for c in glasser_details.columns]
+    if 'regionIDX' not in glasser_details.columns:
+        raise KeyError(f"'regionIDX' not found in glasser_details columns. Available columns: {glasser_details.columns.tolist()}")
+
+    if labelType.lower() != 'glasser_int' or labelType is None:
+        det_col = 'regionIDX'
         if labelType.lower() == 'glasser_name_short':
-            gd_col  = 'SName'
+            det_col = 'SName'
         elif labelType.lower() == 'glasser_name_long':
-            gd_col = 'LName'
+            det_col = 'LName'
         elif labelType.lower() == 'lobe':
-            gd_col = 'SLobe'
+            det_col = 'SLobe'
         elif labelType.lower() == 'longlobe':
-            gd_col = 'LLobe'
+            det_col = 'LLobe'
         else:
             raise ValueError("[apply_glasser] Invalid labelType value. Choose from 'glasser_int', 'glasser_name_short', 'glasser_name_long', 'lobe', or 'lobelong'.")
 
-        if addHemiLbl:
-            
-            renaming_df = glasser_details[['regionIDX', gd_col, hemi_col]] 
+        names_map = glasser_details.set_index('regionIDX')[det_col].to_dict()
+    else:
+        names_map = glasser_details['regionIDX'].to_dict()
 
-            if ipsiTo is not None: # replace L/R with ipsi/contra
-                if ipsiTo.upper() == 'L':
-                    ipsi = 'left'
-                    contra = 'right'
-                elif ipsiTo.upper() == 'R':
-                    ipsi = 'right'
-                    contra = 'left'
-                else:
-                    raise ValueError("[apply_glasser] Invalid ipsiTo value. Choose 'L' or 'R'.")
+    # determine hemisphere of each vertex from original vertex index
+    # nvtx is number of vertices per hemisphere (set above)
+    hemi_raw = np.where(vtx_idx < nvtx, 'L', 'R')
 
-                renaming_df = renaming_df.copy() # avoid SettingWithCopyWarning
-                renaming_df.loc[:,'hemi'] = renaming_df[hemi_col].replace({ipsi: 'ipsi', contra: 'contra'})
-                hemi_col = 'hemi'
-
-            renaming_df.loc[:,gd_col] = renaming_df.apply(lambda row: f"{row[gd_col]}_{row[hemi_col]}", axis=1)
-
+    # choose suffix mapping: plain L/R or ipsi/contra if requested
+    if addHemiLbl:
+        if ipsiTo is None:
+            hemi_suffix_map = {'L': 'L', 'R': 'R'}
         else:
-            renaming_df = glasser_details[['regionIDX', gd_col]] 
+            if ipsiTo.upper() == 'L':
+                hemi_suffix_map = {'L': 'ipsi', 'R': 'contra'}
+            elif ipsiTo.upper() == 'R':
+                hemi_suffix_map = {'L': 'contra', 'R': 'ipsi'}
+            else:
+                raise ValueError("[apply_glasser] Invalid ipsiTo value. Choose 'L' or 'R'.")
+        final_names = [f"{names_map.get(r, r)}_{hemi_suffix_map[h]}" for r, h in zip(region_idxs, hemi_raw)]
+    else:
+        final_names = [f"{names_map.get(r, r)}" for r in region_idxs]
 
-        df_relbl.columns = df_relbl.columns.map(
-            lambda x: renaming_df.loc[renaming_df['regionIDX'] == x, gd_col].values[0]
-            if x in renaming_df['regionIDX'].values else x
-        )
+    df_relbl.columns = final_names
 
     return df_relbl
 
@@ -4524,6 +4666,22 @@ def apply_DK25(df, surf, labelType = None, addHemiLbl = True, ipsiTo=None, verbo
     df_parc = pd.concat([df_l, df_r], axis=1)
     return df_parc
 
+def addHemifromParc(df, parc):
+    """
+    given a parcellation index, add hemisphere label to index.
+
+    input:
+        df:
+            dataframe to relabel
+        parc:
+            name of parcellation method for data in df
+
+    output;
+        df_out: appended hemisphere to column name
+    """
+    import pandas as pd
+
+    return df_out
 
 def glasser_mean(df_glasserLbl):
     """
@@ -4539,20 +4697,24 @@ def glasser_mean(df_glasserLbl):
 
 ######################### VISUALIZATION FUNCTIONS #########################
 
-def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, test=False):
+def plotMatrices(dl, df_keys, 
+                 name_append=False, sessions = None, save_pth=None, test=False, min_stat = -4, max_stat = 4):
     """
     Plot matrix visualizations for map values from corresponding study
 
     dl: 
         dictionary list with paired items from different studies
-    df_key: lst
+    df_keys: lst
         keys in the dictionary items to plot (e.g., 'map_smth')
-    name_append:
-        if provided, append this string to the filename when saving
+    
+    name_append: bool
+        if true, adds key name to save file
     sessions: (list of ints)
         if provided, will plot different sessions next to eachother rather than different studies
     save_pth:
         if provided, save the plots to this path instead of showing them interactively
+    min_stat, max_stat: int, int
+        applied only if the key contains either '_z_' or '_w_': min and max values for color scale
     """
     import matplotlib.pyplot as plot
     from matplotlib import gridspec
@@ -4563,23 +4725,30 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
     skip_idx = []
     counter = 0
     
-    if type(df_key) == str:
-        df_key = [df_key] 
+    if type(df_keys) == str:
+        df_keys = [df_keys] 
 
-    print(f"Plotting matrices for {list(df_key)}...")
+    print(f"Plotting matrices for {list(df_keys)}...")
     
     if test:
-        print("TEST MODE: Randomly choosing 2 pairs to plot")
-        import random
-        # randomly reorder dl items
-        random.shuffle(dl)
+        idx_len = 3
+        idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
+        idx_other_rdm = [get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth']) for i in idx_rdm]
+        print(f"TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
+        rdm_indices = idx_rdm + idx_other_rdm
+        dl = [dl[i] for i in rdm_indices]
 
     # If dl is a single dictionary (not a list), wrap it in a list
     if isinstance(dl, dict):
         print("[plotMatrices] WARNING: dl is a single dictionary, wrapping in a list.")
         dl = [dl]
 
+    counter = 0
     for idx, item in enumerate(dl):
+        counter += 1
+        if counter % 10 == 0:
+            print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processed {counter} of {len(dl)}... ")
+        
         if idx in skip_idx:
             continue
         skip_idx.append(idx)
@@ -4597,6 +4766,7 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
             # get the indices whose session number is in 'sessions'. Add also the index 'idx'. 
             # If not in 'sessions' then, add to skip idx
             matches = []
+            
             for indices in [idx, *idx_other]:
                 itm = dl[indices]
                 sesNum = itm.get('sesNum', None)
@@ -4669,61 +4839,76 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
         else:
             print(f"\t[ses 1, 2: {idx_one} ({ses_one}), {idx_two} ({ses_two})] {printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
         
-        for key in df_key:
+        for key in df_keys:
 
             if item_one.get('study', None) and item_two.get('study', None):
-                title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
-                title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
+                if test:
+                    title_one = f"{key} {item_one['study']} [idx: {rdm_indices[idx_one]}]"
+                    title_two = f"{key} {item_two['study']} [idx: {rdm_indices[idx_two]}]"
+                else:
+                    title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
+                    title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
             else:
-                title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
-                title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
+                if test:
+                    title_one = f"{key} SES num: {ses_one} [idx: {rdm_indices[idx_one]}]"
+                    title_two = f"{key} SES num: {ses_two} [idx: {rdm_indices[idx_two]}]"
+                else:
+                    title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
+                    title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
             
             feature_one = item_one['feature']
             feature_two = item_two['feature']
             
             try:
                 df_one = item_one[key]
+                if type(df_one) is str:
+                    pth = df_one 
+                    df_one = loadPickle(pth, verbose = False) 
             except KeyError:
-                print(f"\tWARNING: Could not access key '{key}' for item at index {idx_one}. Skipping.")
-                print_dict(dl, idx = [idx_one])
+                print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_one}. Skipping.")
+                #print_dict(dl, idx = [idx_one])
                 print('-'*50)
                 continue
             except Exception as e:
-                print(f"\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
-                print_dict(dl, idx=[idx_one])
+                print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
+                #print_dict(dl, idx=[idx_one])
                 print('-'*50)
                 continue
             
             try:
                 df_two = item_two[key]
+                if type(df_two) is str:
+                    pth = df_two
+                    df_two = loadPickle(pth, verbose = False) 
             except KeyError:
-                print(f"\tWARNING: Could not access key '{key}' for item at index {idx_two}. Skipping.")
-                print_dict(dl, idx = [idx_two])
+                print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_two}. Skipping.")
+                #print_dict(dl, idx = [idx_two])
                 print('-'*50)
                 continue
             except Exception as e:
-                print(f"\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
-                print_dict(dl, idx=[idx_one])
+                print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
+                #print_dict(dl, idx=[idx_one])
                 print('-'*50)
                 continue
             
             if df_one is None and df_two is None:
-                item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-                item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-                print(f"\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
+                item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=False)
+                item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=False)
+                print(f"\t\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
                 print('-'*50)
                 continue
             elif df_one is None:
                 item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-                print(f"\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
+                print(f"\t\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
                 print('-'*50)
                 continue
             elif df_two is None:
                 item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-                print(f"\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
+                print(f"\t\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
                 print('-'*50)
                 continue
-
+            else:
+                print(f"\t\tPlotting key: {key}...")
             # determine min and max values across both matrices for consistent color scaling
             assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
             assert item_one['region'] == item_two['region'], f"Regions do not match: {item_one['region']}, {item_two['region']}"
@@ -4731,10 +4916,10 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
             assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
             assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
         
-            if "_z_" in df_key or "_w_" in df_key:
+            if "_z" in key or "_w" in key:
                 cmap = "seismic"
-                min_val = -3
-                max_val = 3
+                min_val = min_stat
+                max_val = max_stat
             else:
                 cmap = 'inferno'
                 if feature_one.lower() == "thickness":
@@ -4769,18 +4954,26 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
             ax1 = fig.add_subplot(spec[0])
             ax2 = fig.add_subplot(spec[2])
 
+            # Define x-axis label
+            if item_one.get('parcellation', None) is not None and 'parc' in key:
+                x_axisLbl = item_one.get('parcellation', None).upper()
+            else:
+                x_axisLbl = 'Vertex'
+
             # Plot the matrices
             visMatrix(df_one, feature=feature_one, title=title_one, 
-                    show_index=True, ax=ax1, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+                    show_index=True, ax=ax1, x_axisLbl = x_axisLbl,
+                    min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
             visMatrix(df_two, feature=feature_two, title=title_two, 
-                    show_index=True, ax=ax2, min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+                    show_index=True, ax=ax2, x_axisLbl = x_axisLbl,
+                    min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
 
             # Add a colorbar between the plots
             cmap_title = feature_one
 
-            if "_z_" in df_key:
+            if "_z_" in df_keys:
                 cmap_title = f"Z-score [{cmap_title}]"
-            elif "_w_" in df_key:
+            elif "_w_" in df_keys:
                 cmap_title = f"W-score [{cmap_title}]"
             else:
                 if feature_one.upper() == "ADC":
@@ -4806,12 +4999,18 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
                 fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
 
             if save_pth is not None:
-                if name_append is not None:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                elif sessions:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                if name_append:
+                    if sessions is not None:
+                        save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_key-{key}_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                    else:
+                        save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_key-{key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                elif sessions is not None:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
                 else:
                     save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                if test:
+                    save_name = f"TEST_{save_name}"
+
                 fig_pth = f"{save_pth}/{save_name}.png"
                 fig.savefig(fig_pth, dpi=300, bbox_inches='tight')
                 file_size = os.path.getsize(fig_pth) / (1024 * 1024)  # size in MB
@@ -4821,7 +5020,7 @@ def plotMatrices(dl, df_key, name_append=None, sessions = None, save_pth=None, t
         if test and counter >= 2:
             break
 
-def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, 
+def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, x_axisLbl = None,
               cmap='seismic', show_index=False, ax=None, nan_color='green', nan_side="right"):
     """
     Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
@@ -4829,10 +5028,14 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None,
     ----------
     df : pandas.DataFrame
         The data to visualize, where rows are indices and columns are vertices.
+    
     feature : str, optional
         Label for the colorbar (default is "Map Value").
     title : str, optional
         Title for the plot.
+    
+    x_axisLbl: str, optional
+        Label for the x-axis. If None, use default: 'Vertex'
     min_val : float, optional
         Minimum value for colormap scaling. If None, uses the minimum of the data.
     max_val : float, optional
@@ -4911,7 +5114,11 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None,
     if title:
         ax.set_title(title, fontsize=23)
 
-    ax.set_xlabel("Vertex", fontsize=15)
+    if x_axisLbl is None:
+        ax.set_xlabel("Vertex", fontsize=15)
+    else:
+        ax.set_xlabel(x_axisLbl, fontsize=15)
+    
     ax.tick_params(axis='x', labelsize=10)
     
     if create_colorbar:
@@ -5069,6 +5276,7 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     """
     Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
 
+    TODO. Fix alignment of UID labels (y-ticks), appears shifted up
 
     Input:
         df_a, df_b:         DataFrames with identical columns and identical row indices.
@@ -5151,8 +5359,10 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
                 
     elif parc.lower() == "glasser" or parc.lower() == "glsr":
         split_idx = 181
+    elif parc.lower() == "dk25" or parc.lower() == "dk":
+        split_idx = 25
     else:
-        ValueError("[plot_ridgeLine] Invalid parc value. Choose 'glasser' or None.")
+        ValueError("[plot_ridgeLine] Invalid parc value. Choose 'glasser', 'DK25' or None.")
     
     # Set title
     fig.suptitle(title, fontsize=int(sizes['title'] * scale), y=0.995)
@@ -5235,7 +5445,7 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     right_frac = min(1.0, max(0.0, right_frac))
     
     # axes fraction for vertical placement (negative = below axis)
-    y_ax_frac = -0.03  # tweak if you want labels further/from the axis
+    y_ax_frac = -0.03  # move labels away from y-axis
     label_fs = int(sizes['annot'] * scale)
     va_setting = 'top'  # anchor the top of the text at the y coordinate so it sits below the axis
     if not ipsi_contra:
@@ -5278,22 +5488,24 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
 
     return fig
 
-def plotLine(dl, df_key = 'df_maps', marks=True, 
-            parc=None, stat =None,
+def plotLine(dl, df_keys = ['df_maps'], marks=True, 
+            parc=[None], stat =[None],
             alpha = 0.02,
-            hline_idx = None, name_append=None, save_pth=None, 
+            hlines = None, name_append=None, save_pth=None, 
             verbose = False, test = False):
     
     """
     Plot ridgeline graphs to compare maps between corrsponding dfs (eg., 3T vs 7T).
+    Note. All values are rescaled participant-wise: (x - mdn(x)) / IQR(x) 
+
 
     Input:
         dl:           list of dict items with dataframes to plot
-        df_key:        key in dict items for dataframe to plot
+        df_key: lst        keys in dict items for dataframe to plot
         marks:          whether to use marks instead of lines
-        parc:           indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
-        stat:       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
-        hline_idx: lst  list of indices to draw horitzontal lines at
+        parc: lst          indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
+        stat: lst       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
+        hline_idx: lst  list of list of indices to draw horitzontal lines at
         name_append:    string to append to saved file names
         save_pth:       path to save figures. If None, will not save.
         verbose:        whether to print item metadata  
@@ -5309,8 +5521,15 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
     skip_idx = []
     counter = 0
     start_time = datetime.datetime.now()
-    print(f"[{start_time}] Plotting ridgeline plots for {df_key}...")
+    print(f"[{start_time}] Plotting ridgeline plots for {list(df_keys)}...")
     
+    if type(df_keys) is str:
+        df_keys = [df_keys]
+    if type(parc) is str:
+        parc = [parc]
+    if type(stat) is str:
+        stat = [stat]
+
     for idx in range(len(dl)):
 
         if idx in skip_idx:
@@ -5323,6 +5542,7 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
         if idx_other is None:
             print(f"\tNo matching index found. Skipping.")
             continue
+        
         # determine which study is tT and which is sT
         idx_tT, idx_sT = determineStudy(dl, idx = idx, idx_other = idx_other, study_key = 'study')
         item_tT = dl[idx_tT]
@@ -5331,77 +5551,90 @@ def plotLine(dl, df_key = 'df_maps', marks=True,
         print(f"\t[idx 3T, 7T: {idx_tT}, {idx_sT}] {printItemMetadata(item_tT, return_txt = True, clean = True, printStudy = False)}")
        
         # extract df
-        df_tT = item_tT.get(df_key, None)
-        df_sT = item_sT.get(df_key, None)
-        if df_tT is None or df_sT is None:
-            print(f"\t{df_key} is None. Skipping.")
-            continue
-        elif df_tT.shape[0] == 0 or df_sT.shape[0] == 0:
-            print(f"\t{df_key} is empty. Skipping.")
-            continue
-        
-        # ensure that all columns overlap
-        cols_tT = set(df_tT.columns) # use as x-axis
-        cols_sT = set(df_sT.columns)
-        cols_common = list(cols_tT.intersection(cols_sT))
-        assert len(cols_common) == len(cols_tT) and len(cols_common) == len(cols_sT), f"Columns do not match between studies: {cols_tT} vs {cols_sT}"
-        
-        # rename indices to match. Use UID only
-        uid_tT = df_tT.index.str.split('_').str[0]
-        uid_sT = df_sT.index.str.split('_').str[0]
-        
-        # ensure that all indices overlap
-        idxs_common = list(set(uid_tT).intersection(set(uid_sT)))
-        idxs_common = sorted(idxs_common) # sort by UID
+        for df_key, p, s, hlines_idx in zip(df_keys, parc, stat, hlines if hlines is not None else [None]*len(df_keys)):
+            df_tT = item_tT.get(df_key, None)
+            df_sT = item_sT.get(df_key, None)
 
-        assert len(idxs_common) == len(uid_tT) and len(idxs_common) == len(uid_sT), f"Indices do not match between studies: {set(uid_tT)} vs {set(uid_sT)}"
-        
-        # set index to UID
-        df_tT.index = uid_tT
-        df_sT.index = uid_sT
-        # take only overlapping indices
-        df_tT = df_tT.loc[idxs_common, cols_common]
-        df_sT = df_sT.loc[idxs_common, cols_common]
+            if type(df_tT) is str:
+                pth = df_tT 
+                df_tT = loadPickle(pth, verbose = False)
+            if type(df_sT) is str:
+                pth = df_sT 
+                df_sT = loadPickle(pth, verbose = False)
 
-        # create title
-        region = item_tT.get('region', None)
-        feature = item_tT.get('feature', None)
-        surface = item_tT.get('surf', None)
-        label = item_tT.get('label', None)
-        smth = item_tT.get('smth', None)
-        title = f"{region}: {feature}, {surface}, {label}, smth-{smth}mm"
-        if 'TLE' in df_key:
-            title = title + f" [TLE only]"  # TODO CHANGE SO THAT NOT HARD CODED 
-        
-        hline = None
-        if 'df_z' in df_key.lower():
-            title = title + " [Z-score]"
-            hline = 0 # value at which to plot a horizontal line for each subject
-        elif 'df_w' in df_key.lower():
-            title = title + " [W-score]"
-            hline = 0 # value at which to plot a horizontal line for each subject
-        elif feature.lower() in ['t1map', 'flair']: # rescale values (participant wise)
-            # Robust rescaling: subtract median and divide by IQR (interquartile range)
-            df_tT = (df_tT - df_tT.median(axis=1).values[:, None]) / (df_tT.quantile(0.75, axis=1).values - df_tT.quantile(0.25, axis=1).values)[:, None]
-            df_sT = (df_sT - df_sT.median(axis=1).values[:, None]) / (df_sT.quantile(0.75, axis=1).values - df_sT.quantile(0.25, axis=1).values)[:, None]
-            title = title + " [standardized]"
-
-        # ridge line plot
-        fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
-                             hline=hline, marks=marks, title=title, 
-                             parc=parc, stat=stat, alpha=alpha, 
-                             hline_idx = hline_idx)
-
-        if save_pth is not None:
-            if name_append is not None:
-                save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{name_append}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+            if df_tT is None or df_sT is None:
+                if verbose:
+                    print(f"\t{df_key} is None. Skipping.")
+                continue
+            elif df_tT.shape[0] == 0 or df_sT.shape[0] == 0:
+                if verbose:
+                    print(f"\t{df_key} is empty. Skipping.")
+                continue
             else:
-                save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                print(f"\tPlotting {df_key}")
             
-            fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight', pad_inches = 0.08)
-            file_size = os.path.getsize(f"{save_pth}/{save_name}.png") / (1024 * 1024)  # size in MB
-            print(f"\t\tSaved ({file_size:0.1f} MB): {save_pth}/{save_name}.png")
-            plt.close(fig)
+            # ensure that all columns overlap
+            cols_tT = set(df_tT.columns) # use as x-axis
+            cols_sT = set(df_sT.columns)
+            cols_common = list(cols_tT.intersection(cols_sT))
+            assert len(cols_common) == len(cols_tT) and len(cols_common) == len(cols_sT), f"Columns do not match between studies: {cols_tT} vs {cols_sT}"
+            
+            # rename indices to match. Use UID only
+            uid_tT = df_tT.index.str.split('_').str[0]
+            uid_sT = df_sT.index.str.split('_').str[0]
+            
+            # ensure that all indices overlap
+            idxs_common = list(set(uid_tT).intersection(set(uid_sT)))
+            idxs_common = sorted(idxs_common) # sort by UID
+
+            assert len(idxs_common) == len(uid_tT) and len(idxs_common) == len(uid_sT), f"Indices do not match between studies: {set(uid_tT)} vs {set(uid_sT)}"
+            
+            # set index to UID
+            df_tT.index = uid_tT
+            df_sT.index = uid_sT
+            # take only overlapping indices
+            df_tT = df_tT.loc[idxs_common, cols_common]
+            df_sT = df_sT.loc[idxs_common, cols_common]
+
+            # create title
+            region = item_tT.get('region', None)
+            feature = item_tT.get('feature', None)
+            surface = item_tT.get('surf', None)
+            label = item_tT.get('label', None)
+            smth = item_tT.get('smth', None)
+            title = f"{region}: {feature}, {surface}, {label}, smth-{smth}mm ({df_key})"
+            if 'TLE' in df_key:
+                title = title + f" [TLE only]"  # TODO CHANGE SO THAT NOT HARD CODED 
+            
+            hline = None
+            if 'df_z' in df_key.lower():
+                title = title + " [Z-score]"
+                hline = 0 # value at which to plot a horizontal line for each subject
+            elif 'df_w' in df_key.lower():
+                title = title + " [W-score]"
+                hline = 0 # value at which to plot a horizontal line for each subject
+            elif feature.lower() in ['t1map', 'flair']: # rescale values (participant wise)
+                # Robust rescaling: subtract median and divide by IQR (interquartile range)
+                df_tT = (df_tT - df_tT.median(axis=1).values[:, None]) / (df_tT.quantile(0.75, axis=1).values - df_tT.quantile(0.25, axis=1).values)[:, None]
+                df_sT = (df_sT - df_sT.median(axis=1).values[:, None]) / (df_sT.quantile(0.75, axis=1).values - df_sT.quantile(0.25, axis=1).values)[:, None]
+                title = title + " [standardized]"
+
+            # ridge line plot
+            fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
+                                hline=hline, marks=marks, title=title, 
+                                parc=p, stat=s, alpha=alpha, 
+                                hline_idx = hlines_idx)
+
+            if save_pth is not None:
+                if name_append is not None:
+                    save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{name_append}_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                else:
+                    save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                
+                fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight', pad_inches = 0.08)
+                file_size = os.path.getsize(f"{save_pth}/{save_name}.png") / (1024 * 1024)  # size in MB
+                print(f"\t\tSaved ({file_size:0.1f} MB): {save_pth}/{save_name}.png")
+                plt.close(fig)
 
         if test and counter >= 1:
             break
