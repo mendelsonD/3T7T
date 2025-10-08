@@ -12,11 +12,13 @@ def loadPickle(pth, verbose=True, dlPrint=False):
         The object loaded from the pickle file.
     """
     import pickle    
-    
+    import os
     with open(pth, "rb") as f:
             obj = pickle.load(f)
+
+    file_size = os.path.getsize(pth) / (1024 * 1024)
     if verbose:
-        print(f"[loadPickle] Loaded pickle object: {pth}")
+        print(f"[loadPickle] Loaded object ({file_size:0.1f} MB): {pth}")
     if dlPrint:
         print('-'*100)
         print_dict(obj)
@@ -2148,7 +2150,7 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
 
 
 def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, 
-               save_df_pth, log_save_pth, 
+               save_name, save_df_pth, log_save_pth,
                append_name = None, region=None, verbose=False, test = False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
@@ -2206,15 +2208,15 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
     if not os.path.exists(log_save_pth):
         os.makedirs(log_save_pth)
     
-    log_name = f"04b_extractMap"
+    log_name = f"04a_extractMap"
     if region is not None:
         log_name = f"{log_name}_{region}"
     if append_name is not None:
         log_name = f"{log_name}_{append_name}"
     if test:
         log_name = f"TEST_{log_name}"
-
-    log_file_path = os.path.join(log_save_pth, f"{log_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    start = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_file_path = os.path.join(log_save_pth, f"{log_name}_log_{start}.txt")
     print(f"\n[extractMap] Saving log to: {log_file_path}")
 
     # Configure module logger (handlers added per-file by _get_file_logger)
@@ -2320,7 +2322,9 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                 if test:
                     map_name = f"TEST_{map_name}"
                 
-                maps_pth, save_stmt = savePickle(obj = maps, root = save_df_pth, name = map_name, verbose=False, rtn_txt = True)
+                maps_pth, save_stmt = savePickle(obj = maps, root = save_df_pth, name = map_name, 
+                                                 timeStamp=False, append = start, 
+                                                 verbose=False, rtn_txt = True)
                 logger.info(f"\t{save_stmt}")
 
                 # add to dict list
@@ -2354,8 +2358,8 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
         logger.error(f"An error occurred in extractMap: {e}", exc_info=True)
         print(f"[extractMap] ERROR: An error occurred. Check log file for details.")
     
-    logger.info(f"Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"\n[extractMap] Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[extractMap] Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     return out_dl
 
 def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study', coi = None, region=None, 
@@ -2562,8 +2566,6 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
     """
     Parcellate vertex-wise dataframes.
 
-    TODO. Log
-
     Input:
         dl [lst]: list of dicts
             Each dict should contain:
@@ -2611,145 +2613,169 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
     """
     import datetime
     import numpy as np
+    import os
     
-    start_time = datetime.datetime.now()
-    
-    assert type(dl) == list, f"\t[parcellate_items] dl should be a list of dicts. Found {type(dl)}."
-    assert type(parcellationSpecs) == list, f"\t[parcellate_items] parc_region should be a list of dicts. Found {type(parcellationSpecs)}."
-    if type(stats) == str:
-        stats = [stats]
-    for s in stats:
-        assert s.lower() in ['mean', 'mdn', 'median', 'max', 'min', 'std','iqr', None], f"\t[parcellate_items] Unknown stat: {s}. Supported: 'mean', 'mdn', 'median', 'max', 'min', 'std','iqr', `None`."
-    
-    if type(df_keys) == str:
-        df_keys = [df_keys]
-    
-    parc_regions = [pr['region'] for pr in parcellationSpecs if pr.get('parcellate', False) != False]
+    start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
+    # Prepare log file path
+    logger = _get_file_logger(__name__, log_file_path)
+    logger.info("Log started for winComp function.")
+    print(f"[winComp] Saving log to: {log_file_path}")
 
-    for index, region in enumerate(parcellationSpecs):
-        parc = region.get('parcellate', None)
-
-        if parc is None:
-            continue
-        elif parc == 'glasser':
-            parc_name_shrt = "glsr"
-        elif parc.lower() == 'dk25':
-            parc_name_shrt = "dk25"
-        else:
-            raise ValueError(f"\t[parcellate_items] Unknown parcellation: {parc}. Supported: 'glasser', 'dk25'.")
-       
-        parcellationSpecs[index]['parc_name_shrt'] = parc_name_shrt
-             
-    if test:
-        idx_len = 2
-        idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
-        print(f"{start_time}: TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
-        dl = [dl[i] for i in idx_rdm]
-    else:
-        print(f"{start_time}: Applying parcellations for regions {parc_regions} in dictionry list of length {len(dl)}.\n\tSummarising with stat: {stats}.")
+    logger.info("Parameters:")
+    logger.info(f"  df_keys: {df_keys}")
+    logger.info(f"  parcellationSpecs: {parcellationSpecs}")
+    logger.info(f"  stats: {stats}")
+    logger.info(f"  df_save_pth: {df_save_pth}")
+    logger.info(f"  save_pth: {save_pth}")
+    logger.info(f"  save_name: {save_name}")
+    logger.info(f"  verbose: {verbose}")
+    logger.info(f"  test : {test}")
     
     dl_out = [] # initiate output list
-    dl_iterate = dl.copy()
 
-    counter = 0 
-    for idx, item in enumerate(dl_iterate):
-        counter += 1
-        if counter % 10 == 0:
-            print(f"{datetime.datetime.now()}: Processing item {counter} of {len(dl_iterate)}...")
+    try:
+        assert type(dl) == list, f"\t[parcellate_items] dl should be a list of dicts. Found {type(dl)}."
+        assert type(parcellationSpecs) == list, f"\t[parcellate_items] parc_region should be a list of dicts. Found {type(parcellationSpecs)}."
+        if type(stats) == str:
+            stats = [stats]
+        for s in stats:
+            assert s.lower() in ['mean', 'mdn', 'median', 'max', 'min', 'std','iqr', None], f"\t[parcellate_items] Unknown stat: {s}. Supported: 'mean', 'mdn', 'median', 'max', 'min', 'std','iqr', `None`."
         
-        key_outs = []
+        if type(df_keys) == str:
+            df_keys = [df_keys]
+        
+        parc_regions = [pr['region'] for pr in parcellationSpecs if pr.get('parcellate', False) != False]
+
+        for index, region in enumerate(parcellationSpecs):
+            parc = region.get('parcellate', None)
+
+            if parc is None:
+                continue
+            elif parc == 'glasser':
+                parc_name_shrt = "glsr"
+            elif parc.lower() == 'dk25':
+                parc_name_shrt = "dk25"
+            else:
+                raise ValueError(f"\t[parcellate_items] Unknown parcellation: {parc}. Supported: 'glasser', 'dk25'.")
+        
+            parcellationSpecs[index]['parc_name_shrt'] = parc_name_shrt
+                
         if test:
-            index = idx_rdm[idx]
+            idx_len = 2
+            idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
+            logger.info(f"{start}: TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
+            print(f"{start}: TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
+            dl = [dl[i] for i in idx_rdm]
         else:
-            index = idx
-
-        print(f"\t{printItemMetadata(item, idx = index, return_txt=True)}")
-
-        itm_region = item.get('region', None)
-        itm_surf = item['surf'] # should raise error if this key doesnt exist
+            logger.info(f"{start}: Applying parcellations for regions {parc_regions} in dictionary list of length {len(dl)}.\n\tSummarising with stat: {stats}.")
         
-        if itm_region in parc_regions:
-            pr = parcellationSpecs[parc_regions.index(itm_region)]
-            parc = pr['parcellate']
-            parc_name_shrt = pr['parc_name_shrt']
+        dl_iterate = dl.copy()
 
-            parc_lbl = pr.get('parc_lbl', None)
+        counter = 0 
+        for idx, item in enumerate(dl_iterate):
+            counter += 1
+            if counter % 10 == 0:
+                print(f"{datetime.datetime.now()}: Processing item {counter} of {len(dl_iterate)}...")
             
-        else:
-            if verbose:
-                print(f"\t[parcellate_items] Skipping item {idx} with region {itm_region} not in regions to parcellate.")
-            dl_out.append(item)
-            continue
-        
-        for df_key in df_keys:
-            for s in stats:
-                
-                if s is None:
-                    key_out = f'{df_key}_parc-{parc_name_shrt}'
-                else:
-                    s = s.lower()
-                    key_out = f'{df_key}_parc_{parc_name_shrt}_{s}'
-                key_outs.append(key_out)
+            key_outs = []
+            if test:
+                index = idx_rdm[idx]
+            else:
+                index = idx
 
-                df = item.get(df_key, None)
-                if type(df) == str:
-                    df = loadPickle(df, verbose=False)
+            logger.info(f"\t{printItemMetadata(item, idx = index, return_txt=True)}")
 
-                if df is None:
-                    print(f"\t[parcellate_items] WARNING. Key {df_key} not found in item {idx}. Skipping.")
-                    continue
-                if df.shape[0] == 0:
-                    print(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {df_key}. Skipping.")
-                    continue
+            itm_region = item.get('region', None)
+            itm_surf = item['surf'] # should raise error if this key doesnt exist
+            
+            if itm_region in parc_regions:
+                pr = parcellationSpecs[parc_regions.index(itm_region)]
+                parc = pr['parcellate']
+                parc_name_shrt = pr['parc_name_shrt']
+
+                parc_lbl = pr.get('parc_lbl', None)
                 
+            else:
                 if verbose:
-                    print(f"\t\tApplying parcellation `{parc}` with statistics `{s}`")
+                    logger.info(f"\t[parcellate_items] Skipping item {idx} with region {itm_region} not in regions to parcellate.")
+                dl_out.append(item)
+                continue
+            
+            for df_key in df_keys:
+                for s in stats:
+                    
+                    if s is None:
+                        key_out = f'{df_key}_parc-{parc_name_shrt}'
+                    else:
+                        s = s.lower()
+                        key_out = f'{df_key}_parc_{parc_name_shrt}_{s}'
+                    key_outs.append(key_out)
 
-                if parc == 'glasser':
-                    df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
-                    item['parcellation'] = 'glasser'
-                elif parc == 'DK25': # for implementation of other parcellations
-                    df_parc = apply_DK25(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
-                    item['parcellation'] = 'DK25'
-                else:
-                    pass
+                    df = item.get(df_key, None)
+                    if type(df) == str:
+                        df = loadPickle(df, verbose=False)
 
-                if s is None:
-                    pass
-                elif s == 'mean':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
-                elif s == 'median' or s == 'mdn':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
-                elif s == 'max':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).max()
-                elif s == 'min':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).min()
-                elif s == 'std':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).std()
-                elif s == 'iqr':
-                    df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
-                else: # this check should not be necessary considering above check
-                    raise ValueError(f"\t[parcellate_items] Unknown stat: {s}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
+                    if df is None:
+                        logger.info(f"\t[parcellate_items] WARNING. Key {df_key} not found in item {idx}. Skipping.")
+                        continue
+                    if df.shape[0] == 0:
+                        logger.info(f"\t[parcellate_items] WARNING. No data found in item {idx} for key {df_key}. Skipping.")
+                        continue
+                    
+                    if verbose:
+                        logger.info(f"\t\tApplying parcellation `{parc}` with statistics `{s}`")
 
-                df_save_name = f"{index}_{key_out}"
-                pth = savePickle(obj = df_parc, root = df_save_pth, name = df_save_name, test = test)
-                item[key_out] = pth
+                    if parc == 'glasser':
+                        df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = False, ipsiTo = None, verbose = verbose)
+                        item['parcellation'] = 'glasser'
+                    elif parc == 'DK25': # for implementation of other parcellations
+                        df_parc = apply_DK25(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
+                        item['parcellation'] = 'DK25'
+                    else:
+                        pass
+
+                    if s is None:
+                        pass
+                    elif s == 'mean':
+                        df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
+                    elif s == 'median' or s == 'mdn':
+                        df_parc = df_parc.groupby(df_parc.columns, axis=1).median()
+                    elif s == 'max':
+                        df_parc = df_parc.groupby(df_parc.columns, axis=1).max()
+                    elif s == 'min':
+                        df_parc = df_parc.groupby(df_parc.columns, axis=1).min()
+                    elif s == 'std':
+                        df_parc = df_parc.groupby(df_parc.columns, axis=1).std()
+                    elif s == 'iqr':
+                        df_parc = df_parc.groupby(df_parc.columns, axis=1).quantile(0.75) - df_parc.groupby(df_parc.columns, axis=1).quantile(0.25)
+                    else: # this check should not be necessary considering above check
+                        raise ValueError(f"\t[parcellate_items] Unknown stat: {s}. Supported: None, 'mean', 'median', 'max', 'min', 'std','iqr'.")
+
+                    df_save_name = f"{index}_{key_out}"
+                    pth, sv_txt = savePickle(obj = df_parc, root = df_save_pth, name = df_save_name, 
+                                    timeStamp = False, append = start, 
+                                    test = test, rtn_txt = True, verbose = False)
+                    logger.info(f"\t\t{sv_txt}")
+                    item[key_out] = pth
+            
+            parcellationSpecs[parc_regions.index(itm_region)]['key_outs'] = key_outs # TODO. Properly add these new keys such that the dict related to region has all unique keys created 
+
+            dl_out.append(item)
         
-        parcellationSpecs[parc_regions.index(itm_region)]['key_outs'] = key_outs # TODO. Properly add these new keys such that the dict related to region has all unique keys created 
-
-        dl_out.append(item)
+        if save_pth is not None and save_name is not None:
+            if len(stats) == 1 and stats[0] is not None:
+                save_name = save_name + "-" + stats  [0]  
+            out_pth = savePickle(obj = dl_out, root = save_pth, name = save_name, test = test)
     
-    end_time = datetime.datetime.now()
-    elapsed = end_time - start_time
-    print(f"{end_time}: Parcellation complete. Elapsed time: {elapsed}.")
+    except Exception as e:
+        logger.error(f"An error occurred in parcellate_items: {e}", exc_info=True)
+        print(f"[parcellate_items] ERROR: An error occurred. Check log file for details.")
     
-    if save_pth is not None and save_name is not None:
-        if len(stats) == 1 and stats[0] is not None:
-            save_name = save_name + "-" + stats  [0]  
-        out_pth = savePickle(obj = dl_out, root = save_pth, name = save_name, test = test)
-
+    logger.info(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[parcellate_items] Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
     return dl_out, parcellationSpecs
-
 
 def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", label="midthickness", hemi="LR", space="nativepro", surf="fsLR-5k"):
     """
@@ -3355,7 +3381,7 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
                     else:
                         logger.info(f"\t\tKey '{key}' is of type {type(df_stat)}, not str nor pd.DataFrame. Skipping.")
-                        print(f"\t\t[idx: {index}] Key '{key}' is of type {type(df_stat)}, not str nor pd.DataFrame. Skipping.")
+                        #print(f"\t\t[idx: {index}] Key '{key}' is of type {type(df_stat)}, not str nor pd.DataFrame. Skipping.")
                         continue
 
                     if df_stat.shape[0] == 0:
@@ -3431,163 +3457,188 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
     return dl_grp_ic
 
-def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats_winD", verbose=False, test=False, test_len=1, dlPrint=False ):
+def winD(dl, df_keys, save_pth_df,
+         ipsiTo = 'L', 
+         save=True, save_pth=None, save_name="05c_stats_winD", verbose=False, 
+         test=False, test_len=1):
     """
     [winD: within study D-scoring]
-    Calculate d-scores for each group of interest compared to controls, for the same studies.
+    Calculate D-scores between groups and controls for all keys provided.
+    Identifies all groups present in each dictionary item.
     
     Inputs:
         dl: (list)              Dictionary items keys holding vertex-wise within study statistics for groups of interest
                                     Assumes key for dfs holding statistics to have structure: df_{stat} 
-        stats: (list)           Statistics to compute d-scores. NOTE. Currently recognizes the stats: ['z', 'w']
-        ipsiTo: (str)           Hemisphere to which ipsi/contra vertices should be mapped to for controls. NOTE. Only used if vertex columns have ipsi/contra data present. Default = 'L'
-
+        df_keys: (list)         Keys in dl items to compute d-scores from.
+                                There should be one for the grp of interest and another for controls.
+        ipsiTo: (str)           Hemisphere to which ipsi/contra vertices should be mapped to for controls. 
+                NOTE. Only used if vertex columns have ipsi/contra data present. Default = 'L'
+        save_pth_df: (str)      path to save dfs created in this function; keep path to these dfs in output dictionaries
+        
         save: (bool)            Whether to save the output dictionary list.
         save_pth: (str)         Directory path to save the output dictionary list.
         save_name: (str)        Base name for the saved output file.
         test: (bool)            Whether to run in test mode (randomly select a subset of dict items to run d-scoring on)
         test_len: (int)         Number of random dict items to run d-scoring on if test=True
         verbose: (bool)         Whether to print detailed processing information.
-        dlPrint: (bool)         Whether to print the output dictionary list.
     
     """
     
     import os
     import pandas as pd
     import numpy as np
-    import pickle
-    import copy
     import datetime
-    import logging
 
     # Prepare log file path
     if save_pth is None:
         print("WARNING. Save path not specified. Defaulting to current working directory.")
         save_pth = os.getcwd()  # Default to current working directory
+    
     if not os.path.exists(save_pth):
         os.makedirs(save_pth)
+    
     if test:
         save_name = f"TEST_{save_name}"
-    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
     print(f"[winD] Saving log to: {log_file_path}")
     
-    # Configure logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    # Configure module logger (handlers added per-file by _get_file_logger)
+    logger = _get_file_logger(__name__, log_file_path)
+    logger.info(f"[winD] Saving log to: {log_file_path}")
+    logger.info("Log started for winComp function.")
     
-    # Create handlers
-    info_handler = logging.FileHandler(log_file_path)
-    info_handler.setLevel(logging.INFO)
-    warning_handler = logging.FileHandler(log_file_path)
-    warning_handler.setLevel(logging.WARNING)
-    console_handler = logging.StreamHandler()  # Add a StreamHandler for terminal output
-    console_handler.setLevel(logging.ERROR)  # Only print errors to the terminal
-
-    # Create formatters
-    info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
-    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
-
-    # Assign formatters to handlers
-    info_handler.setFormatter(info_formatter)
-    warning_handler.setFormatter(warning_formatter)
-
-    # Add handlers to logger
-    logger.addHandler(info_handler)
-    logger.addHandler(warning_handler)
-
-    # Log the start of the function
-    logger.info(f"[winD] Computing within study D-scores between groups and controls.")
-    logger.info(f"Saving log to: {log_file_path}")
-    start_time = datetime.datetime.now()
-    logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"\nParameters:")
+    logger.info(f"\tinput dl: {len(dl)}")
+    logger.info(f"\tdf_keys: {df_keys}")
+    logger.info(f"\tipsiTo: {ipsiTo}")
+    logger.info(f"\tsave_pth_df: {save_pth_df}")
+    logger.info(f"\tsave: {save}")
+    logger.info(f"\tsave_pth: {save_pth}")
+    logger.info(f"\tsave_name: {save_name}")
+    logger.info(f"\ttest: {test}")
+    logger.info(f"\ttest_len: {test_len}")
+    logger.info(f"\tverbose: {verbose}")
+                
+    logger.info(f"\n")
 
     try:
-        logger.info(f"\nParameters:\n\tinput dl: shape: {dl.shape}, keys: {dl.keys}\n\tstats: {stats}\n\tipsiTo: {ipsiTo}\n\ttest: {test}\n")
-        logger.info(f"\n")
-
+        
         if test:
             idx = np.random.choice(len(dl), size=test_len, replace=False).tolist()  # randomly choose index
             dl_iterate = [dl[i] for i in idx]
-            dl = copy.deepcopy(dl)
             logger.info(f"[TEST MODE] Running d-scoring on {test_len} randomly selected dict items: {idx}")
+            print(f"[winD] TEST MODE. Running d-scoring on {test_len} randomly selected dict items: {idx}")
         else:
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
-            dl = copy.deepcopy(dl)  
 
+        logger.info(f"Calculating D-scores for {len(dl_iterate)} dictionary items for the following df_keys: {df_keys}\n")
+
+        counter = 0
         
-        logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"Attempting to calculate D-scores for {len(dl_iterate)} dictionary items for the following stats: {stats}\n")
-
+        dl_out = []
         for i, item in enumerate(dl_iterate):
-            logging.info(f"\n")
-            if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
-            else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
+            dl_out.append(item) # add item to output dl
+            
+            counter += 1
+            if counter % 10 == 0:
+                print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processing {counter} of {len(dl_iterate)}...")
 
+            if test: 
+                index = idx[i]
+            else: 
+                index = i
+            itm_txt = printItemMetadata(item, idx=index, return_txt=True)
+            
+            logger.info(itm_txt)
             # list to save before concatenating all dfs into single df
             d_dfs = [] 
             d_dfs_ic = []
 
             # compare every other df to the control df, put results into a single df_{stat}_d
-            for stat in stats: # iterate over all statistics of interest [df_z, df_w]
-                logging.info(f"\tCalculating d-scores for {stat}...")
-                
-                key = f'df_{stat}'
-                
-                df_stat_ctrl = item.get(f'{key}_ctrl', None)
-                if df_stat_ctrl is None:
-                    logging.warning(f"\tWARNING. No control group df for {stat}. Skipping d-score.")
-                    continue
-                
+            for key in df_keys: # iterate over all statistics of interest [df_z, df_w]
+
                 # identify all other dfs for this stat
                 key_grps = [k for k in item.keys() if k.startswith(f'{key}_') and k != f'{key}_ctrl' and k != f'{key}_models']
                 if len(key_grps) == 0:
-                    logging.warning(f"\tWARNING. No group dfs for {stat}. Skipping d-score.")
+                    logger.info(f"\tWARNING: `{key}`: No group dfs. Skipping.")
                     continue
-                if verbose:
-                    logging.info(f"\t\tDataframes computing d-scores for {key_grps}-score")
                 
+                df_stat_ctrl = item.get(f'{key}_ctrl', None)
+                if type(df_stat_ctrl) is str:
+                    df_stat_ctrl = loadPickle(df_stat_ctrl, verbose=False)
+
+                if df_stat_ctrl is None:
+                    logger.info(f"\tWARNING: `{key}`: No control group. Skipping.")
+                    continue
+                elif df_stat_ctrl.shape[0] == 0:
+                    logger.info(f"\tWARNING: `{key}`: Control gorup has no rows. Skipping.")
+                    continue
+                else:
+                    logger.info(f"\t`{key}: CTRL grp <{df_stat_ctrl.shape}>")
+                    if verbose:
+                        logger.info(f"\t\tGroups: {key_grps}")
+
                 # create df_stat_ctrl_ic
                 if any('_ic' in k for k in key_grps): # if any of the keys are ipsi/contra flipped, create a df_stat_ctrl_ic
                     df_stat_ctrl_ic = df_stat_ctrl.copy()
-                    if ipsiTo == 'L': # TODO use tsutil.ipsi_contra for this
+                    if ipsiTo == 'L':
                         df_stat_ctrl_ic.columns = [col.replace('_R', '_contra') if '_R' in col else col.replace('_L', '_ipsi') for col in df_stat_ctrl.columns]
                     else:
                         df_stat_ctrl_ic.columns = [col.replace('_L', '_contra') if '_L' in col else col.replace('_R', '_ipsi') for col in df_stat_ctrl.columns]
-                
-                if verbose:
-                    logging.info(f"\t\t{stat}-score control group shape {df_stat_ctrl.shape}.")
-                
+
+                    item['ipsiTo'] = ipsiTo
+                    df_ctrl_name = f"{index}_{key}_ctrl_ic"
+                    if test:
+                        df_ctrl_name = f"TEST_{df_ctrl_name}"
+
+                    out_pth, log_df_ctrl_ic = savePickle(obj = df_stat_ctrl_ic, root = save_pth_df, name = df_ctrl_name,
+                                                   timeStamp = False, append = start, rtn_txt = True, verbose = False)
+                    item[f'{key}_ctrl_ic'] = out_pth # add to dictionary item
+                    logger.info(f"\t\t{log_df_ctrl_ic} [ipsiTo: {ipsiTo}]")
+                    
                 # initialize output dfs
                 d_df = pd.DataFrame(columns=df_stat_ctrl.columns)
                 d_df_ic = pd.DataFrame(columns=df_stat_ctrl_ic.columns)
 
                 # compute d scores
-                for k in key_grps:
-                    df_stat = item.get(k, None)
+                for kg in key_grps:
+                    logger.info(f"\t`{kg}`")
+                    df_stat = item.get(kg, None)
+                    
+                    if df_stat is None:
+                        logger.info(f"\tWARNING: Key '{kg}' is either not in dictionary or is a `None` object. Skipping.")
+                        continue
+                    elif type(df_stat) is str:
+                        df_stat = loadPickle(df_stat, verbose=False)
+                        if df_stat is None: 
+                            logger.info(f"\tWARNING: Key '{kg}' could not be loaded from path {df_stat}. Skipping.")
+                            continue
+                    elif type(df_stat) is not pd.DataFrame:
+                        logger.info(f"\tWARNING: Key '{kg}' is of type {type(df_stat)}, not str nor pd.DataFrame. Skipping.")
+                        continue
+
                     if verbose:
-                        logging.info(f"\t\t{k} (shape {df_stat.shape})")
+                        logger.info(f"\t\t{kg} (shape {df_stat.shape})")
                     else:
-                        logging.info(f"\t\t{k}")
+                        logger.info(f"\t\t{kg}")
                     
                     if df_stat is None or df_stat.shape[0] == 0:
-                        logging.warning(f"\t\tNo data in {k}. Skipping.")
+                        logger.info(f"\tWARNING: No data in {kg}. Skipping.")
                         continue
                     
-                    grp_name = k.replace(f'df_', '')
+                    grp_name = kg.replace(f"{key}_", '')
 
-                    if 'ic' in k.lower(): # use appropriate control df with ipsi/contra labelled cols
+                    if 'ic' in kg.lower(): # use appropriate control df with ipsi/contra labelled cols
                         grp_name = f"{grp_name}_ipsiTo-{ipsiTo}"
-                        out_ic = get_d(ctrl = df_stat_ctrl_ic, test = df_stat, varName = stat, test_name = grp_name) # use control df with ic flipped vertices
+                        out_ic = get_d(ctrl = df_stat_ctrl_ic, test = df_stat, varName = key, test_name = grp_name) # use control df with ic flipped vertices
                         d_df_ic = pd.concat([d_df_ic, out_ic], axis=0) # append out_ic to d_df_ic
                         d_df_ic.drop_duplicates(inplace=True)
                     else:
-                        out = get_d(ctrl = df_stat_ctrl, test = df_stat, varName = stat, test_name = grp_name)
+                        out = get_d(ctrl = df_stat_ctrl, test = df_stat, varName = key, test_name = grp_name)
                         d_df = pd.concat([d_df, out], axis=0) # append out to d_df
                         d_df.drop_duplicates(inplace=True)
-                    
-                    if verbose:
-                        logger.info(f"\t\tD-scores computed.")
 
                 d_dfs.append(d_df) # add to list of dfs
                 d_dfs_ic.append(d_df_ic)
@@ -3595,8 +3646,8 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
             # concatenate all d_dfs into single df
             if len(d_dfs) > 1:
                 d_df = pd.concat(d_dfs, axis=0)
-            elif len(d_dfs_ic) == 1:
-                d_df = d_df[0]
+            elif len(d_dfs) == 1:
+                d_df = d_dfs[0]
             else:
                 d_df = None
 
@@ -3608,48 +3659,44 @@ def winD(dl, stats, ipsiTo = 'L', save=True, save_pth=None, save_name="05c_stats
             else:
                 d_df_ic = None
 
-            # add out and out_ic to dictionary item
+            # save D-score dfs to items
+            df_name = f"{index}_d"
+            df_ic_name = f"{index}_d_ic"
             if test:
-                dl[idx[i]][f'df_d'] = d_df
-                dl[idx[i]][f'df_d_ic'] = d_df_ic
-            else:
-                dl[i][f'df_d'] = d_df
-                dl[i][f'df_d_ic'] = d_df_ic
+                df_name = f"TEST_{df_name}"
+                df_ic_name = f"TEST_{df_ic_name}"
 
-        # Save the updated map_dictlist to a pickle file
-        if save:
-            if test:
-                save_name = f"TEST_{save_name}"
-            out_pth = f"{save_pth}/{save_name}_{start_time.strftime('%Y%b%d-%H%M%S')}.pkl"
-        
-            with open(out_pth, "wb") as f:
-                pickle.dump(dl, f)
-            logger.info(f"\n\nSaved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
-            print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
+            pth_df_d, log_df_d = savePickle(obj = d_df, root = save_pth_df, name = df_name,
+                                timeStamp = False, append = start, rtn_txt = True, verbose = False)
+            dl_out[i]['df_d'] = pth_df_d
+            logger.info(f"\n\t{log_df_d}")
+            
+            pth_df_d_ic, log_df_d_ic = savePickle(obj = d_df_ic, root = save_pth_df, name = df_ic_name,
+                                timeStamp = False, append = start, rtn_txt = True, verbose = False)
+            dl_out[i]['df_d_ic'] = pth_df_d_ic          
+            logger.info(f"\t{log_df_d_ic}")
 
-        logger.info(f"Completed winD.")
-        end_time = datetime.datetime.now()
-        duration = end_time - start_time
-        minutes, seconds = divmod(int(duration.total_seconds()), 60) 
-        logger.info(f"End time: {end_time.strftime('%Y%m-%d-%H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
-        print(f"\nCompleted. End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
+        if save: # save dl
+            out_pth, log_dl = savePickle(obj = dl_out, root = save_pth, name = save_name, 
+                                 timeStamp = False, append = start, rtn_txt = True, verbose = False)
+            
+            logger.info(f"\n{log_dl}")
+            print(f"[winD] Dictlist saved to: {out_pth}")
 
-        if dlPrint:
-            print('-'*100)
-            try:
-                if test:
-                    print_dict(dl, df_print=False, idx=idx)
-                else:
-                    print_dict(dl)
-            except:
-                print(dl)
+        end = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        logger.info(f"Completed: {end}")
+        print(f"[windD] Completed: {end}")
         
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
+        print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} EXITED WITH ERROR, see log.")
 
     return dl
 
-def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, test_len=1, verbose=False, dlPrint=False ):
+def btwD(dl, save_pth_df,
+         save=True, save_pth=None, save_name="05d_stats_btwD", 
+         verbose=False, test=False, test_len=1):
     """
     [btwD: within study D-scoring]
     Calculate D-statistic differences between analogous dictionary items for each study.
@@ -3661,7 +3708,7 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
     Inputs:
         dl: (list)              Dictionary items keys holding vertex-wise within study statistics for groups of interest
                                     Assumes key for dfs holding statistics to have structure: df_{stat} 
-        ipsiTo: (str)           Hemisphere to which ipsi/contra vertices should be mapped to for controls. NOTE. Only used if vertex columns have ipsi/contra data present. Default = 'L'
+        save_pth_df: (str)      path to save dfs created in this function; keep path to these dfs in output dictionaries
 
         save: (bool)            Whether to save the output dictionary list.
         save_pth: (str)         Directory path to save the output dictionary list.
@@ -3669,15 +3716,12 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
         test: (bool)            Whether to run in test mode (randomly select a subset of dict items to run d-scoring on)
         test_len: (int)         Number of random dict items to run d-scoring on if test=True
         verbose: (bool)         Whether to print detailed processing information.
-        dlPrint: (bool)         Whether to print the output dictionary list.
     
     """
     
     import os
     import pandas as pd
     import numpy as np
-    import pickle
-    import copy
     import datetime
     import logging
 
@@ -3685,83 +3729,94 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
     if save_pth is None:
         print("WARNING. Save path not specified. Defaulting to current working directory.")
         save_pth = os.getcwd()  # Default to current working directory
+    
     if not os.path.exists(save_pth):
         os.makedirs(save_pth)
+    
     if test:
         save_name = f"TEST_{save_name}"
-    log_file_path = os.path.join(save_pth, f"{save_name}_log_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.txt")
+    
+    start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
     print(f"[winD] Saving log to: {log_file_path}")
     
-    # Configure logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    
-    # Create handlers
-    info_handler = logging.FileHandler(log_file_path)
-    info_handler.setLevel(logging.INFO)
-    warning_handler = logging.FileHandler(log_file_path)
-    warning_handler.setLevel(logging.WARNING)
-    console_handler = logging.StreamHandler()  # Add a StreamHandler for terminal output
-    console_handler.setLevel(logging.ERROR)  # Only print errors to the terminal
-
-    # Create formatters
-    info_formatter = logging.Formatter("%(message)s")  # No timestamp, nor level name for INFO
-    warning_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")  # Timestamp for WARNING
-
-    # Assign formatters to handlers
-    info_handler.setFormatter(info_formatter)
-    warning_handler.setFormatter(warning_formatter)
-
-    # Add handlers to logger
-    logger.addHandler(info_handler)
-    logger.addHandler(warning_handler)
-
-    # Log the start of the function
-    logger.info(f"[winD] Computing within study D-scores between groups and controls.")
+    # Configure module logger (handlers added per-file by _get_file_logger)
+    logger = _get_file_logger(__name__, log_file_path)
+    logger.info(f"[btwD] Start time: {start}")
     logger.info(f"Saving log to: {log_file_path}")
-    start_time = datetime.datetime.now()
-    logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    logger.info(f"\nParameters:")
+    logger.info(f"\tinput dl: {len(dl)}")
+    logger.info(f"\tsave_pth_df: {save_pth_df}")
+    logger.info(f"\tsave: {save}")
+    logger.info(f"\tsave_pth: {save_pth}")
+    logger.info(f"\tsave_name: {save_name}")
+    logger.info(f"\ttest: {test}")
+    logger.info(f"\ttest_len: {test_len}")
+    logger.info(f"\tverbose: {verbose}")
+                
+    logger.info(f"\n")
+
+    comps = [] # initialize output
 
     try:
-        logger.info(f"\nParameters:\n\tinput dl length:{len(dl)}\n\ttest: {test}\n")
-        logger.info(f"\n")
-
+        
         if test:
             idx = np.random.choice(len(dl), size=test_len, replace=False).tolist()  # randomly choose index
-            idx_other = get_pair(dl_iterate, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=idx) # TODO. Finding matching index for each randomly chosen index
-            dl_iterate = [dl[i] for i in [idx, idx_other]]
-            dl = copy.deepcopy(dl)
-            logger.info(f"[TEST MODE] Running d-scoring on {test_len} randomly selected dict items: {idx}")
+            if isinstance(idx, int):
+                idx = [idx]
+            
+            test_indices = list(idx)
+            for i in idx: # for each randomly selected index, find its matching pai
+                idx_other = get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=idx)
+                if idx_other is None:
+                    test_indices.remove(i)
+                    continue
+                if isinstance(idx_other, int):
+                    idx_other = [idx_other]
+               
+                for j in idx_other:
+                    if j not in test_indices:
+                        test_indices.append(j)
+                
+            dl_iterate = [dl[i] for i in test_indices]
+            logger.info(f"[TEST MODE] Running d-scoring on {test_len} pair(s) of randomly selected dict items: {test_indices}")
         else:
             dl_iterate = dl.copy() # Create a copy of the original list to iterate over
-            dl = copy.deepcopy(dl) 
 
-        
-        logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"Attempting to calculate D-scores for {len(dl_iterate)} dictionary items.\n")
+        logger.info(f"Comparing D-scores between studies for {len(dl_iterate)} dictionary items.\n")
 
         comps = []
         skip_idx = []
         counter = 0
 
         for i, item in enumerate(dl_iterate):
+            counter += 1
+            if counter % 10 == 0:
+                print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processing {counter} of {len(dl_iterate)}...")
+            
             if i in skip_idx:
                 continue
             else:
                 skip_idx.append(i)
-        
-            counter = counter+1
-            logging.info(f"pair {counter}:")
-            if test: logging.info(printItemMetadata(item, idx=idx[i], return_txt=True))
-            else: logging.info(printItemMetadata(item, idx=i, return_txt=True))
-            
+                       
             idx_other = get_pair(dl_iterate, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
             if idx_other is None:
-                print(f"\tNo matching index found. Skipping.")
+                logger.info(f"\tNo matching index found. Skipping.")
                 continue
             skip_idx.append(idx_other)
-            logging.info(printItemMetadata(dl_iterate[idx_other], idx=idx_other, return_txt=True))
+            
+            if test:
+                index = test_indices[i]
+                index_other = test_indices[idx_other]
+            else:
+                index = i
+                index_other = idx_other
+            
+            txt_tT = printItemMetadata(item, idx=index, return_txt=True)
+            txt_sT = printItemMetadata(dl_iterate[idx_other], idx=index_other, return_txt=True)
+            logger.info(f"{txt_tT}\t{txt_sT}")
 
             # identify which study is which (to know how to subtract)
             tT_idx, sT_idx = determineStudy(dl_iterate, i, idx_other, study_key = 'study')
@@ -3780,7 +3835,7 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
 
             # if df_z and df_w are None, skip
             if item.get('df_d', None) is None and item.get('df_d_ic', None) is None:
-                logging.warning(f"\tNo D-score dataframes in this dictionary item. Skipping.")
+                logger.warning(f"\tNo D-score dataframes in this dictionary item. Skipping.")
                 continue
 
             # Initialize output item
@@ -3790,14 +3845,14 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
                     'feature': item_tT['feature'],
                     'surf': item_tT['surf'],
                     'label': item_tT['label'],
-                    'smth': item_tT['smth'],
+                    'smth': item_tT['smth']
                 }
             
             ID_keys = [key for key in item_tT.keys() if 'IDs' in key]
             keys_to_copy = ID_keys + ['df_d', 'df_d_ic']
             if verbose:
-                logging.info(f"\tCopying keys: {keys_to_copy}")
-            for key in keys_to_copy: # add all ID_keys are their corresponding dataframes to out_item
+                logger.info(f"\tCopying keys: {keys_to_copy}")
+            for key in keys_to_copy: # add all ID_keys to corresponding dataframes to out_item
                 out_item[key] = [item_tT[key], item_sT[key]] # stores as list of items. In case of dfs, list of dataframes            
 
             for df in ['df_d', 'df_d_ic']:
@@ -3805,15 +3860,53 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
                 df_tT = item_tT.get(df, None)
                 df_sT = item_sT.get(df, None)
                 
-                if df_tT is None or df_sT is None:
-                    logging.warning(f"\tOne of the d-score dataframes is None. Skipping {df} comparison.")
+                if df_tT is None:
+                    logger.warning(f"\t Object stored in key `{df} of 3T item is None object. Skipping comparisons.")
+                    continue
+                elif type(df_tT) is str:
+                    df_tT = loadPickle(df_tT, verbose=False)
+                elif type(df_tT) is not pd.DataFrame:
+                    logger.warning(f"\tObject stored in key '{df}' of 3T item is of type {type(df_tT)}, not str nor pd.DataFrame. Skipping comparison.")
+                    continue
+                elif df_tT.shape[0] == 0:
+                    logger.warning(f"\t3T {df} has no rows. Skipping {df} comparison.")
                     continue
                 
-                logging.info(f"\tComputing difference metrics for {df}...")
+                if df_sT is None:
+                    logger.warning(f"\t Object stored in key `{df} of 7T item is None object. Skipping comparisons.")
+                    continue
+                elif type(df_sT) is str:
+                    df_sT = loadPickle(df_sT, verbose=False)
+                elif type(df_sT) is not pd.DataFrame:
+                    logger.warning(f"\tObject stored in key '{df}' of 7T item is of type {type(df_sT)}, not str nor pd.DataFrame. Skipping comparison.")
+                    continue
+                elif df_sT.shape[0] == 0:
+                    logger.warning(f"\t7T {df} has no rows. Skipping {df} comparison.")
+                    continue
+
+                logger.info(f"\tComputing difference metrics for {df}...")
                 
+                # TODO. Implement better method for this
+                try: # catch persisting NoneTypes 
+                    test_shape = df_tT.shape
+                    test_shape_2 = df_sT.shape
+                except:
+                    printItemMetadata(item_tT, idx=index, return_txt=False)
+                    printItemMetadata(item_sT, idx=index_other, return_txt=False)
+                    logger.info(f"\tItem index {index} study {item_tT['study']} | Item index {index_other} study {item_sT['study']}")
+                    logger.warning(f'\tCould not get shapes of dfs. Skipping')
+                    print("ERROR: Could not get shapes of dfs.")
+                    print(f"\tType df_tT: {type(df_tT)}\n\tType df_sT: {type(df_sT)}.")
+                    print(f"\tSkipping")
+                    continue
+
                 if verbose:
-                    logging.info(f"\t\t3 T shape: {df_tT.shape}\n\t\t7 T shape: {df_sT.shape}.")
+                    logger.info(f"\t\t3 T shape: {df_tT.shape}\n\t\t7 T shape: {df_sT.shape}.")
                 
+                if df == 'df_d_ic': # add ipsiTo key to output
+                    assert item_tT.get('ipsiTo', "Not found") == item_sT.get('ipsiTo', "Found not"), f"[btwD] ipsiTo values do not match between dictionary items. {item_tT.get('ipsiTo', 'Not found')} != {item_sT.get('ipsiTo', 'Found not')}"
+                    out_item['ipsiTo'] = item_tT['ipsiTo']
+
                 assert df_tT.columns.equals(df_sT.columns) == True, f"[comps] Columns of d-scores DataFrames do not match. Check input data. {df_tT.columns} != {df_sT.columns}"
 
                 # Identfiy the rows that refer to d statistics and ensure that both dataframes have these rows
@@ -3821,7 +3914,7 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
                 stats_sT = df_sT.index.tolist()
                 d_stats = [s for s in stats_tT if s in stats_sT and s.startswith('d_')]
                 if verbose:
-                    logging.info(f"\t\tCohen's d statistic indices: {d_stats}")
+                    logger.info(f"\t\tCohen's d statistic indices: {d_stats}")
                 
                 # want to only apply operations to rows in d_stats
                 df_d_stats_tT = df_tT.loc[d_stats, :].copy()
@@ -3850,45 +3943,35 @@ def btwD(dl, save=True, save_pth=None, save_name="05d_stats_btwD", test=False, t
                 df_sT_renamed = df_sT.copy()
                 df_sT_renamed.index = [idx + '_7T' for idx in df_sT_renamed.index]
                 metrics_df = pd.concat([metrics_df, df_tT_renamed, df_sT_renamed])
-                logging.info(f"\t\tShape of metrics_df: {metrics_df.shape}")
-                logging.info(f"\t\tIndices: {metrics_df.index}")        
+                logger.info(f"\t\tShape of metrics_df: {metrics_df.shape}")
+                logger.info(f"\t\tIndices: {metrics_df.index}")        
 
-                out_item[f'comps_{df}'] = metrics_df # add to output item
-            # if comps[] is None then don't add
+                # save dfs to csv, add path to out_item
+                out_pth, rtn_txt = savePickle(obj = metrics_df, root = save_pth_df, name = f"{index}_{df}_btwD",
+                                 timeStamp = False, append = start, rtn_txt = True, verbose = False)
+                logger.info(f"\t{rtn_txt}\n")
+                out_item[f'comps_{df}'] = out_pth # add to output item
+
             comps.append(out_item) # append to dict list
             out_item = None
 
         # Save the updated map_dictlist to a pickle file
         if save:
-            if test:
-                save_name = f"TEST_{save_name}"
-            out_pth = f"{save_pth}/{save_name}_{start_time.strftime('%d%b%Y-%H%M%S')}.pkl"
+            out_pth, rtn_txt = savePickle(obj = comps, root = save_pth, name = save_name, 
+                                 timeStamp = False, append = start, rtn_txt = True, verbose = False)
+            logger.info(f"\n{rtn_txt}")
+            print(f"[btwD] Dictlist saved to: {out_pth}")
+
         
-            with open(out_pth, "wb") as f:
-                pickle.dump(comps, f)
-            print(f"Saved dictlist with groups and ipsi/contra statistics dfs to {out_pth}")
-
-        logger.info(f"Completed btwD.")
         end_time = datetime.datetime.now()
-        duration = end_time - start_time
-        minutes, seconds = divmod(int(duration.total_seconds()), 60) 
-        logger.info(f"End time: {end_time.strftime('%Y%m-%d-%H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
-        print(f"\nCompleted btwD. End time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\nDuration: {minutes:02d}:{seconds:02d} (mm:ss)")
-
-        if dlPrint:
-            print('-'*100)
-            try:
-                if test:
-                    print_dict(comps, df_print=False, idx=idx)
-                else:
-                    print_dict(comps)
-            except:
-                print(comps)
+        logger.info(f"{end_time}: Completed btw.D")
+        print(f"[btwD] Completed: {end_time}")
     
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
+        print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} EXITED WITH ERROR, see log.")
 
-    return dl
+    return comps
 
 
 def determineStudy(dl, idx, idx_other, study_key='study'):
@@ -4576,11 +4659,13 @@ def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, ver
     # load region details and build base name lookup
     glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser_details.csv")
     glasser_details.columns = [str(c).strip().replace('\ufeff', '') for c in glasser_details.columns]
-    if 'regionIDX' not in glasser_details.columns:
-        raise KeyError(f"'regionIDX' not found in glasser_details columns. Available columns: {glasser_details.columns.tolist()}")
+    if 'idx_h' not in glasser_details.columns:
+        raise KeyError(f"'unique_idx' not found in glasser_details columns. Available columns: {glasser_details.columns.tolist()}")
 
-    if labelType.lower() != 'glasser_int' or labelType is None:
-        det_col = 'regionIDX'
+    if labelType is None or labelType == 'glasser_int':
+        det_col = 'idx_h'
+    else:
+        det_col = 'idx_h'
         if labelType.lower() == 'glasser_name_short':
             det_col = 'SName'
         elif labelType.lower() == 'glasser_name_long':
@@ -4590,11 +4675,10 @@ def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, ver
         elif labelType.lower() == 'longlobe':
             det_col = 'LLobe'
         else:
-            raise ValueError("[apply_glasser] Invalid labelType value. Choose from 'glasser_int', 'glasser_name_short', 'glasser_name_long', 'lobe', or 'lobelong'.")
+            print("[apply_glasser] Warning. Invalid labelType value, using default. Choose from 'glasser_int', 'glasser_name_short', 'glasser_name_long', 'lobe', or 'lobelong'.")
 
-        names_map = glasser_details.set_index('regionIDX')[det_col].to_dict()
-    else:
-        names_map = glasser_details['regionIDX'].to_dict()
+    names_map = glasser_details.set_index('unique_idx')[det_col].to_dict()
+        
 
     # determine hemisphere of each vertex from original vertex index
     # nvtx is number of vertices per hemisphere (set above)
@@ -4739,7 +4823,7 @@ def glasser_mean(df_glasserLbl):
 ######################### VISUALIZATION FUNCTIONS #########################
 
 def plotMatrices(dl, df_keys, 
-                 name_append=False, sessions = None, save_pth=None, test=False, min_stat = -4, max_stat = 4):
+                 name_append=False, sessions = None, save_pth=None, min_stat = -4, max_stat = 4, test=False):
     """
     Plot matrix visualizations for map values from corresponding study
 
@@ -4756,6 +4840,8 @@ def plotMatrices(dl, df_keys,
         if provided, save the plots to this path instead of showing them interactively
     min_stat, max_stat: int, int
         applied only if the key contains either '_z_' or '_w_': min and max values for color scale
+    test: bool
+        if true, runs in test mode, applying parcellations to 3 random items and appends 'TEST' to outputs
     """
     import matplotlib.pyplot as plot
     from matplotlib import gridspec
@@ -4790,6 +4876,7 @@ def plotMatrices(dl, df_keys,
         if counter % 10 == 0:
             print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processed {counter} of {len(dl)}... ")
         
+
         if idx in skip_idx:
             continue
         skip_idx.append(idx)
@@ -4801,6 +4888,13 @@ def plotMatrices(dl, df_keys,
         
         idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
         
+        if test:
+            index = rdm_indices[idx]
+            index_other = rdm_indices[idx_other]
+        else:
+            index = idx
+            index_other = idx_other
+
         skip_idx.append(idx_other)
         
         if type(idx_other) == list:
@@ -4822,19 +4916,19 @@ def plotMatrices(dl, df_keys,
                 item = dl[idx]
                 item_other = dl[idx_other]
             else:
-                print(f"[plotMatrices] WARNING: More than 2 matches found for index {idx} with keys ['region', 'surf', 'label', 'feature', 'smth'] and sessions {sessions}. Skipping.")
+                print(f"[plotMatrices] WARNING: More than 2 matches found for index {index} with keys ['region', 'surf', 'label', 'feature', 'smth'] and sessions {sessions}. Skipping.")
                 continue
 
         if idx_other is None:
-            item_txt = printItemMetadata(item, idx=idx, return_txt=True)
-            print(f"\tWARNING. No matching index found for: {item_txt}.\nSkipping.")
+            item_txt = printItemMetadata(item, return_txt=True)
+            print(f"\tWARNING. No matching index found for: {item_txt} (idx: {index}).\nSkipping.")
             continue
         skip_idx.append(idx_other)
         
         item_other = dl[idx_other]
         if item_other is None:
-            item_txt = printItemMetadata(item, idx=idx, return_txt=True)
-            print(f"\tWARNING. Item other is None: {item_txt}.\nSkipping.")
+            item_txt = printItemMetadata(item, return_txt=True)
+            print(f"\tWARNING. Item other is None: {item_txt} (idx: {index}).\nSkipping.")
             continue
         
         if sessions is None:
@@ -4908,12 +5002,12 @@ def plotMatrices(dl, df_keys,
             except KeyError:
                 print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_one}. Skipping.")
                 #print_dict(dl, idx = [idx_one])
-                print('-'*50)
+                print(f"\t\t{'-'*50}")
                 continue
             except Exception as e:
                 print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
                 #print_dict(dl, idx=[idx_one])
-                print('-'*50)
+                print(f"\t\t{'-'*50}")
                 continue
             
             try:
@@ -4924,12 +5018,12 @@ def plotMatrices(dl, df_keys,
             except KeyError:
                 print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_two}. Skipping.")
                 #print_dict(dl, idx = [idx_two])
-                print('-'*50)
+                print(f"\t\t{'-'*50}")
                 continue
             except Exception as e:
                 print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
                 #print_dict(dl, idx=[idx_one])
-                print('-'*50)
+                print(f"\t\t{'-'*50}")
                 continue
             
             if df_one is None and df_two is None:
@@ -5049,6 +5143,7 @@ def plotMatrices(dl, df_keys,
                     save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
                 else:
                     save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                
                 if test:
                     save_name = f"TEST_{save_name}"
 
@@ -5057,9 +5152,7 @@ def plotMatrices(dl, df_keys,
                 file_size = os.path.getsize(fig_pth) / (1024 * 1024)  # size in MB
                 print(f"\tSaved ({file_size:0.1f} MB): {fig_pth}")
                 plot.close(fig)
-        
-        if test and counter >= 2:
-            break
+
 
 def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, x_axisLbl = None,
               cmap='seismic', show_index=False, ax=None, nan_color='green', nan_side="right"):
@@ -5312,12 +5405,10 @@ def sortCols(df):
 
 def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, 
                    parc = None, stat=None, hline = None, marks = False, 
-                   hline_idx = None,
-                   offset = 3, alpha = 0.3):
+                   hline_idx = None, pad_top_rows=2,
+                   offset = 3, spacing=None, alpha = 0.3):
     """
     Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
-
-    TODO. Fix alignment of UID labels (y-ticks), appears shifted up
 
     Input:
         df_a, df_b:         DataFrames with identical columns and identical row indices.
@@ -5332,30 +5423,50 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
             (made for when multiple vertices are summarised with a statistic for a single value per parcel)
         hline: <int or None> if provided, draw a horizontal line at this y-value. 
         marks:              Whether to use marks instead of lines
+        pad_top_rows: int   Adds empty top rows to increase spacing between title and plot    
         offset:             Vertical distance between plots
+        spacing: <int or None>  If provided, use this list to set the y-tick positions.
     
     Output:
         axis object
     """
 
     import numpy as np
+    import pandas as pd
     from matplotlib import use
     import matplotlib.pyplot as plt
     use('Agg')  # Use a non-interactive backend, prevents memory build up.
-
-    ipsi_contra = False
+    # see if ipsiContra. If not, assume L/R
+    
     n = df_a.shape[0]
     
     # sort columns
     df_a_sort = sortCols(df_a)
     df_b_sort = sortCols(df_b)
 
+    # choose a random column, check if ends with '_ipsi' or '_contra'
+    rdm_col = df_a_sort.columns[np.random.randint(0, df_a_sort.shape[1])].lower()
+    if rdm_col.endswith('_ipsi') or rdm_col.endswith('_contra'):
+        ipsi_contra = True
+    else:
+        ipsi_contra = True
+
     # Reverse the order of rows so the top row of the plot corresponds to the top row of the DataFrame
     df_a_sort = df_a_sort.iloc[::-1]
     df_b_sort = df_b_sort.iloc[::-1]
     
+    # Optionally prepend a few blank rows at the top to increase space between title and first real row.
+    # These rows will not be plotted; they simply create extra vertical gap.
+    original_n = df_a_sort.shape[0]
+    if pad_top_rows and pad_top_rows > 0:
+        pad_idx = [f"_pad_{i}" for i in range(pad_top_rows)]
+        pad_df = pd.DataFrame(np.nan, index=pad_idx, columns=df_a_sort.columns, dtype="float64")
+        df_a_sort = pd.concat([pad_df, df_a_sort], axis=0)
+        df_b_sort = pd.concat([pad_df, df_b_sort], axis=0)
+
     vertices = df_a_sort.columns
     n_rows = df_a_sort.shape[0]
+
     fig_length = min(50, 0.75 * n_rows) # max height of 50
     fig_width = 55
     fig, ax = plt.subplots(figsize=(fig_width, fig_length))
@@ -5373,19 +5484,35 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
         'annot': 80,
     }
 
-    for i in range(n): # iterate through each participant        
-        y_a = df_a_sort.iloc[i].values + i * offset
-        y_b = df_b_sort.iloc[i].values + i * offset
+    if spacing is None:
+        # compute typical amplitude per participant and choose spacing > max amplitude
+        per_row_amp = (df_a_sort.max(axis=1) - df_a_sort.min(axis=1)).abs().tolist() + \
+                      (df_b_sort.max(axis=1) - df_b_sort.min(axis=1)).abs().tolist()
+        max_amp = max(per_row_amp) if len(per_row_amp) > 0 else float(offset)
+        spacing_val = max(float(offset), float(max_amp) * 1.2 + 1.0)  # margin
+    else:
+        spacing_val = float(spacing)
+
+    x = np.arange(len(vertices))
+    # iterate through rows but skip pad rows (they are just for spacing)
+    for i in range(n_rows):
+        idx_label = df_a_sort.index[i]
+        if str(idx_label).startswith("_pad_"):  # don't plot pad rows
+            continue
+        baseline = i * spacing_val
+
+        y_a = df_a_sort.iloc[i].values + baseline
+        y_b = df_b_sort.iloc[i].values + baseline
         
         if marks:
-            ax.scatter(vertices, y_a, color='red', alpha=alpha, s=sizes['mrkrsize'], label=lbl_a if i == 0 else "")
-            ax.scatter(vertices, y_b, color='blue', alpha=alpha, s=sizes['mrkrsize'], label=lbl_b if i == 0 else "")
+            ax.scatter(x, y_a, color='red', alpha=alpha, s=sizes['mrkrsize'], label=lbl_a if i == 0 else "")
+            ax.scatter(x, y_b, color='blue', alpha=alpha, s=sizes['mrkrsize'], label=lbl_b if i == 0 else "")
         else:
-            ax.plot(vertices, y_a, color='red', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_a if i == 0 else "")
-            ax.plot(vertices, y_b, color='blue', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_b if i == 0 else "")
+            ax.plot(x, y_a, color='red', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_a if i == 0 else "")
+            ax.plot(x, y_b, color='blue', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_b if i == 0 else "")
         
         if hline is not None:
-            ax.axhline(y=i * offset + hline, color='black', linestyle='--', linewidth=1, alpha=0.4)
+            ax.axhline(y=baseline + hline, color='black', linestyle='--', linewidth=1, alpha=1)
 
     if parc is None:
         split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
@@ -5431,9 +5558,11 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     """
 
     # y ticks
-    ytick_positions = [i * offset + 0.5 * offset for i in range(n)]
+    # y ticks: place at participant baselines only (exclude pad rows)
+    participant_idx = [i for i, lbl in enumerate(df_a_sort.index) if not str(lbl).startswith("_pad_")]
+    ytick_positions = [i * spacing_val for i in participant_idx]
     ax.set_yticks(ytick_positions)
-    labels = ax.set_yticklabels(df_a_sort.index.astype(str), fontsize=int(sizes['y_tick'] * scale))
+    labels = ax.set_yticklabels(df_a_sort.index[participant_idx].astype(str), fontsize=int(sizes['y_tick'] * scale))
     
     for lbl in labels: # ensure vertical alignment is centered for all tick label Text objects
         lbl.set_va('center')
@@ -5465,6 +5594,7 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     ax.set_xticks(xticks)
     ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=sizes['x_tick']*scale, rotation=45, ha='right')
     ax.tick_params(axis='x', labelsize=sizes['x_tick']*scale)
+    
     if parc is not None:
         if stat is not None:
             ax.set_xlabel(f"{parc.upper()} ({stat})", fontsize=sizes['x_lbl']*scale)
@@ -5501,21 +5631,21 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
                 fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
 
     # add vertical lines
-    row_offsets = (np.arange(n) * offset)[:, None]  # shape (n,1)
-    y_a_all = (df_a_sort.values + row_offsets).reshape(-1)
-    y_b_all = (df_b_sort.values + row_offsets).reshape(-1)
+    row_offsets = (np.arange(n_rows) * spacing_val)[:, None]  # shape (n,1)
+    
+    y_a_all = (np.nan_to_num(df_a_sort.values.astype(float), nan=np.nan) + row_offsets).reshape(-1)
+    y_b_all = (np.nan_to_num(df_b_sort.values.astype(float), nan=np.nan) + row_offsets).reshape(-1)
     y_all = np.hstack([y_a_all, y_b_all])
     y_min = float(np.nanmin(y_all))
     y_max = float(np.nanmax(y_all))
-    pad = max(0.5, 0.1 * offset)  # small padding so lines don't touch markers
+    pad = max(0.5, 0.1 * spacing_val)  # small padding so lines don't touch markers
     ax.set_ylim(y_min - pad, y_max + pad)
 
-    ax.axvline(x=split_idx, ymin = y_min - pad, ymax = y_max + pad, 
-               color='black', linestyle='--', linewidth=sizes['mrkrsize']*0.75, alpha=0.4)
+    ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=max(1, sizes['mrkrsize'] * 0.75), alpha=0.4)
+    
     if hline_idx is not None: # plot hlines at each provided index
-         for idx in hline_idx:
-            ax.axvline(x=idx, ymin = y_min - pad, ymax = y_max + pad,
-                       color='gray', linestyle='--', linewidth=sizes['mrkrsize']*0.75, alpha=0.3)
+         for hx in hline_idx:
+            ax.axvline(x=hx, color='gray', linestyle='--', linewidth=max(0.5, sizes['mrkrsize'] * 0.75), alpha=0.3)
     
     # remove y-axis line
     ax.spines['left'].set_visible(False)
@@ -5531,7 +5661,7 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
 
 def plotLine(dl, df_keys = ['df_maps'], marks=True, 
             parc=[None], stat =[None],
-            alpha = 0.02,
+            alpha = 0.02, spacing = 1,
             hlines = None, name_append=None, save_pth=None, 
             verbose = False, test = False):
     
@@ -5546,6 +5676,9 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
         marks:          whether to use marks instead of lines
         parc: lst          indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
         stat: lst       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
+        alpha: int         transparency of lines/marks
+        offset: int        vertical distance between each individual's plot
+        
         hline_idx: lst  list of list of indices to draw horitzontal lines at
         name_append:    string to append to saved file names
         save_pth:       path to save figures. If None, will not save.
@@ -5557,6 +5690,7 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
     """
     import matplotlib.pyplot as plt
     import datetime
+    import numpy as np
     import os
 
     skip_idx = []
@@ -5571,6 +5705,21 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
     if type(stat) is str:
         stat = [stat]
 
+    if test:
+        idx_len = 3
+        idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
+        idx_other_rdm = [get_pair(dl, idx=i, mtch=['region', 'surf', 'label', 'feature', 'smth']) for i in idx_rdm]
+        # flatten idx_other_rdm if any are lists (get_pair can return a list)
+        idx_other_flat = []
+        for idx in idx_other_rdm:
+            if isinstance(idx, list):
+                idx_other_flat.extend(idx)
+            elif idx is not None:
+                idx_other_flat.append(idx)
+        rdm_indices = idx_rdm + idx_other_flat
+        dl = [dl[i] for i in rdm_indices]
+        print(f"\tTEST MODE. Plotting {idx_len} random items and their pairs: {rdm_indices}")
+    
     for idx in range(len(dl)):
 
         if idx in skip_idx:
@@ -5633,6 +5782,7 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
             # set index to UID
             df_tT.index = uid_tT
             df_sT.index = uid_sT
+            
             # take only overlapping indices
             df_tT = df_tT.loc[idxs_common, cols_common]
             df_sT = df_sT.loc[idxs_common, cols_common]
@@ -5648,10 +5798,10 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
                 title = title + f" [TLE only]"  # TODO CHANGE SO THAT NOT HARD CODED 
             
             hline = None
-            if 'df_z' in df_key.lower():
+            if '_z' in df_key.lower():
                 title = title + " [Z-score]"
                 hline = 0 # value at which to plot a horizontal line for each subject
-            elif 'df_w' in df_key.lower():
+            elif '_w' in df_key.lower():
                 title = title + " [W-score]"
                 hline = 0 # value at which to plot a horizontal line for each subject
             elif feature.lower() in ['t1map', 'flair']: # rescale values (participant wise)
@@ -5664,21 +5814,21 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
             fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
                                 hline=hline, marks=marks, title=title, 
                                 parc=p, stat=s, alpha=alpha, 
-                                hline_idx = hlines_idx)
+                                hline_idx = hlines_idx, spacing = spacing)
 
             if save_pth is not None:
                 if name_append is not None:
                     save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{name_append}_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
                 else:
                     save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                
+                if test:
+                    save_name = f"TEST_{save_name}"
+
                 fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight', pad_inches = 0.08)
                 file_size = os.path.getsize(f"{save_pth}/{save_name}.png") / (1024 * 1024)  # size in MB
                 print(f"\t\tSaved ({file_size:0.1f} MB): {save_pth}/{save_name}.png")
                 plt.close(fig)
 
-        if test and counter >= 1:
-            break
     end_time = datetime.datetime.now()
     print(f"[{end_time}] Complete. Duration: {end_time - start_time}")
     
