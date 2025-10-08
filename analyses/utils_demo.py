@@ -590,3 +590,232 @@ def grpChk(df, grp_cols=['grp', 'grp_detailed']):
     else:
         print("[grpChk] All assigned a group")
         return True
+
+
+# QC Functions ####################################################
+def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth):
+    """
+    From a dataframe with demographic information and features of interest, create a QC sheet to complete manually.
+    TODO. Add also surface QC column as well as paths to surfaces (cortical, hippocampal).
+    NOTE. Inclues minimum dice score for hippocampal surfaces as QC value
+
+    NOTE. Currently assumes df has columns 'MICS_ID', 'PNI_ID', 'study', 'SES'
+    NOTE. For hippocampal surfaces, import dice score as QC value (values > 0.7 are good, < 0.7 need checking, 0 = failed)
+
+    Parameters:
+        df: pd.DataFrame
+            DataFrame with demographic information and features of interest
+        fts: lst
+            List of strings refering to features of interest whose source volumes should be included in the QC sheet
+        studies: lst
+            List of dictionary items with study information.
+        ctx_surf_qc: lst
+            List of dictionary items with details about existing sheets with QC for cortical surfaces
+
+        save_name: str
+            Name of the output QC file (without path)
+        save_pth: str
+            Path to save the output QC file
+
+    Returns:
+        df: pd.DataFrame
+            DataFrame with demographic information and features of interest
+        pth: str
+            Path to the saved QC file
+        
+    """
+
+    import os
+    import datetime
+    import numpy as np
+    import tTsTGrpUtils as tsutil
+    
+    start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+    log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
+
+    logger = tsutil._get_file_logger(__name__, log_file_path)
+    print(f"[mk_qcSheet] Log file: {log_file_path}")
+    logger.info(f"[mk_qcSheet] Saving log to {log_file_path}")
+    logger.info(f"Start time: {start}")
+
+    logger.info("Parameters:")
+    logger.info(f"\tdf shape: <{df.shape}>")
+    logger.info(f"\tfeatures: {fts}")
+    logger.info(f"\tstudies: {studies}")
+    logger.info(f"\tctx_surf_qc: {ctx_surf_qc}")
+    logger.info(f"\tsave_name: {save_name}")
+    logger.info(f"\tsave_pth: {save_pth}\n")
+
+    try:
+
+        assert isinstance(fts, list), "[mk_qcSheet] Error: fts must be a list of strings" 
+        
+        vol_names = tsutil.get_RawVolumeNames(fts)
+        logger.info(f"Volumes identified for QC: {vol_names}")
+
+        # create ID column
+        df_pths_cp = df
+        df_pths_cp['ID'] = df_pths_cp.apply(lambda row: row['MICS_ID'] if row['study']=='3T' else row['PNI_ID'] if row['study']=='7T' else 'UNKNOWN STUDY', axis=1)
+        df_pths_cp['ID'].head()
+
+        ID_cols = ['UID', 'study', 'ID', 'SES', 'Date']
+
+        # Initialize qc_sheet
+        qc_sheet = pd.DataFrame(columns=ID_cols + vol_names)
+
+        # Add columns
+        for col in ID_cols:
+            if col in df_pths_cp.columns:
+                qc_sheet[col] = df_pths_cp[col]
+            else:
+                logger.info(f"Column {col} not in input df. Not including in QC_sheet.")
+
+        for vol in vol_names:
+            qc_sheet[vol] = np.nan # default value
+            qc_sheet[f"{vol}_pth"] = qc_sheet[vol]
+        
+        ctx_surfs = [surf for surf in ["pial", "white"]]
+        hipp_surfs = [surf for surf in ["outer", "inner"]]
+        
+        for surf in ctx_surfs + hipp_surfs:
+            qc_sheet[f"{surf}_L_pth"] = np.nan
+            qc_sheet[f"{surf}_R_pth"] = np.nan
+        
+        # Add existing surface QC information
+        dict_tT_surfQC = next((s for s in ctx_surf_qc if s['STUDY'] == '3T'))
+        df_tT_surfQC = pd.read_excel(dict_tT_surfQC['PATH'], sheet_name = dict_tT_surfQC['SHEET'], dtype=str).rename(columns={dict_tT_surfQC['ID']: 'ID', dict_tT_surfQC['SES']: 'SES', dict_tT_surfQC['QC_col']: 'surf_QC'})
+
+        dict_sT_surfQC = next((s for s in ctx_surf_qc if s['STUDY'] == '7T'))
+        df_sT_surfQC = pd.read_excel(dict_sT_surfQC['PATH'], sheet_name = dict_sT_surfQC['SHEET'], dtype=str).rename(columns={dict_sT_surfQC['ID']: 'ID', dict_sT_surfQC['SES']: 'SES', dict_sT_surfQC['QC_col']: 'surf_QC'})
+        df_sT_surfQC['surf_QC'] = df_sT_surfQC['surf_QC'].fillna('2') # If surf_QC is NAN for 7T, assume it is acceptable. There are comments in problematic cases
+
+        # Combine surface QC dfs
+        common_cols = ['ID', 'SES', 'surf_QC']
+        qc_surf = pd.concat([df_tT_surfQC[common_cols], df_sT_surfQC[common_cols]], ignore_index=True)
+        
+        logger.info(f"Loaded existing cortical surface QC values from {dict_tT_surfQC['PATH']} and {dict_sT_surfQC['PATH']}")
+        logger.info(f"QC surface sheet has shape: {qc_surf.shape}")
+
+        qc_sheet = qc_sheet.merge(qc_surf, on=['ID', 'SES'], how='left')
+
+        # Some ID-SES are not present in the recent 7T QC sheet. 
+        # However, all of such ommissions before 26 Sept 2025 are used to train the segmentation model and can be assumed good. 
+        # For all rows with study = 7T and surf_QC is NaN, set surf_QC to 2 if Date < 26 Sept 2025
+        qc_sheet['Date'] = pd.to_datetime(qc_sheet['Date'], errors='coerce', dayfirst=True)
+        cutoff_date = pd.to_datetime("2025-09-26")
+        condition = (qc_sheet['study'] == '7T') & (qc_sheet['surf_QC'].isna()) & (qc_sheet['Date'] < cutoff_date)
+        qc_sheet.loc[condition, 'surf_QC'] = '2'
+        qc_sheet.rename(columns={'surf_QC': 'QC_ctxSurf'}, inplace=True)
+
+        logger.info(f"QC sheet after merging surface QC has shape: {qc_sheet.shape}")
+
+        counter = 0
+        for idx, row in qc_sheet.iterrows(): # Add paths to volumes, surfaces and previous QC values of surface
+            counter += 1
+            if counter % 10 == 0:
+                print(f"Participant {counter}/{qc_sheet.shape[0]}...")
+            id = row['ID']
+            ses = row['SES']
+            logger.info(f"{id}-{ses} [row: {idx}]")
+            
+            # determine root
+            study_code = row['study']
+            study_dict = next((s for s in studies if s['study'] == study_code), None)
+            if study_dict is None:
+                logger.error(f"[mk_qcSheet] Error: No study information found for '{study_code}'")
+                continue
+            
+            root_raw = study_dict.get('dir_root', None)
+            root_dir = root_raw + study_dict.get('dir_deriv', None)
+            root_mp = root_dir + study_dict.get('dir_mp', None)
+            root_hu = root_dir + study_dict.get('dir_hu', None)
+
+            if root_raw is None or root_mp is None:
+                logger.error(f"[mk_qcSheet] Error: Missing directory keys in study dictionaries. Expected keys: 'dir_root', 'dir_deriv', 'dir_mp', 'dir_hu'")
+                continue
+
+            for vol in vol_names: # get micapipe volumes in nativepro space
+                vol_path = tsutil.get_mapVol_pth(root_mp, row['ID'], row['SES'], study = study_code, feature = vol, raw=False, space="nativepro")
+                             
+                if vol_path is None:
+                    logger.info(f"\t{vol}: No path found")
+                    continue
+                elif not tsutil.chk_pth(vol_path):
+                    logger.warning(f"\t{vol}: Path does not exist: {vol_path}")
+                    vol_path = "NA"
+                     
+                qc_sheet.at[idx, f"{vol}_pth"] = vol_path
+            logger.info(f"\tVolume paths processed.\n")
+
+            # add path to surfaces
+            for lbl in ctx_surfs:
+                pth_L, pth_R = tsutil.get_surf_pth(root = root_mp, sub = id, ses = ses, 
+                                                     lbl = lbl, space="nativepro", surf = "fsLR-5k") # get path to each surface
+                if pth_L is None or pth_R is None:
+                    logger.info(f"\t{lbl} cortical surface: No path found")
+                    continue
+                if not tsutil.chk_pth(pth_L):
+                    logger.warning(f"\t{lbl} cortical surface L: Path does not exist: {pth_L}")
+                    pth_L = "NA"
+                if not tsutil.chk_pth(pth_R):
+                    logger.warning(f"\t{lbl} cortical surface R: Path does not exist: {pth_R}")
+                    pth_R = "NA"
+
+                qc_sheet.at[idx, f"{lbl}_L_pth"] = pth_L
+                qc_sheet.at[idx, f"{lbl}_R_pth"] = pth_R
+            logger.info(f"\tCortical surfaces processed.")
+
+            for lbl in hipp_surfs:
+                pth_L, pth_R = tsutil.get_surf_pth(root = root_hu, sub = id, ses = ses, 
+                                                     lbl = lbl, space="T1w", surf = "den-0p5mm") # get path to each surface
+                if pth_L is None or pth_R is None:
+                    logger.info(f"\t{lbl} hippocampal surface: No path found")
+                    continue
+                if not tsutil.chk_pth(pth_L):
+                    logger.warning(f"\t{lbl} hippocampal surface L: Path does not exist: {pth_L}")
+                    pth_L = "NA"
+                if not tsutil.chk_pth(pth_R):
+                    logger.warning(f"\t{lbl} hippocampal surface R: Path does not exist: {pth_R}")
+                    pth_R = "NA"
+
+                qc_sheet.at[idx, f"{lbl}_L_pth"] = pth_L
+                qc_sheet.at[idx, f"{lbl}_R_pth"] = pth_R
+            logger.info(f"\tHippocampal surfaces processed.")
+            
+            # extract dice score for hippocampal surfaces
+            d_L, d_R = tsutil.get_huDice(root = root_hu, sub = id, ses = ses, rtn_ERR = True)
+            logger.info(f"\tDice object types: {type(d_L)}, {type(d_R)}")
+            
+            if isinstance(d_L, type(None)) or isinstance(d_R, type(None)):
+                logger.warning(f"\t{d_L}") # d_L holds error message from get_huDice
+            else:
+                d_min = min(d_L, d_R)
+                logger.info(f"\tHippocampal dice L: {d_L:0.3f} | R: {d_R:0.3f} -> min: {d_min:0.3f}")
+                qc_sheet.at[idx, 'QC_hipSurf'] = f"{d_min:0.3f}"
+            
+            # sort columns
+            cols = qc_sheet.columns.tolist()
+            cols_pth = [col for col in cols if col.endswith('_pth')]
+            cols_non_pth = [col for col in cols if not col.endswith('_pth')]
+            new_order = cols_non_pth + cols_pth
+            qc_sheet = qc_sheet[new_order]
+            logger.info(f"\tQC sheet shape post: {qc_sheet.shape}")    
+            logger.info(f"\n")
+        
+        # Carry over values from QC_sheets that are partially filled in
+        # TODO. Implement
+
+        # save
+        out_pth = os.path.join(save_pth, f"{save_name}_{start}.csv")
+        qc_sheet.to_csv(out_pth, index=False)
+
+        logger.info(f"[mk_qcSheet] Saved QC sheet: {out_pth}")
+        print(f"[mk_qcSheet] Saved QC sheet: {out_pth}")
+        print(f"Complete QC sheet manually then proceed.")
+        print("Values to indicate: 0 (unacceptable), 1 (poor), or 2 (acceptable).")
+    except Exception as e:
+        logger.error({e}, exc_info=True)
+        print(f"[mk_qcSheet] EXITING WITH ERROR. See log file {log_file_path}")
+        return None, None
+    
+    return qc_sheet, out_pth

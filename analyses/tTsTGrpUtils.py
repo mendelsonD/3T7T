@@ -243,6 +243,40 @@ def mp_mapsPth(dir, sub, ses, hemi, surf, lbl, ft):
     else:
         return f"{dir}/sub-{sub}_ses-{ses}_hemi-{hemi}_surf-{surf}_label-{lbl}_{ft}.func.gii"
 
+def get_huDice(root, sub, ses, desc = "unetf3d", rtn_ERR = False):
+    """
+    Get dice score for hippocampal surface segmeetnation. 
+    One value per hemi. Values >0.7 are very likely to be good segmentations
+
+    Input:
+        root: root directory to hippunfold output
+        sub: subject ID (no `sub-` prefix)
+        ses: session ID (with leading zero if applicable; no `ses-` prefix)
+
+        desc: 'desc' field of file name. Default: "unetf3d"
+        rtn_ERR: if should return error statement as string. Default: False
+
+    Output:
+        dice: list of dice scores for left and right hemispheres [L, R]
+    """
+    import pandas as pd
+    
+    pth_L = f"{root}/sub-{sub}/ses-{ses}/qc/sub-{sub}_ses-{ses}_hemi-L_desc-{desc}_dice.tsv"
+    pth_R = f"{root}/sub-{sub}/ses-{ses}/qc/sub-{sub}_ses-{ses}_hemi-R_desc-{desc}_dice.tsv"
+    
+    try:
+        dL = float(pd.read_csv(pth_L, sep="\t").columns[0])
+        dR = float(pd.read_csv(pth_R, sep="\t").columns[0])
+    except Exception as e:
+        ERR_txt = f"\t[get_huDice] WARNING: Could not read dice score files. Setting to None.\nError: {e}"
+        if rtn_ERR:
+            return ERR_txt, None
+        else:
+            print(ERR_txt)
+            dL, dR = None, None
+    
+    return dL, dR
+
 def get_surf_pth(root, sub, ses, lbl, space="nativepro", surf="fsLR-32k", verbose=False):
     """
     Get the nativepro surface positions for the left and right hemispheres.
@@ -3739,7 +3773,7 @@ def btwD(dl, save_pth_df,
     start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
 
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
-    print(f"[winD] Saving log to: {log_file_path}")
+    print(f"[btwD] Saving log to: {log_file_path}")
     
     # Configure module logger (handlers added per-file by _get_file_logger)
     logger = _get_file_logger(__name__, log_file_path)
