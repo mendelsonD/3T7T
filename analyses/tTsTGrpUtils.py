@@ -3163,62 +3163,48 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
 
     return dl_out
 
-def search_df(df, ptrn, out_cols, search_col='grp_detailed', searchType='end'): 
+def search_df(df, ptrn, search_col, searchType='end'): 
     """
     Search column for matching pattern and return values from other columns joined with '_'.
 
     Input:
-        df: DataFrame to search in, with columns search_col and out_col.
-        value: Value to search for in the search_col.
-        out_cols: Column name(s) to return the values from. Can be a string or list of strings.
-            If list, values will be joined with '_'.
-            NOTE. Will attempt to begin with 'UID' value if present in df.
-        searchType: Type of search. Options:
-            'end' - search for values that end with the specified value,
-            'begin' - search for values that begin with the specified value.
-            'contains' - search for values that contain the specified value.
-        search_col: Column to search for the value in.
+        df: pd.DataFrame
+            df with `search_col`.
+        ptrn: str
+            Value to search for in the `search_col`.
+        search_col: str
+            Column to search for pattern.
 
-
+        searchType: str
+            Type of search. Options:
+                'end' - search for values that end with the specified value,
+                'begin' - search for values that begin with the specified value.
+                'contains' - search for values that contain the specified value.
+        
     Output:
-        out: List of out_col values where search_col matches the specified criteria.
+        out: lst
+            Indices with matching values matching pattern
     """
     import pandas as pd
-
-    # Check that all required columns exist in the dataframe
-
-    if isinstance(out_cols, str): # Ensure out_col is a list
-        out_cols = [out_cols]
-    else:
-        out_cols = out_cols
     
-    required_cols = [search_col] + out_cols
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols: 
-        print(f"[search_df] Error: Missing columns {missing_cols} in dataframe")
-        return []
-    if 'UID' in df.columns and 'UID' not in out_cols:
-        out_cols = ['UID'] + out_cols
+    # ensure search_col exists
+    if search_col not in df.columns:
+        KeyError(f"[search_df] Error: search_col `{search_col}` not found in dataframe columns.")
 
-    # Filter for pattern in search_col based on searchType
-    if searchType.lower() == 'end':
-        filtered_df = df[df[search_col].str.endswith(ptrn)]
-    elif searchType.lower() == 'begin':
-        filtered_df = df[df[search_col].str.startswith(ptrn)]
-    elif searchType.lower() == 'contains':
-        filtered_df = df[df[search_col].str.contains(ptrn)]
-    else:
+    # return index of values in col_search matching ptrn
+    if searchType.lower() not in ['end', 'begin', 'contains']:
         print(f"[search_df] Warning: searchType `{searchType}` not recognized. Use 'end', 'begin', or 'contains'.")
         return []
-
-    # Get values from out_col(s)
-    if len(out_cols) == 1:
-        out = filtered_df[out_cols[0]]
-    else:
-        # Join multiple columns with '_'
-        out = filtered_df[out_cols].astype(str).apply('_'.join, axis=1)
+    elif searchType.lower() == 'begin':
+        index_true = df[search_col].astype(str).str.startswith(ptrn, na=False) == True
+    elif searchType.lower() == 'end':
+        index_true = df[search_col].astype(str).str.endswith(ptrn, na=False)
+    elif searchType.lower() == 'contains':
+        index_true = df[search_col].astype(str).str.contains(ptrn, na=False)
     
-    return out.unique().tolist()
+    out = index_true[index_true].index.tolist()
+    
+    return out
 
 def toIC(df_r, df_l):
     """
@@ -3229,8 +3215,10 @@ def toIC(df_r, df_l):
     out shape: (n_r + n_l) x n_vertices [assuming both inputs have identical column names]
     """
     import pandas as pd
+    
     # if pathology on R then col names ending with _R --> ipsi, _L --> contra
     df_r_ic = df_r.rename(columns=lambda x: x.replace('_R', '_ipsi').replace('_L', '_contra') if x.endswith('_R') or x.endswith('_L') else x)
+    
     # if pathology on L then col names ending with _L --> ipsi, _R --> contra
     df_l_ic = df_l.rename(columns=lambda x: x.replace('_L', '_ipsi').replace('_R', '_contra') if x.endswith('_L') or x.endswith('_R') else x)
     
@@ -3309,41 +3297,42 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                 index = idx[i]
             else: 
                 index = i
-            logger.info(f"\n{printItemMetadata(item, idx=i, return_txt=True)}")
-            
+            logger.info(f"\n{printItemMetadata(item, idx=index, return_txt=True)}")
+
             df_demo = item[f'df_demo'].copy() # contains all participants
             IDs_ctrl = item.get('ctrl_IDs', None)
             col_ID = get_IDCol(item['study'], demographics)
             col_SES = demographics['SES']
 
             if df_demo is None or df_demo.empty or df_demo.shape[0] == 0:
-                logger.warning(f"[grp_flip] WARNING. df_demo has no rows, is None or is empty [item index: {i}]. Skipping this item.")
+                logger.warning(f"[grp_flip] WARNING. df_demo has no rows, is None or is empty [item index: {index}]. Skipping this item.")
                 continue
             if col_grp not in df_demo.columns:
                 logger.warning(f"[grp_flip] WARNING. col_grp `{col_grp}` not found in df_demo columns {df_demo.columns} [item index: {i}]. Skipping this item.")
                 continue
             if IDs_ctrl is None or len(IDs_ctrl) == 0:
-                logger.warning(f"[grp_flip] WARNING. No control IDs found for item index {i}. Skipping this item.")
+                logger.warning(f"[grp_flip] WARNING. No control IDs found for item index {index}. Skipping this item.")
                 continue
+            
+            logger.info(f"\t\t{len(IDs_ctrl)} IDs CTRL: {IDs_ctrl}")
+            for grp_val in goi: # for each group of interest
                 
-            for grp_val in goi: # for each group
                 if verbose:
                     logger.info(f"\tGrouping {grp_val}")
+                
+                # Get participants in this group
+                demo_grp = df_demo[df_demo[col_grp].str.contains(grp_val)].copy()
+                
                 # extract IDs for grp_L and grp_R
-                demo_grp = df_demo[df_demo[col_grp].str.contains(grp_val)].copy() # extract only participants in group of interest
-                IDs_right = search_df(df=demo_grp, ptrn='R', searchType='end', search_col=col_grp, out_cols=[col_ID, col_SES])
-                IDs_left = search_df(df=demo_grp, ptrn='L', searchType='end', search_col=col_grp, out_cols=[col_ID, col_SES])
+                IDs_R = search_df(df=demo_grp, ptrn='R', search_col=col_grp,  searchType='end')
+                IDs_L = search_df(df=demo_grp, ptrn='L', search_col=col_grp, searchType='end')
                 
                 # add group IDs to output dictionary item
-                dl_grp_ic[i][f'{grp_val}_IDs_R'] = IDs_right
-                dl_grp_ic[i][f'{grp_val}_IDs_L'] = IDs_left
-
-                logger.info(f"\tCtrl: {len(IDs_ctrl)}")
-                if verbose:
-                    logger.info(f"\t\tIDs Ctrl: {IDs_ctrl}")
-                logger.info(f"\tGroup {grp_val}: {len(IDs_left)} L | {len(IDs_right)} R")
-                if verbose:
-                    logger.info(f"\t\tIDs L: {IDs_left}\n\t\tIDs R: {IDs_right}")
+                dl_grp_ic[i][f'{grp_val}_R_IDs'] = IDs_R
+                dl_grp_ic[i][f'{grp_val}_L_IDs'] = IDs_L
+                
+                logger.info(f"\t\t{len(IDs_L)} IDs {grp_val}_L: {IDs_L}")
+                logger.info(f"\t\t{len(IDs_R)} IDs {grp_val}_R: {IDs_R}")
                 
                 if type(df_keys) is str:
                     df_keys = [df_keys]
@@ -3354,58 +3343,72 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
                     # Create df_{stat} for each side
                     df_stat = item.get(key, None)
-                    print(type(df_stat))
-                    if type(df_stat) is str:
+
+                    if type(df_stat) is pd.DataFrame:
+                        pass
+                    elif type(df_stat) is str:
                         df_stat = loadPickle(df_stat, verbose = False)
-                    else: # if is none
-                        print(f"\t\tKey '{key}' is either not in dictionary or is a `None` object. Skipping.")
-                        logger.info(f"\t\tKey '{key}' is either not in dictionary or is a `None` object. Skipping.")
+                    
+                        if df_stat is None: 
+                            logger.info(f"\t\tKey '{key}' is either not in dictionary or is a `None` object. Skipping.")
+                            continue
+
+                    else:
+                        logger.info(f"\t\tKey '{key}' is of type {type(df_stat)}, not str nor pd.DataFrame. Skipping.")
+                        print(f"\t\t[idx: {index}] Key '{key}' is of type {type(df_stat)}, not str nor pd.DataFrame. Skipping.")
                         continue
 
-                    if df_stat is None:
-                        if verbose:
-                            logger.info(f"\t\t\tKey '{key}' is None object. Skipping.")
-                        continue
-                    elif df_stat.shape[0] == 0:
+                    if df_stat.shape[0] == 0:
                         if verbose:
                             logger.info(f"\t\t\tKey '{key}' has no rows. Skipping.")
                         continue
-                    else:  # split according to grps
-                        if df_stat.shape[0] == 0:
-                            logger.info(f"\t\tKey '{key}' has no rows. Skipping.")
-                            continue
                         
-                        df_stat_grp = df_stat.copy() # search indexes of df_z for values in IDs_right. No need to split by SES, as df_z index is UID_ID_SES
-                        df_stat_r = df_stat_grp[df_stat_grp.index.isin(IDs_right)]
-                        df_stat_l = df_stat_grp[df_stat_grp.index.isin(IDs_left)]
-                        
-                        df_stat_ic = toIC(df_r = df_stat_r, df_l = df_stat_l)
-                        
-                        if verbose:
-                            logger.info(f"\t\tShapes of {key}: L {df_stat_l.shape} | R {df_stat_r.shape} | IC {df_stat_ic.shape}")
-                            logger.info(f"\t\t\tPaths:")
-                        
-                        # save these dfs, add path to output dictionary item
-                        for df, suffix in zip([df_stat_r, df_stat_l, df_stat_ic], ['R', 'L', 'ic']):
-                            name = f"{key}_{grp_val}_{suffix}"
-                            pth = savePickle(obj = df, root = save_pth_df, name = f"{i}_{name}", 
-                                            timeStamp = False, append = start,
-                                            rtn_txt=False, verbose = False)
-                            dl_grp_ic[i][name] = pth
-                            if verbose:
-                                logger.info(f"\t\t\t{suffix} : {pth}")
+                    # split according to grps                
+                    df_stat_grp = df_stat.copy() # search indexes of df_z for values in IDs_right. No need to split by SES, as df_z index is UID_ID_SES
+                    df_stat_r = df_stat_grp[df_stat_grp.index.isin(IDs_R)]
+                    df_stat_l = df_stat_grp[df_stat_grp.index.isin(IDs_L)]
+                    
+                    df_stat_ic = toIC(df_r = df_stat_r, df_l = df_stat_l)
+                    
+                    if verbose:
+                        logger.info(f"\t\tShapes of {key}: L {df_stat_l.shape} | R {df_stat_r.shape} | IC {df_stat_ic.shape}")
+                    
+                    # save these dfs, add path to output dictionary item
+                    for df, suffix in zip([df_stat_l, df_stat_r, df_stat_ic], ['L', 'R', 'ic']):
+                        name = f"{key}_{grp_val}_{suffix}"
+                        pkl_name = f"{index}_{name}"
+                        if test:
+                            pkl_name = f"TEST_{index}_{name}"
 
-                        dl_grp_ic[i][f'{key}_{grp_val}_R'] = df_stat_r
-                        dl_grp_ic[i][f'{key}_{grp_val}_L'] = df_stat_l
-                        dl_grp_ic[i][f'{key}_{grp_val}_ic'] = df_stat_ic
+                        pth, svPkl_txt = savePickle(obj = df, root = save_pth_df, name = pkl_name, 
+                                        timeStamp = False, append = start,
+                                        rtn_txt=True, verbose = False)
+                        
+                        logger.info(f"\t\t\tPath {grp_val}_{suffix}: {pth}")
 
-                        if dl_grp_ic[i].get(f'{key}_ctrl', None) is None: # if ctrl df not yet created, create it
-                            df_stat_ctrl = df_stat_grp[df_stat_grp.index.isin(IDs_ctrl)]
-                            pth = savePickle(obj = df_stat_ctrl, root = save_pth_df, name = f"{i}_{key}_ctrl", timeStamp = True, rtn_txt=False, verbose = False)
-                            dl_grp_ic[i][f'{key}_ctrl'] = pth
-                            
-                            if verbose:
-                                logger.info(f"\t\t\tControl group {key} shape {df_stat_ctrl.shape} : {pth}")
+                        dl_grp_ic[i][name] = pth
+
+                    dl_grp_ic[i][f'{key}_{grp_val}_R'] = df_stat_r
+                    dl_grp_ic[i][f'{key}_{grp_val}_L'] = df_stat_l
+                    dl_grp_ic[i][f'{key}_{grp_val}_ic'] = df_stat_ic
+
+                    if dl_grp_ic[i].get(f'{key}_ctrl', None) is None: # if ctrl df not yet created, create it
+                        
+                        df_stat_ctrl = df_stat_grp[df_stat_grp.index.isin(IDs_ctrl)]
+                        name = f"{key}_ctrl"
+                        pkl_name = f"{index}_{name}"
+                        if test:
+                            pkl_name = f"TEST_{index}_{name}"
+                        
+                        pth, svPkl_txt = savePickle(obj = df_stat_ctrl, root = save_pth_df, name = pkl_name, 
+                                         timeStamp = False, append = start,
+                                          rtn_txt=True, verbose = False)
+                        
+                        logger.info(f"\t\t\tCTRL: {key} <{df_stat_ctrl.shape}> : {pth}")
+                        
+                        dl_grp_ic[i][name] = pth
+                        
+                        
 
         # Save dl to a pickle file
         if save:
@@ -3413,8 +3416,8 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                                       timeStamp = False, append = start, 
                                       rtn_txt=True, verbose = True)
             
-            logger.info(log)
-            print(log)
+            logger.info(f"\n{log}")
+            print(f"\n{log}")
 
         logger.info(f"\n[grp_flip] Completed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"\n[grp_flip] Completed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
