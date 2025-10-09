@@ -593,7 +593,7 @@ def grpChk(df, grp_cols=['grp', 'grp_detailed']):
 
 
 # QC Functions ####################################################
-def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth):
+def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=None):
     """
     From a dataframe with demographic information and features of interest, create a QC sheet to complete manually.
     TODO. Add also surface QC column as well as paths to surfaces (cortical, hippocampal).
@@ -611,12 +611,15 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth):
             List of dictionary items with study information.
         ctx_surf_qc: lst
             List of dictionary items with details about existing sheets with QC for cortical surfaces
+        
 
         save_name: str
             Name of the output QC file (without path)
         save_pth: str
             Path to save the output QC file
-
+        currentQC: str
+            Path to an existing QC sheet to pull volume/surface QC from
+            NOTE. Assumes presences of columns 'UID', 'ID', 'SES'
     Returns:
         df: pd.DataFrame
             DataFrame with demographic information and features of interest
@@ -803,7 +806,43 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth):
             logger.info(f"\n")
         
         # Carry over values from QC_sheets that are partially filled in
-        # TODO. Implement
+        if currentQC is not None:
+            if os.path.isfile(currentQC):
+                df_currentQC = pd.read_csv(currentQC, dtype=str)
+                # match on UID, ID, SES
+                # get values from {vol} and QC_ctxsurf
+                # should not add new rows
+                assert 'UID' in df_currentQC.columns, "[mk_qcSheet] Error: currentQC must have column 'UID'"
+                assert 'ID' in df_currentQC.columns, "[mk_qcSheet] Error: currentQC must have column 'ID'"
+                assert 'SES' in df_currentQC.columns, "[mk_qcSheet] Error: currentQC must have column 'SES'"
+
+                extract_col = vol_names + ['QC_ctxSurf', 'QC_hipSurf']
+                extract_col = [col for col in extract_col if col in df_currentQC.columns]
+                df_currentQC_sub = df_currentQC[['UID', 'ID', 'SES'] + extract_col]
+                logger.info(f"Extracting columns from existing QC sheet: {extract_col}")
+                logger.info(f"Existing QC sheet shape: {df_currentQC_sub.shape}")
+
+                # print col 'SES'
+                if 'SES' in df_currentQC_sub.columns:
+                    logger.info(f"Existing QC sheet SES values: {df_currentQC_sub['SES'].unique()}")
+                    logger.info(f"New QC sheet SES values: {qc_sheet['SES'].unique()}")
+
+                # For each extract_col, fill missing values in qc_sheet from df_currentQC_sub
+                for col in extract_col:
+                    if col in qc_sheet.columns and col in df_currentQC_sub.columns:
+                        # Create a mapping from (UID, ID, SES) to value in currentQC
+                        value_map = df_currentQC_sub.set_index(['UID', 'ID', 'SES'])[col].to_dict()
+                        # Fill missing values in qc_sheet[col] using the mapping
+                        mask = qc_sheet[col].isna() | (qc_sheet[col] == '')  # treat empty string as missing
+                        for idx in qc_sheet[mask].index:
+                            key = (qc_sheet.at[idx, 'UID'], qc_sheet.at[idx, 'ID'], qc_sheet.at[idx, 'SES'])
+                            val = value_map.get(key, None)
+                            if val not in [None, '']:
+                                qc_sheet.at[idx, col] = val
+
+                logger.info(f"QC sheet shape after merging existing QC: {qc_sheet.shape}")
+            else:
+                logger.warning(f"[mk_qcSheet] WARNING: currentQC path does not exist: {currentQC}. Skipping merge.")
 
         # save
         out_pth = os.path.join(save_pth, f"{save_name}_{start}.csv")
