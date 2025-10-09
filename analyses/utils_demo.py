@@ -808,8 +808,11 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
         # Carry over values from QC_sheets that are partially filled in
         if currentQC is not None:
             if os.path.isfile(currentQC):
-                df_currentQC = pd.read_csv(currentQC, dtype=str)
-                # match on UID, ID, SES
+                df_currentQC = pd.read_csv(currentQC, dtype=str, keep_default_na=False, na_values=[])
+                # match on ID, SES
+                # NOTE. UID assignment may differ between sheets, so do not match on that
+                logger.info(f"[mk_qcSheet] Merging existing QC sheet from {currentQC}")
+                logger.info(f"Existing QC sheet shape: {df_currentQC.shape}")
                 # get values from {vol} and QC_ctxsurf
                 # should not add new rows
                 assert 'UID' in df_currentQC.columns, "[mk_qcSheet] Error: currentQC must have column 'UID'"
@@ -818,7 +821,7 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
 
                 extract_col = vol_names + ['QC_ctxSurf', 'QC_hipSurf']
                 extract_col = [col for col in extract_col if col in df_currentQC.columns]
-                df_currentQC_sub = df_currentQC[['UID', 'ID', 'SES'] + extract_col]
+                df_currentQC_sub = df_currentQC[['ID', 'SES'] + extract_col]
                 logger.info(f"Extracting columns from existing QC sheet: {extract_col}")
                 logger.info(f"Existing QC sheet shape: {df_currentQC_sub.shape}")
 
@@ -830,12 +833,12 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
                 # For each extract_col, fill missing values in qc_sheet from df_currentQC_sub
                 for col in extract_col:
                     if col in qc_sheet.columns and col in df_currentQC_sub.columns:
-                        # Create a mapping from (UID, ID, SES) to value in currentQC
-                        value_map = df_currentQC_sub.set_index(['UID', 'ID', 'SES'])[col].to_dict()
+                        # Create a mapping from (ID, SES) to value in currentQC
+                        value_map = df_currentQC_sub.set_index(['ID', 'SES'])[col].to_dict()
                         # Fill missing values in qc_sheet[col] using the mapping
                         mask = qc_sheet[col].isna() | (qc_sheet[col] == '')  # treat empty string as missing
                         for idx in qc_sheet[mask].index:
-                            key = (qc_sheet.at[idx, 'UID'], qc_sheet.at[idx, 'ID'], qc_sheet.at[idx, 'SES'])
+                            key = (qc_sheet.at[idx, 'ID'], qc_sheet.at[idx, 'SES'])
                             val = value_map.get(key, None)
                             if val not in [None, '']:
                                 qc_sheet.at[idx, col] = val
