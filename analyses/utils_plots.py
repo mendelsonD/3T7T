@@ -574,9 +574,10 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     x = np.arange(len(cols)) * spacing
 
     # create three rows: top violin (3T), middle d scatter, bottom violin (7T)
+    # make figure width scale with number of parcels so plots have enough horizontal room
     fig, (ax_top, ax_mid, ax_bot) = plt.subplots(
         3, 1,
-        figsize=(max(10, len(cols) // 3), 10),
+        figsize=(10, 40),
         sharex=True,
         gridspec_kw={'height_ratios': [3, 1, 3]}
     )
@@ -663,21 +664,17 @@ def plot_zToD(df_grp, df_ctrl, df_d,
         d_vals_list.append(d_series.values.astype(float))
 
     d_all = np.vstack(d_vals_list)
-    # symmetric color scale based on max absolute across both studies
-    finite_mask = np.isfinite(d_all)
-    if finite_mask.any():
-        d_abs_max = np.nanmax(np.abs(d_all[finite_mask]))
-        vlim = max(1.0, float(d_abs_max))
-    else:
-        vlim = 1.0
+    # force Cohen's d scale to +/-0.5 as requested
+    vlim = 0.5
     norm = Normalize(vmin=-vlim, vmax=vlim)
 
     # plot scatter for both studies on same axis
     markers = ['o', 's']
     labels = [study_labels[0] + ' d', study_labels[1] + ' d']
     for st_idx in (0, 1):
-        dv = d_vals_list[st_idx]
-        xi_valid = x.copy()
+        # ensure numeric numpy arrays (fixes boolean masking/index issues for first element)
+        dv = np.asarray(d_vals_list[st_idx], dtype=float)
+        xi_valid = np.asarray(x, dtype=float)
         # mask nans
         mask = np.isfinite(dv)
         if not mask.any():
@@ -690,40 +687,24 @@ def plot_zToD(df_grp, df_ctrl, df_d,
 
     ax_mid.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.6)
     ax_mid.set_ylabel(dlab)
-    ax_mid.set_title(f"Cohen's D", loc='left')
+    # enforce y-limits for Cohen's D plot so scale is +/-0.5
+    ax_mid.set_ylim(-vlim * 1.05, vlim * 1.05)
 
-    # create clear legend describing what each marker/edge color means (study identity)
+    # place Cohen's D legend horizontally to the left above the middle axis (in the gap between top and mid)
     from matplotlib.lines import Line2D
     legend_handles = [
-        Line2D([0], [0], marker=markers[0], color='none',
-               markerfacecolor='lightgray', markeredgecolor=study_edge[0], markersize=8, label=study_labels[0]),
-        Line2D([0], [0], marker=markers[1], color='none',
-               markerfacecolor='lightgray', markeredgecolor=study_edge[1], markersize=8, label=study_labels[1])
+        Line2D([0], [0], marker=markers[0], color='none', markerfacecolor='lightgray', markeredgecolor=study_edge[0], markersize=8, label=study_labels[0]),
+        Line2D([0], [0], marker=markers[1], color='none', markerfacecolor='lightgray', markeredgecolor=study_edge[1], markersize=8, label=study_labels[1])
     ]
-    ax_mid.legend(handles=legend_handles, frameon=False, loc='upper right')
-
-    # colorbar for d-values: only draw when a single study is present (avoid overlapping/long colorbar when both plotted)
-    present_count = sum(np.isfinite(d_vals_list[idx]).any() for idx in (0, 1))
-    if present_count == 1:
-        sm = ScalarMappable(norm=norm, cmap=cmap)
-        sm.set_array(np.array([np.nan]))  # dummy
-        pos = ax_mid.get_position()
-        cbar_height = 0.03
-        cbar_pad = 0.01
-        # make colorbar relatively short and center it under the middle axis
-        cbar_width = min(0.3, pos.width * 0.45)
-        cax_x0 = pos.x0 + 0.5 * (pos.width - cbar_width)
-        cax_x0 = max(0.01, min(cax_x0, 0.99 - cbar_width))
-        cax = fig.add_axes([cax_x0, pos.y0 - cbar_height - cbar_pad, cbar_width, cbar_height])
-        cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
-        cbar.set_label(dlab)
+    ax_mid.legend(handles=legend_handles, frameon=False,
+                  loc='upper left', bbox_to_anchor=(0.0, 1.12), ncol=2)
 
     # Shared X ticks: sparse ticks to avoid overcrowding
     if len(x) > 0:
         # explicitly set x-limits so all three axes share identical horizontal framing
-        x_margin = spacing * 0.6
-        x0 = x[0] - x_margin
-        x1 = x[-1] + x_margin
+        x_margin = spacing * 1.0
+        x0 = float(x[0]) - x_margin
+        x1 = float(x[-1]) + x_margin
         for a in (ax_top, ax_mid, ax_bot):
             a.set_xlim(x0, x1)
 
@@ -732,12 +713,14 @@ def plot_zToD(df_grp, df_ctrl, df_d,
         tick_idx = np.arange(len(cols))[::step]
         ticks = x[tick_idx]
         tick_labels = [cols[i] for i in tick_idx]
+        # show labels only on the bottom axis to avoid repetition/overflow
         ax_bot.set_xticks(ticks)
         ax_bot.set_xticklabels(tick_labels, rotation=90, ha='right')
+        # keep tick marks on top/mid for alignment but hide their labels
         ax_top.set_xticks(ticks)
-        ax_top.set_xticklabels(tick_labels, rotation=45, ha='right')
+        ax_top.set_xticklabels(['' for _ in ticks])
         ax_mid.set_xticks(ticks)
-        ax_mid.set_xticklabels(['' for _ in ticks])  # hide mid tick labels to reduce overlap
+        ax_mid.set_xticklabels(['' for _ in ticks])
 
     # overall title (keeps previous title text if provided)
     if main_title:
