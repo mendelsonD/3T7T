@@ -3879,7 +3879,8 @@ def btwD(dl, save_pth_df,
                     'feature': item_tT['feature'],
                     'surf': item_tT['surf'],
                     'label': item_tT['label'],
-                    'smth': item_tT['smth']
+                    'smth': item_tT['smth'],
+                    'parcellation': item_tT.get('parcellation', None)
                 }
             
             ID_keys = [key for key in item_tT.keys() if 'IDs' in key]
@@ -5433,7 +5434,7 @@ def sortCols(df):
     other_cols = sorted(other_cols)
 
     # Order: L, contra, R, ipsi, other
-    sorted_cols = L_cols + contra_cols + R_cols + ipsi_cols + other_cols
+    sorted_cols = L_cols + ipsi_cols + R_cols + contra_cols + other_cols
     df_sorted = df[sorted_cols]
     return df_sorted
 

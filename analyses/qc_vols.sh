@@ -47,7 +47,7 @@ for i in "${!cols[@]}"; do
 done
 
 
-# Find indices for UID, ID, SES (Date)
+# Find col indices for UID, ID, SES (Date)
 uid_idx=-1
 id_idx=-1
 ses_idx=-1
@@ -131,11 +131,12 @@ tail -n +$((idx_start + 1)) "$input_csv" | while IFS=',' read -ra row; do
         # Check if this is a T1w image (column name contains 'T1w')
         if [[ "$column_name" == *T1w* ]]; then
             # Check if surface QC has been completed (QC_ctxSurf and QC_hipSurf not NA)
-            ctx_qc_done=true
+            
             hip_qc_done=true
             surf_args=()
-
-            if [[ $QC_ctxSurf_idx -ne -1 && "${row[$QC_ctxSurf_idx]}" == '' ]]; then
+            if [[ $QC_ctxSurf_idx -ne -1 && ( "${row[$QC_ctxSurf_idx]}" == "1" || "${row[$QC_ctxSurf_idx]}" == "2" || "${row[$QC_ctxSurf_idx]}" == "0" ) ]]; then
+            	ctx_qc_done=true
+            else
                 ctx_qc_done=false
                 # Add pial and white surfaces (L/R) for current T1w image
                 for surf_type in pial white; do
@@ -156,6 +157,7 @@ tail -n +$((idx_start + 1)) "$input_csv" | while IFS=',' read -ra row; do
                     done
                 done
             fi
+            
             if [[ $QC_hipSurf_idx -ne -1 && ("${row[$QC_hipSurf_idx]}" == '' || "${row[$QC_hipSurf_idx]}" < "0.7") ]]; then
                 hip_qc_done=false
                 # add hippocampal surfaces if available

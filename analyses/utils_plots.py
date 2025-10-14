@@ -1,4 +1,28 @@
 # functions to create stacked histograms
+def dCor(d_a, d_b, verbose = False):
+    from scipy.stats import pearsonr
+    import pandas as pd
+
+    if not isinstance(d_a, pd.Series) or not isinstance(d_b, pd.Series):
+        raise ValueError("Inputs must be pandas Series.")
+    
+    # Identify NaN indices in both series
+    nan_indices = set(d_a[d_a.isna()].index) | set(d_b[d_b.isna()].index)
+    n_nan = len(nan_indices)
+    
+    if len(d_a) != len(d_b):
+        raise ValueError("Input Series must be of the same length.")
+    
+    if n_nan > 0:
+        
+        d_a = d_a.drop(index=nan_indices)
+        d_b = d_b.drop(index=nan_indices)
+        if verbose:
+            print(f"[dCor] Removing {n_nan} NaN values from both series.")
+            print(f"[dCor] New lengths: {len(d_a)}, {len(d_b)}")
+    
+    cor, _ = pearsonr(d_a, d_b)
+    return cor, n_nan
 
 def corresp_paths(regions, MICs, PNI, output_dir, values_dir):
     """
@@ -401,14 +425,16 @@ def plot_rawToZ(
         return name
 
 
-def pngs2pdf(fig_dir, ptrn, output=None, verbose=False):
+def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
     """
     Combine PNGs in fig_dir whose filename contains `ptrn` into a single PDF.
 
     Input:
         fig_dir: Directory containing png files.
         ptrn: substring to match in filenames (only files containing this substring are included).
+        
         output: Directory to save output pdf file. If None, saves in fig_dir.
+        cleanup: bool, if True, delete individual PNGs after creating PDF
         verbose: bool, print progress
     Output:
         Path to created PDF (or None if nothing matched)
@@ -468,11 +494,23 @@ def pngs2pdf(fig_dir, ptrn, output=None, verbose=False):
         images[0].save(output_pdf, save_all=True, append_images=images[1:])
         if verbose:
             print(f"[pngs2pdf] PDF created: {output_pdf}")
-        return output_pdf
     except Exception as e:
         if verbose:
             print(f"[pngs2pdf] Failed to save PDF {output_pdf}: {e}")
         return None
+
+    if cleanup:
+        for fname in files:
+            p = os.path.join(fig_dir, fname)
+            try:
+                os.remove(p)
+                if verbose:
+                    print(f"[pngs2pdf] Deleted: {p}")
+            except Exception as e:
+                if verbose:
+                    print(f"[pngs2pdf] Failed to delete {p}: {e}")
+
+    return output_pdf
 
 
 def plot_zToD(df_grp, df_ctrl, df_d, 
@@ -528,9 +566,10 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     import pandas as pd
     import matplotlib.pyplot as plt
     import matplotlib.cm as mpl_cm
-    from matplotlib.cm import ScalarMappable
-    from matplotlib.colors import Normalize
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
     from matplotlib import use
+    
     use('Agg') # non-interactive backend
 
     # Allow passing lists for 3T/7T or single objects
@@ -573,33 +612,19 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     spacing = 2.0 * half_width + pad
     x = np.arange(len(cols)) * spacing
 
-    # create three rows: top violin (3T), middle d scatter, bottom violin (7T)
-    # make figure width scale with number of parcels so plots have enough horizontal room
+    # Initialize figure and axes
+    length = min(60, len(cols)*1.6)
     fig, (ax_top, ax_mid, ax_bot) = plt.subplots(
         3, 1,
-        figsize=(10, 40),
+        figsize=(length, 10),
         sharex=True,
         gridspec_kw={'height_ratios': [3, 1, 3]}
     )
 
     bins = 30  # density bins per parcel
     cmap = mpl_cm.get_cmap('bwr')  # for d-values
-    # allow title to carry main title and/or study names:
-    #   title can be:
-    #     - a simple string => used as overall suptitle
-    #     - a tuple/list (main_title, (study0_name, study1_name))
-    # If study names are provided, use them for axis mini-titles and d-legend labels.
-    main_title = None
-    if isinstance(title, (list, tuple)) and len(title) == 2 and isinstance(title[1], (list, tuple)):
-        main_title = title[0]
-        # Use only common strings between both study label lists
-        study_labels = list(set(title[1][0]).intersection(set(title[1][1])))
-        if not study_labels:
-            # fallback: use first label from each if no commonality
-            study_labels = [title[1][0][0], title[1][1][0]]
-    else:
-        main_title = title
-        study_labels = ['3T', '7T']
+
+    study_labels = ['3T', '7T']
     study_edge = ['navy', 'darkred']
     # iterate studies for top and bottom violins
     for st_idx, ax in zip([0, 1], [ax_top, ax_bot]):
@@ -646,58 +671,73 @@ def plot_zToD(df_grp, df_ctrl, df_d,
                 gm = np.nanmean(grp_vals)
                 ax.plot([xi - half_width, xi], [gm, gm], color='black', linewidth=1)
 
+        # Legend for top axis
+        legend_handles_top = [
+            Patch(facecolor='blue', edgecolor='blue', alpha=0.6, label='Patients (density)'),
+            Patch(facecolor='red', edgecolor='red', alpha=0.6, label='Controls (density)'),
+            Line2D([0], [0], color='black', lw=1, label='Patients mean')
+        ]
+
+        # Place legend horizontally to the left, next to the title
+        ax_top.legend(handles=legend_handles_top,
+                  loc='center left',
+                  bbox_to_anchor=(0.0, 1.12),
+                  ncol=len(legend_handles_top),
+                  frameon=False,
+                  borderaxespad=0.0)
+        
         # dotted zero line across full axis
         ax.axhline(0, color='black', linestyle=':', linewidth=1, alpha=0.6)
         ax.set_ylabel(ylbl)
         ax.set_title(f"{study_labels[st_idx]}", loc='left')
-
-    # Middle axis: Cohen's d scatter for both studies
-    # prepare d arrays and plotting parameters
-    d_vals_list = []
-    for st_idx in (0, 1):
-        d_df = df_d_list[st_idx]
-        if d_df is None:
-            d_vals_list.append(np.full(len(cols), np.nan))
-            continue
-        # attempt to coerce to numeric and align columns
-        d_series = pd.to_numeric(d_df.iloc[0].reindex(cols), errors='coerce')
-        d_vals_list.append(d_series.values.astype(float))
-
-    d_all = np.vstack(d_vals_list)
-    # force Cohen's d scale to +/-0.5 as requested
-    vlim = 0.5
-    norm = Normalize(vmin=-vlim, vmax=vlim)
-
-    # plot scatter for both studies on same axis
+        
+    
+    # plot D-scores
     markers = ['o', 's']
-    labels = [study_labels[0] + ' d', study_labels[1] + ' d']
-    for st_idx in (0, 1):
-        # ensure numeric numpy arrays (fixes boolean masking/index issues for first element)
-        dv = np.asarray(d_vals_list[st_idx], dtype=float)
-        xi_valid = np.asarray(x, dtype=float)
-        # mask nans
-        mask = np.isfinite(dv)
-        if not mask.any():
+    labels = [study_labels[0], study_labels[1]]
+    dlim = 1.5
+    stats = []
+    for d, mrkr, colour, lbl in zip(df_d_list, markers, study_edge, labels):
+        if d is None:
             continue
-        xi_plot = xi_valid[mask]
-        dv_plot = dv[mask]
-        # facecolors by d, edgecolor to distinguish study
-        sc = ax_mid.scatter(xi_plot, dv_plot, c=dv_plot, cmap=cmap, norm=norm,
-                            marker=markers[st_idx], edgecolor=study_edge[st_idx], linewidth=0.8, s=48, label=labels[st_idx])
+        # Align index positions with x (parcel order)
+        idx = [cols.get_loc(col) for col in d.index if col in cols]
+        xi = x[idx]
+        sc = ax_mid.scatter(xi, d.values, 
+                marker=mrkr, edgecolor=colour, 
+                linewidth=0.8, s=30, label=lbl, facecolor='none')
+        stat = f"mean {d.mean():0.2f}, mdn {d.median():0.2f}, range [{d.min():0.2f} : {d.max():0.2f}]"
+        stats.append(stat)
 
+
+    # enforce y-limits for Cohen's D plot so scale is +/-0.5
     ax_mid.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.6)
     ax_mid.set_ylabel(dlab)
-    # enforce y-limits for Cohen's D plot so scale is +/-0.5
-    ax_mid.set_ylim(-vlim * 1.05, vlim * 1.05)
+    ax_mid.set_ylim(-dlim * 1.05, dlim * 1.05)
 
     # place Cohen's D legend horizontally to the left above the middle axis (in the gap between top and mid)
-    from matplotlib.lines import Line2D
-    legend_handles = [
-        Line2D([0], [0], marker=markers[0], color='none', markerfacecolor='lightgray', markeredgecolor=study_edge[0], markersize=8, label=study_labels[0]),
-        Line2D([0], [0], marker=markers[1], color='none', markerfacecolor='lightgray', markeredgecolor=study_edge[1], markersize=8, label=study_labels[1])
-    ]
-    ax_mid.legend(handles=legend_handles, frameon=False,
-                  loc='upper left', bbox_to_anchor=(0.0, 1.12), ncol=2)
+    legend_handles_mid = [
+        Line2D([0], [0], marker=markers[i], color='w', label=labels[i],
+                markeredgecolor=study_edge[i], markersize=8, markeredgewidth=0.8)
+         for i in (0, 1)]
+    
+    # Move legend just above top plot boundary line and add stats annotation
+    legend_y = 1.5  # slightly above the top boundary of ax_mid
+    ax_mid.legend(handles=legend_handles_mid, frameon=False,
+                  loc='upper left', bbox_to_anchor=(0.0, legend_y), ncol=2)
+
+    # Annotate stats
+    stats_text = "\n".join([f"{labels[i]}:{stats[i]}" for i in range(len(stats))])
+    
+    # Compute Pearson correlation
+    d_cor, n_nan = dCor(df_d[0], df_d[1])
+    cor_text = f"r = {d_cor:.2f} (n_nan:{n_nan})" if n_nan > 0 else f"r = {d_cor:.2f}"
+
+    stats_text = f"D-scores statistics ({cor_text}):\n" + stats_text
+    ax_mid.annotate(stats_text,
+                    xy=(0.04, legend_y-.5), xycoords='axes fraction',
+                    fontsize=10, ha='left', va='bottom',
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none", alpha=0.7))
 
     # Shared X ticks: sparse ticks to avoid overcrowding
     if len(x) > 0:
@@ -714,17 +754,17 @@ def plot_zToD(df_grp, df_ctrl, df_d,
         ticks = x[tick_idx]
         tick_labels = [cols[i] for i in tick_idx]
         # show labels only on the bottom axis to avoid repetition/overflow
-        ax_bot.set_xticks(ticks)
-        ax_bot.set_xticklabels(tick_labels, rotation=90, ha='right')
+        ax_mid.set_xticks(ticks)
+        ax_mid.set_xticklabels(tick_labels, rotation=45, ha='right')
         # keep tick marks on top/mid for alignment but hide their labels
         ax_top.set_xticks(ticks)
-        ax_top.set_xticklabels(['' for _ in ticks])
-        ax_mid.set_xticks(ticks)
-        ax_mid.set_xticklabels(['' for _ in ticks])
+        ax_top.set_xticklabels(tick_labels, rotation=45, ha='right')
+        ax_bot.set_xticks(ticks)
+        ax_bot.set_xticklabels(tick_labels, rotation=45, ha='right')
 
     # overall title (keeps previous title text if provided)
-    if main_title:
-        fig.suptitle(main_title, fontsize=14)
+    if title:
+            fig.suptitle(title, fontsize=16, y=0.92)
 
     fig.tight_layout(rect=[0, 0.03, 1, 0.97])
 
@@ -733,8 +773,348 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     pth = os.path.join(save_path, f"{save_name}.png")
     fig.savefig(pth, dpi=300, bbox_inches='tight')
     
-    if verbose:
-        file_size = os.path.getsize(pth) / 1e6
-        print(f"[plot_zToD] Saved figure ({file_size:0.1f} MB): {pth}")
+    file_size = os.path.getsize(pth) / 1e6
+    print(f"\t[plot_zToD] Saved figure ({file_size:0.1f} MB): {pth}")
+    
     plt.close(fig)
+    
     return pth
+
+def plot_dD(df, 
+            title=None, xlbl=None, ylbl=None, sorted=True, save_path=None, verbose = False):
+    """
+    Plot delta D.
+    Plot d_3T, d_7T in a scatterplot (top) and a single heatmap (bottom, 3 rows).
+    If sorted=True: do NOT rename dataframe columns, but remove trailing '_suffix'
+    from tick labels and annotate suffix groups below the heatmap. Draw dotted
+    vertical split lines between suffix groups.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame with at least 3 rows:
+        - Row 0: d values for study 1 (3T)
+        - Row 1: d values for study 2 (7T)
+        - Row 2: delta d (d_7T - d_3T)
+        Optional additional rows:
+        - Row 3: delta d normalized by d_3T (delta d / |d_3T|)
+        - Row 4: delta d normalized by d_7T (delta d / |d_7T|)
+    
+    title : str, optional
+        Title for the scatter plot (default: None).
+    xlbl : str, optional
+        Label for the x-axis (default: "Vertex/Parcel").
+    ylbl : str, optional
+        Label for the y-axis (default: "Within study Cohen's D (TLE vs CTRL)").
+    sorted : bool, optional
+        If True, group columns by suffix (e.g., '_lh', '_rh') and annotate groups below the heatmap.
+        Default is True.
+    save_path : str, optional
+        Path to save the figure (default: None, which displays the plot instead).
+    verbose : bool, optional
+        If True, print progress messages (default: False).
+
+    Returns
+    -------
+    str
+    """
+    import matplotlib.pyplot as plt
+    import os
+    import numpy as np
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+    import pandas as pd
+
+    # numeric conversion (preserve original column names order)
+    df_numeric = df.apply(pd.to_numeric, errors='coerce')
+    cols_orig = list(df_numeric.columns)
+    ncols = df_numeric.shape[1]
+    length = min(75, max(6, int(ncols * 0.3)))
+
+    # prepare display names (strip trailing suffix for labels) but DO NOT change df_numeric
+    suffix_order = []
+    base_cols = []
+    suffixes_per_col = []
+    if sorted:
+        for c in cols_orig:
+            if isinstance(c, str) and ('_' in c):
+                base, suf = c.rsplit('_', 1)
+                base_cols.append(base)
+                suffixes_per_col.append(suf)
+                if suf not in suffix_order:
+                    suffix_order.append(suf)
+            else:
+                base_cols.append(c)
+                suffixes_per_col.append(None)
+    else:
+        base_cols = cols_orig.copy()
+        suffixes_per_col = [None] * len(base_cols)
+
+    # collect the three rows (use NaN fallback)
+    rows = []
+    for idx in (2, 3, 4):
+        if idx < len(df_numeric):
+            rows.append(df_numeric.iloc[idx].values.astype(float))
+        else:
+            rows.append(np.full(ncols, np.nan))
+    heat_data = np.vstack(rows)   # shape (3, ncols)
+
+    # Hard-coded bounds for each row (tunable)
+    bounds = np.array([1.0, 5.0, 5.0], dtype=float)
+
+    # Scale each row into [-1,1] by its bound so we can display a single imshow
+    scaled = np.empty_like(heat_data, dtype=float)
+    for r in range(3):
+        scaled[r] = heat_data[r] / bounds[r]
+
+    # create figure with top scatter and bottom heatmap sharing x
+    n_heat_rows = 3
+    heat_ratio = max(1.8, 0.9 * n_heat_rows)
+    top_ratio = 2.0
+    total_height = 2 + heat_ratio * 2.0
+    fig, (ax_main, ax_heat) = plt.subplots(
+        2, 1,
+        figsize=(length, total_height),
+        gridspec_kw={'height_ratios': [top_ratio, heat_ratio]},
+        sharex=True
+    )
+
+    x = np.arange(ncols)
+    # scatter 3T / 7T if present (use original columns for values)
+    if df_numeric.shape[0] >= 1:
+        ax_main.scatter(x, df_numeric.iloc[0].values, label='3T', color='tab:blue', marker='o', s=40)
+    if df_numeric.shape[0] >= 2:
+        ax_main.scatter(x, df_numeric.iloc[1].values, label='7T', color='tab:orange', marker='s', s=40)
+    # Draw dotted gridlines only at 0, 0.5, and 1
+    for y in [0, 0.5, -0.5, 1, -1]:
+        if y in [0.5, -0.5, 1, -1]:
+            ax_main.axhline(y, color='black', linestyle=':', linewidth=1, alpha=0.6)
+        elif y in [0]:
+            ax_main.axhline(y, color='black', linestyle='-', linewidth=2, alpha=0.7)
+    if ylbl:
+        ax_main.set_ylabel(ylbl)
+    else:
+        ax_main.set_ylabel("Within study Cohen's D (TLE vs CTRL)")
+    if title:
+        ax_main.set_title(title)
+    ax_main.legend()
+    # Remove grid except for the custom lines above
+    ax_main.grid(False)
+
+    # single imshow of scaled data with common vmin/vmax = -1..1
+    im = ax_heat.imshow(scaled, aspect='auto', cmap='bwr', vmin=-1.0, vmax=1.0)
+    ax_heat.set_yticks([0, 1, 2])
+    ax_heat.set_yticklabels(['Δd', 'Δd/3T', 'Δd/7T'])
+    if xlbl is not None:
+        ax_heat.set_xlabel(xlbl)
+    else:
+        ax_heat.set_xlabel('Vertex/Parcel')
+
+    # If sorted, identify suffix groups and compute boundaries / annotation positions
+    ordered_suffixes = []
+    suf_idxs = {}
+    if sorted and any(s is not None for s in suffixes_per_col):
+        for idx, s in enumerate(suffixes_per_col):
+            suf_idxs.setdefault(s, []).append(idx)
+        ordered_suffixes = [s for s in suffix_order if s in suf_idxs]
+
+        # draw vertical dotted split lines between suffix groups (in data coordinates)
+        # boundary between group A and B is midpoint between last index of A and first index of B
+        for a, b in zip(ordered_suffixes[:-1], ordered_suffixes[1:]):
+            last_a = suf_idxs[a][-1]
+            first_b = suf_idxs[b][0]
+            bx = 0.5 * (x[last_a] + x[first_b])
+            # draw line on both axes for alignment
+            for ax in (ax_main, ax_heat):
+                ax.axvline(bx, linestyle=':', color='black', linewidth=3, alpha=1)
+
+        # place suffix annotations BELOW the heatmap (use ax_heat transform; negative y in axis coords)
+        for suf in ordered_suffixes:
+            inds = np.array(suf_idxs[suf])
+            mid = inds.mean() if inds.size else np.nan
+            label = str(suf).replace('L', 'LEFT').replace('R', 'RIGHT').replace('ipsi', 'IPSILATERAL').replace('contra', 'CONTRALATERAL')
+            ax_heat.text(mid, -0.12, label, transform=ax_heat.get_xaxis_transform(),
+                         ha='center', va='top', fontsize=10, fontweight='bold', color='black',
+                         bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.8))
+
+    # Finally set xticks and xtick labels WITHOUT suffix (use base_cols)
+    ax_heat.set_xticks(x)
+    ax_heat.set_xticklabels(base_cols, rotation=45, ha='right')
+
+    # create one small colorbar per row mapped to original (unscaled) values,
+    # positioned to the right of the heatmap aligned with each row.
+    pos = ax_heat.get_position()  # Bbox in figure coords
+    row_h = pos.height / 3.0
+    cbar_width = 0.0025
+    pad = 0.02
+
+    for r in range(3):
+        v_pad = 0.025 * r
+        y0 = pos.y0 + (2 - r) * row_h
+        cax = fig.add_axes([pos.x1 + pad, y0 + 0.05 - v_pad, cbar_width, row_h - 0.002])
+        sm = ScalarMappable(norm=Normalize(vmin=-bounds[r], vmax=bounds[r]), cmap='bwr')
+        sm.set_array([])  # required for colorbar
+        cb = fig.colorbar(sm, cax=cax, orientation='vertical')
+        cb.ax.yaxis.set_ticks_position('right')
+        cb.ax.yaxis.set_label_position('right')
+
+    plt.tight_layout(rect=[0, 0, 0.92, 1])  # leave space for colorbars
+
+    # save if requested
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        fig.savefig(save_path, bbox_inches='tight', dpi=300)
+        file_size = os.path.getsize(save_path) / 1e6  # size in MB
+        if verbose:
+            print(f"Figure saved to ({file_size:0.2f} MB): {save_path}")
+
+    return save_path
+
+def plot_dByStudy(d_3T, d_7T,
+                  title=None, scatter_lbl = None, xlbl="Cohen's D 3T", ylbl="Cohen's D 7T", save_path=None, verbose = True):
+    """
+    Plot cohen's D at 3T as a function of cohen's D at 7T. Each point is a parcel/vertex.
+    Adds marginal histograms for each axis.
+
+    Parameters:
+    d_3T : pandas.DataFrame
+        DataFrame of Cohen's D values for 3T study (single row, columns are parcels/vertices).
+    d_7T : pandas.DataFrame
+        DataFrame of Cohen's D values for 7T study (single row, columns are parcels/vertices).
+    
+    title : str, optional
+        Title for the plot.
+    scatter_lbl : str, optional
+        Label for the scatter points in the legend (default: 'vertex/parcel').
+    xlbl : str, optional
+        Label for the x-axis (default: "Cohen's D 3T").
+    ylbl : str, optional
+        Label for the y-axis (default: "Cohen's D 7T").
+    sa  ve_path : str, optional
+        Path to save the figure (including filename, without extension). If None, the figure is not saved.
+    verbose : bool, optional
+        If True, prints the path and file size of the saved figure.
+
+    Returns:   
+    str or None
+        Path to the saved PNG figure, or None if not saved.
+    """
+
+    import matplotlib.pyplot as plt
+    import os
+    import numpy as np
+    import pandas as pd
+    from matplotlib import use
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    import seaborn as sns
+    use('Agg') # non-interactive backend
+
+    # numeric conversion (preserve original column names order)
+    d3 = d_3T.apply(pd.to_numeric, errors='coerce')
+    d7 = d_7T.apply(pd.to_numeric, errors='coerce')
+    # Remove NaN values by keeping only indices where both d3 and d7 are not NaN
+    valid_idx = d3.index[d3.notna() & d7.notna()]
+    d3 = d3.loc[valid_idx]
+    d7 = d7.loc[valid_idx]
+    dif = d7 - d3
+
+    # align indices (intersection only)
+    common_idx = d3.index.intersection(d7.index)
+    d3 = d3.reindex(common_idx)
+    d7 = d7.reindex(common_idx)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Add marginal histograms using axes_grid1
+    divider = make_axes_locatable(ax)
+    ax_histx = divider.append_axes("top", size="20%", pad=0.1, sharex=ax)
+    ax_histy = divider.append_axes("right", size="20%", pad=0.1, sharey=ax)
+
+    # Hide tick labels for histograms
+    plt.setp(ax_histx.get_xticklabels(), visible=False)
+    plt.setp(ax_histy.get_yticklabels(), visible=False)
+
+    # Scale alpha by the absolute difference between d7 and d3 (dif)
+    # Normalize dif to [0.2, 1.0] for alpha (avoid zero alpha)
+    dif_abs = np.abs(dif.values)
+    if len(dif_abs) > 0 and np.nanmax(dif_abs) > 0:
+        dif_norm = (dif_abs - np.nanmin(dif_abs)) / (np.nanmax(dif_abs) - np.nanmin(dif_abs) + 1e-8)
+        alpha_vals = 0.2 + 0.8 * dif_norm  # alpha in [0.2, 1.0]
+    else:
+        alpha_vals = np.full_like(dif_abs, 0.4)
+
+    # Add legend label parameter (default: 'vertex/parcel')
+    if scatter_lbl is None:
+        scatter_lbl = 'vertex/parcel'
+    sc = ax.scatter(d3.values, d7.values, color='black', marker='o', s=40, alpha=alpha_vals, label=scatter_lbl)
+    ax.legend(loc='upper left')
+
+    # Marginal KDE (thinner lines, less fill)
+    sns.kdeplot(d3.values, ax=ax_histx, color='grey', fill=False, linewidth=1, common_norm=False)
+    ax_histx.axvline(np.mean(d3.values), color='black', linestyle='--', linewidth=1.5)
+    sns.kdeplot(y=d7.values, ax=ax_histy, color='grey', fill=False, linewidth=1, common_norm=False)
+    ax_histy.axhline(np.mean(d7.values), color='black', linestyle='--', linewidth=1.5)
+    # Remove borders and axis for the histograms
+    for ax_hist in [ax_histx, ax_histy]:
+        ax_hist.set_frame_on(False)
+        ax_hist.axis('off')
+
+    # Draw dotted gridlines only at 0, 0.5, and 1
+    for v in [0, 0.5, -0.5, 1, -1]:
+        if v in [1, -1]:
+            ax.axhline(v, color='black', linestyle=':', linewidth=1, alpha=0.6)
+            ax.axvline(v, color='black', linestyle=':', linewidth=1, alpha=0.6)
+        elif v in [0]:
+            ax.axhline(v, color='black', linestyle='-', linewidth=2, alpha=0.7)
+            ax.axvline(v, color='black', linestyle='-', linewidth=2, alpha=0.7)
+
+    # Calculate % of points in each quadrant and annotate
+    total = len(d3)
+    if total > 0:
+        q1 = np.sum((d3.values > 0) & (d7.values > 0))
+        q2 = np.sum((d3.values < 0) & (d7.values > 0))
+        q3 = np.sum((d3.values < 0) & (d7.values < 0))
+        q4 = np.sum((d3.values > 0) & (d7.values < 0))
+        pct_q1 = 100 * q1 / total
+        pct_q2 = 100 * q2 / total
+        pct_q3 = 100 * q3 / total
+        pct_q4 = 100 * q4 / total
+
+        # Place annotations in each quadrant
+        ax.annotate(f"{pct_q1:.1f}%", xy=(0.7, 0.875), xycoords='axes fraction', ha='center', va='center', fontsize=10, color='blue')
+        ax.annotate(f"{pct_q2:.1f}%", xy=(0.3, 0.875), xycoords='axes fraction', ha='center', va='center', fontsize=10, color='blue')
+        ax.annotate(f"{pct_q3:.1f}%", xy=(0.3, 0.1), xycoords='axes fraction', ha='center', va='center', fontsize=10, color='blue')
+        ax.annotate(f"{pct_q4:.1f}%", xy=(0.7, 0.1), xycoords='axes fraction', ha='center', va='center', fontsize=10, color='blue')
+
+    # identity line
+    lims = [
+        np.min([ax.get_xlim(), ax.get_ylim()]),  # min of both axes
+        np.max([ax.get_xlim(), ax.get_ylim()]),  # max of both axes
+    ]
+    ax.plot(lims, lims, 'k--', alpha=0.75, zorder=0)
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    if xlbl:
+        ax.set_xlabel(xlbl)
+    else:
+        ax.set_xlabel("Cohen's D 3T")
+    if ylbl:
+        ax.set_ylabel(ylbl)
+    else:
+        ax.set_ylabel("Cohen's D 7T")
+    if title:
+        # Set title above the main scatter axis, not the marginal histograms
+        fig.suptitle(title, y=0.98, fontsize=14)
+        # Optionally reduce figure size for less tall/wide histograms
+        fig.set_size_inches(6, 6)
+
+    plt.tight_layout()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        fig.savefig(save_path, bbox_inches='tight', dpi=300)
+        file_size = os.path.getsize(save_path) / 1e6  # size in MB
+        if verbose:
+            print(f"Figure saved to ({file_size:0.2f} MB): {save_path}")
+
+    return save_path
