@@ -904,7 +904,7 @@ def plot_dD(df,
     # single imshow of scaled data with common vmin/vmax = -1..1
     im = ax_heat.imshow(scaled, aspect='auto', cmap='bwr', vmin=-1.0, vmax=1.0)
     ax_heat.set_yticks([0, 1, 2])
-    ax_heat.set_yticklabels(['Δd', 'Δd/3T', 'Δd/7T'])
+    ax_heat.set_yticklabels(['Δd = 7T - 3T', 'Δd/3T', 'Δd/7T'])
     if xlbl is not None:
         ax_heat.set_xlabel(xlbl)
     else:
@@ -974,7 +974,7 @@ def plot_dByStudy(d_3T, d_7T,
                   title=None, scatter_lbl = None, xlbl="Cohen's D 3T", ylbl="Cohen's D 7T", save_path=None, verbose = True):
     """
     Plot cohen's D at 3T as a function of cohen's D at 7T. Each point is a parcel/vertex.
-    Adds marginal histograms for each axis.
+    Adds marginal histograms for each axis and annotate the means of both distributions.
 
     Parameters:
     d_3T : pandas.DataFrame
@@ -1051,9 +1051,7 @@ def plot_dByStudy(d_3T, d_7T,
 
     # Marginal KDE (thinner lines, less fill)
     sns.kdeplot(d3.values, ax=ax_histx, color='grey', fill=False, linewidth=1, common_norm=False)
-    ax_histx.axvline(np.mean(d3.values), color='black', linestyle='--', linewidth=1.5)
     sns.kdeplot(y=d7.values, ax=ax_histy, color='grey', fill=False, linewidth=1, common_norm=False)
-    ax_histy.axhline(np.mean(d7.values), color='black', linestyle='--', linewidth=1.5)
     # Remove borders and axis for the histograms
     for ax_hist in [ax_histx, ax_histy]:
         ax_hist.set_frame_on(False)
@@ -1067,6 +1065,14 @@ def plot_dByStudy(d_3T, d_7T,
         elif v in [0]:
             ax.axhline(v, color='black', linestyle='-', linewidth=2, alpha=0.7)
             ax.axvline(v, color='black', linestyle='-', linewidth=2, alpha=0.7)
+    
+    # add y-tick at the mean value of d3, d7. Do so opposite the other yticks
+    d3_mean = np.mean(d3.values)
+    d7_mean = np.mean(d7.values)
+    
+    # Annotate mean values on the marginal axes
+    ax_histx.text(d3_mean, ax_histx.get_ylim()[1]*0.9, f"{d3_mean:.2f}", ha='center', va='bottom', fontsize=10)
+    ax_histy.text(ax_histy.get_xlim()[1]*0.9, d7_mean, f"{d7_mean:.2f}", ha='right', va='center', fontsize=10)
 
     # Calculate % of points in each quadrant and annotate
     total = len(d3)
@@ -1118,3 +1124,170 @@ def plot_dByStudy(d_3T, d_7T,
             print(f"Figure saved to ({file_size:0.2f} MB): {save_path}")
 
     return save_path
+
+def btwD_vis(dl, save_path,
+             key_winD = 'df_d_ic', idx_winD = ['d_TLE_ic_ipsiTo-L'], 
+             key_btwD = 'comps_df_d_ic', idx_btwD = ['d_TLE_ic_ipsiTo-L_Δd', 'd_TLE_ic_ipsiTo-L_Δd_by3T', 'd_TLE_ic_ipsiTo-L_Δd_by7T'], 
+             test=False):
+    """
+    Visualize between study D-score comparisons.
+
+    Parameters
+    ----------
+    dl : list of dict
+        List of dictionaries containing data and metadata for each analysis.
+    save_path: str
+    
+    key_winD : str, optional
+        Key for the dataframe with within-study D-score data in the dictionaries (default is 'df_d_ic').
+    idx_winD : list of str, optional
+        List of indices (i.e. row names) to extract from the within-study D-score dataframe (default is ['d_TLE_ic_ipsiTo-L']).
+    key_btwD : str, optional
+        Key for the dataframe with between-study D-score data in the dictionaries (default is 'comps_df_d_ic').
+    idx_btwD : list of str, optional
+        List of indices (i.e. row names) to extract from the between-study D-score dataframe (default is ['d_TLE_ic_ipsiTo-L_Δd', 'd_TLE_ic_ipsiTo-L_Δd_by3T', 'd_TLE_ic_ipsiTo-L_Δd_by7T']).
+    
+    test : bool, optional
+        If True, runs in test mode (default is False).
+    """
+    import pandas as pd
+    import datetime
+    import tTsTGrpUtils as tsutil
+    
+    counter = 0
+    now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+    commonNames = set()
+
+    for i, item in enumerate(dl):
+        counter += 1
+        #print(item.keys())
+        
+        title = tsutil.printItemMetadata(item, return_txt = True)
+        
+        commonName =  f"{item.get('region', None)}_{item.get('feature', None)}_{item.get('label', None)}_{item.get('smth', None)}mm"
+        commonNames.add(commonName)
+        
+        print(f"\n\t{title}")
+        region = item.get('region', None)
+        if region is not None:
+            if region == 'hippocampus':
+                key_str = 'dk25'
+            elif region == 'cortex':
+                key_str = 'glsr'
+            else:
+                ValueError(f"Region not recognized: {region}")
+        else:
+            ValueError("Region key not found.")
+
+        # load dataframes with raw D-scores per study
+        df_D_ic = item.get(key_winD, None)
+        if df_D_ic is not None and isinstance(df_D_ic, list):
+            #print(f"{len(df_D_ic)}: {df_D_ic}")
+            
+            dfs = [] # initilaize
+            for study, df in zip(item.get('studies', None), df_D_ic):
+                
+                df_in = tsutil.loadPickle(df, verbose = False)
+                
+                try:
+                    df_in = df_in.loc[idx_winD] # extract index of interest
+                except Exception as e:
+                    print(f"WARNING. Could not extract index `{idx_winD}` from df_in [Type: {type(df_in)}]. Error: {e}")
+                    continue
+                
+                if study == 'MICs':
+                    # add suffix to index names
+                    suf = '3T'
+                elif study == 'PNI':
+                    suf = '7T'
+                else:
+                    ValueError(f"Study not recognized: {study}")
+                df_in.index = [f"{idx}_{suf}" for idx in df_in.index]
+                
+                #print(f"\t{study}: {df_in.index}")
+                dfs.append(df_in)
+            
+            # combine D-scores from both studies
+            if len(dfs) < 2:
+                print(f"WARNING. Did not find both studies. Skipping.")
+                continue
+            df_D_ic = pd.concat(dfs, axis=0)
+
+        elif df_D_ic is None:
+            print("WARNING. Key not found: df_maps_parc_d_score")
+            continue
+        else:
+            print(f"df_D_ic is of an unrecognized type: {type(df_D_ic)}. Skipping")
+            continue
+        
+        try: # sort col names
+            df_D_ic = tsutil.sortCols(df_D_ic)
+        except Exception as e:
+            print(f"WARNING. Could not sort df_D_ic [Type: {type(df_D_ic)}]. Error: {e}")
+            continue
+
+        #print(f"\t\tWithin study df <{df_D_ic.shape}>: {df_D_ic.index.tolist()}")
+
+        df_dD_ic = item.get(key_btwD, None)
+        if df_dD_ic is not None and isinstance(df_dD_ic, str):
+            df_dD_ic = tsutil.loadPickle(df_dD_ic, verbose = False)
+
+            try:
+                df_dD_ic = df_dD_ic.loc[idx_btwD] # extract appropriate row from df_d
+            except Exception as e:
+                print(f"WARNING. Could not extract index `{idx_btwD}` from df_dD_ic [Type: {type(df_dD_ic)}]. Error: {e}")
+                continue
+        elif df_dD_ic is None:
+            print("WARNING. Key not found: df_maps_parc_d_score")
+            continue
+        else:
+            assert isinstance(df_dD_ic, pd.DataFrame), f"df_d not a dataframe nor string: {type(df_dD_ic)}"
+
+        try:
+            df_dD_ic_srt = tsutil.sortCols(df_dD_ic)
+            #print("cols sorted")
+        except Exception as e:
+            print(f"WARNING. Could not sort `df_dD_ic` (Type: {type(df_dD_ic)}). Error: {e}")
+            continue
+        
+        if item.get('region', None) == 'cortex':
+            parc_lbl = 'GLASSER Parcel'
+        elif item.get('region', None) == 'hippocampus':
+            parc_lbl = 'DK25 Parcel'
+        else:
+            parc_lbl = 'Vertex/Parcel'
+
+        # concat within study and between study D-statistics
+        df = pd.concat([df_D_ic, df_dD_ic], axis=0)
+
+        # plot scatter plot with difference statistics
+        plt1 = plot_dD(df, title = title, 
+                            xlbl = parc_lbl, 
+                            sorted = True, 
+                            save_path = f"{save_path}/01_{commonName}_{now}.png",
+                            verbose = False)
+        
+        # plot 3T vs 7T cohen's D scatter plot
+        plt2 = plot_dByStudy(d_3T = df_D_ic.loc['d_TLE_ic_ipsiTo-L_3T'],
+                                d_7T = df_D_ic.loc['d_TLE_ic_ipsiTo-L_7T'],
+                                ylbl = "Cohen's D 7T (TLE vs CTRL)",
+                                xlbl = "Cohen's D 3T (TLE vs CTRL)",
+                                scatter_lbl = parc_lbl,
+                                title = title,
+                                save_path = f"{save_path}/02_{commonName}_{now}.png",
+                                verbose = False)
+
+        # merge plots into pdfs
+        pdf_pth = pngs2pdf(fig_dir = save_path, 
+                        ptrn = commonName,
+                        output = save_path,
+                        cleanup = True,
+                        verbose = True)
+
+        if test:
+            print("TEST IS TRUE?")
+            if counter == 1:
+                break
+    
+    print(f"\nCompleted btwD_vis for {counter} analyses.")
+    return
