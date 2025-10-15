@@ -1,3 +1,131 @@
+##### Functions common to multiple plotting steps
+def filt_dl(dl, key_ft, foi, key_ids, verbose = True):
+    """
+    From a list of dictionary items, return only items whose feature is in features of interest and with non-0 ctrl and groups
+    
+    Parameters
+    ----------
+    dl: list of dict
+        each dict contains at least keys key_ft, key_ids
+
+    key_ft: str
+        key in each dict for feature name
+    foi: list of str
+        features of interest
+    key_ids: lst
+        list of lists of strings refering to keys for list of participant IDs. Checks that at least one key within each sublist is non-zero.
+        e.g.: [['IDs_ctrl], ['IDs_grp_L', 'IDs_grp_R']] -> will ensure that IDs_ctrl is non-empty and at least one of IDs_grp_L or IDs_grp_R is non-empty
+    
+    output
+    ----------
+    dlf: filtered list of dict items
+    """
+    dlf = []
+    for item in dl:
+        try:
+            if item[key_ft] in foi:
+                ids_ok = True
+                for id_keys in key_ids:
+                    # Ensure at least one key in id_keys is present, not None, and its value is a non-empty list
+                    if not any(item.get(k) is not None and isinstance(item.get(k), list) and len(item.get(k)) > 0 for k in id_keys):
+                        ids_ok = False
+                        break
+                if ids_ok:
+                    dlf.append(item)
+        except Exception as e:
+            print(f"[filt_items] Skipping item due to error: {e}")
+            continue
+    if verbose:
+        print(f"[filt_items] Filtered {len(dl)} -> {len(dlf)} items based on features of interest and non-empty IDs.")
+    return dlf
+
+def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
+    """
+    Combine PNGs in fig_dir whose filename contains `ptrn` into a single PDF.
+
+    Input:
+        fig_dir: Directory containing png files.
+        ptrn: substring to match in filenames (only files containing this substring are included).
+        
+        output: Directory to save output pdf file. If None, saves in fig_dir.
+        cleanup: bool, if True, delete individual PNGs after creating PDF
+        verbose: bool, print progress
+    Output:
+        Path to created PDF (or None if nothing matched)
+    """
+    import os
+    import datetime
+    from PIL import Image
+
+    if output is None:
+        output = fig_dir
+    else:
+        os.makedirs(output, exist_ok=True)
+        if verbose:
+            print(f"[pngs2pdf] Created/using output directory: {output}")
+
+    if not os.path.isdir(fig_dir):
+        if verbose:
+            print(f"[pngs2pdf] fig_dir does not exist: {fig_dir}")
+        return None
+
+    # Find PNG files containing the pattern
+    files = [f for f in os.listdir(fig_dir)
+             if os.path.isfile(os.path.join(fig_dir, f)) and f.lower().endswith('.png') and ptrn in f]
+
+    if not files:
+        if verbose:
+            print(f"[pngs2pdf] No PNG files containing pattern '{ptrn}' found in {fig_dir}")
+        return None
+
+    # Sort files alphabetically (simple deterministic order)
+    files = sorted(files)
+
+    # Build output filename
+    safe_ptrn = ptrn.replace(os.sep, "_")
+    time_stmp = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+    output_pdf = os.path.join(output, f"{safe_ptrn}_{time_stmp}.pdf")
+
+    images = []
+    for fname in files:
+        p = os.path.join(fig_dir, fname)
+        try:
+            img = Image.open(p)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            images.append(img)
+        except Exception as e:
+            if verbose:
+                print(f"[pngs2pdf] Skipping {p}: {e}")
+
+    if not images:
+        if verbose:
+            print(f"[pngs2pdf] No images could be opened for pattern '{ptrn}' in {fig_dir}")
+        return None
+
+    # Save combined PDF
+    try:
+        images[0].save(output_pdf, save_all=True, append_images=images[1:])
+        if verbose:
+            print(f"[pngs2pdf] PDF created: {output_pdf}")
+    except Exception as e:
+        if verbose:
+            print(f"[pngs2pdf] Failed to save PDF {output_pdf}: {e}")
+        return None
+
+    if cleanup:
+        for fname in files:
+            p = os.path.join(fig_dir, fname)
+            try:
+                os.remove(p)
+                if verbose:
+                    print(f"[pngs2pdf] Deleted: {p}")
+            except Exception as e:
+                if verbose:
+                    print(f"[pngs2pdf] Failed to delete {p}: {e}")
+
+    return output_pdf
+
 # functions to create stacked histograms
 def dCor(d_a, d_b, verbose = False):
     from scipy.stats import pearsonr
@@ -250,7 +378,7 @@ def group_hist(df_pths, labels, bounds=[-10,10], save_path=None):
         plt.show()
 
 
-
+### Plot raw data to z-score distributions
 def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
     """
     Create figure object with control mean and std shaded area
@@ -300,7 +428,6 @@ def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
     fig.tight_layout()
 
     return fig, ax, x, cols, df_ctrl
-
 
 def plot_rawToZ(
     ctrl_fig_ax, df_grp, df_grp_z, id, save_pth, save_name, title=None,
@@ -421,97 +548,8 @@ def plot_rawToZ(
         fig.savefig(name, bbox_inches='tight', dpi=300)
         plt.close(fig)
         if verbose:
-            print(f"[rawToZ_plot_ctrl_ax] Saved: {name}")
+            print(f"[plot_rawToZ] Saved: {name}")
         return name
-
-
-def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
-    """
-    Combine PNGs in fig_dir whose filename contains `ptrn` into a single PDF.
-
-    Input:
-        fig_dir: Directory containing png files.
-        ptrn: substring to match in filenames (only files containing this substring are included).
-        
-        output: Directory to save output pdf file. If None, saves in fig_dir.
-        cleanup: bool, if True, delete individual PNGs after creating PDF
-        verbose: bool, print progress
-    Output:
-        Path to created PDF (or None if nothing matched)
-    """
-    import os
-    import datetime
-    from PIL import Image
-
-    if output is None:
-        output = fig_dir
-    else:
-        os.makedirs(output, exist_ok=True)
-        if verbose:
-            print(f"[pngs2pdf] Created/using output directory: {output}")
-
-    if not os.path.isdir(fig_dir):
-        if verbose:
-            print(f"[pngs2pdf] fig_dir does not exist: {fig_dir}")
-        return None
-
-    # Find PNG files containing the pattern
-    files = [f for f in os.listdir(fig_dir)
-             if os.path.isfile(os.path.join(fig_dir, f)) and f.lower().endswith('.png') and ptrn in f]
-
-    if not files:
-        if verbose:
-            print(f"[pngs2pdf] No PNG files containing pattern '{ptrn}' found in {fig_dir}")
-        return None
-
-    # Sort files alphabetically (simple deterministic order)
-    files = sorted(files)
-
-    # Build output filename
-    safe_ptrn = ptrn.replace(os.sep, "_")
-    time_stmp = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
-    output_pdf = os.path.join(output, f"{safe_ptrn}_{time_stmp}.pdf")
-
-    images = []
-    for fname in files:
-        p = os.path.join(fig_dir, fname)
-        try:
-            img = Image.open(p)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            images.append(img)
-        except Exception as e:
-            if verbose:
-                print(f"[pngs2pdf] Skipping {p}: {e}")
-
-    if not images:
-        if verbose:
-            print(f"[pngs2pdf] No images could be opened for pattern '{ptrn}' in {fig_dir}")
-        return None
-
-    # Save combined PDF
-    try:
-        images[0].save(output_pdf, save_all=True, append_images=images[1:])
-        if verbose:
-            print(f"[pngs2pdf] PDF created: {output_pdf}")
-    except Exception as e:
-        if verbose:
-            print(f"[pngs2pdf] Failed to save PDF {output_pdf}: {e}")
-        return None
-
-    if cleanup:
-        for fname in files:
-            p = os.path.join(fig_dir, fname)
-            try:
-                os.remove(p)
-                if verbose:
-                    print(f"[pngs2pdf] Deleted: {p}")
-            except Exception as e:
-                if verbose:
-                    print(f"[pngs2pdf] Failed to delete {p}: {e}")
-
-    return output_pdf
-
 
 def plot_zToD(df_grp, df_ctrl, df_d, 
               d_mode = 'rect', xlbl="Vertex/Parcel", ylbl="Z-Score", dlab="Cohen's D", title=None, 
@@ -780,6 +818,324 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     
     return pth
 
+def z2D_vis(dl, save_path,
+            key_dfs_raw = ['df_maps_parc_glsr_mean', 'df_maps_parc_dk25_mean'],
+            marks = True,
+            verbose = False, test = False):
+    """
+    Visualize within study Z-scoring to Cohen's D computations.
+    NOTE. Made to only accept z-scores. Would need to change savenaming methods to accept w-scores
+    Parameters
+    ----------
+    dl: list of dict
+        List of dictionarries containing data and metadata for each analysis.
+    save_path: str
+    
+    key_dfs_raw: list of str
+        List of keys in each item of dl that contain raw data DataFrames.
+    marks: bools
+        If True, use scatterplot. If false, use line plots.
+    
+    verbose: bool
+        If True, print progress messages.
+    test: bool
+        If True, only process the first item in dl for testing purposes.
+    """
+    import pandas as pd
+    import tTsTGrpUtils as tsutil
+    import datetime
+    import os
+
+
+    counter = 0
+    for index, item in enumerate(dl): # iterate over all items
+        counter += 1  
+        item_txt = tsutil.printItemMetadata(item, return_txt = True)
+        print(f"\n{item_txt}")
+
+        item_sv_name = f"{item.get('study',None)}_{item.get('region', None)}_{item.get('feature', None)}_{item.get('label', None)}_{item.get('smth', None)}"
+        
+        ids_ctrl = item['ctrl_IDs']
+        ids_tle_r = item['TLE_R_IDs']
+        ids_tle_l = item['TLE_L_IDs']
+        ids_tle = ids_tle_r + ids_tle_l
+        
+        print(f"\t{len(ids_ctrl)} CTRL | {len(ids_tle)} TLE [{len(ids_tle_r)} R, {len(ids_tle_l)} L]")
+
+        for raw_key in key_dfs_raw:
+            
+            item_sv_name = f"{item_sv_name}_{raw_key}"
+
+            now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+            
+            if verbose:
+                print(f"\n\t{raw_key}:")
+            df_raw  = item.get(raw_key, None)
+            if df_raw is None:
+                print(f"\t\tKey not found. Skipping.")
+                continue
+            df_raw = tsutil.loadPickle(df_raw, verbose = False)
+
+            df_raw_crtl = df_raw[df_raw.index.isin(ids_ctrl)]
+            df_raw_ctrl_mn = df_raw_crtl.mean()
+            df_raw_ctrl_std = df_raw_crtl.std()
+            df_raw_ctrl_stats = pd.concat([df_raw_ctrl_mn, df_raw_ctrl_std], axis=1).T
+            df_raw_ctrl_stats.index = ['mean', 'std']
+
+            if verbose:
+                print(f"\t\tShape of all raw data: {df_raw.shape}")
+                print(f"\t\tShape of raw_ctrls: {df_raw_crtl.shape}")
+
+            # iterate over patients
+            df_raw_grp = df_raw_crtl = df_raw[df_raw.index.isin(ids_tle)]
+            if verbose:
+                print(f"\t\tShape of raw_grp: {df_raw_grp.shape}")
+            z_key = f'{raw_key}_z'
+            df_z_grp = item.get(z_key, None)
+            if df_z_grp is None:
+                print(f"\t\tKey not found: {z_key}. Skipping z-score part.")
+                continue
+            df_z = tsutil.loadPickle(df_z_grp, verbose = False)
+            df_z_grp = df_z[df_z.index.isin(ids_tle)]
+            if verbose:
+                print(f"\t\tShape of z_grp: {df_z_grp.shape}")
+
+            # sort column names by L/R and increasing index number
+            df_raw_ctrl_stats_srt = tsutil.sortCols(df_raw_ctrl_stats)
+            df_raw_grp_srt = tsutil.sortCols(df_raw_grp)
+            df_z_grp_srt = tsutil.sortCols(df_z_grp)
+
+            # create the ctrl axis object since it is the same for all patients that follow. Pass this axis and add to it for each patient
+            ctrl_fig_ax = get_ctrl_ax(df_raw_ctrl_stats_srt, ylbl = f"Raw {item.get('feature', None)} values", marks = marks)
+            
+            # show ctrl_fig
+            figs = []
+            for i, pid in enumerate(df_raw_grp_srt.index):
+                save_name = f"{item_sv_name}_{index}_{i}_{now}"
+                #print(f"\t\t\t{save_name}")
+                
+                fig_pth = plot_rawToZ(ctrl_fig_ax = ctrl_fig_ax,
+                    df_grp = df_raw_grp_srt.loc[pid].values,
+                    df_grp_z = df_z_grp_srt.loc[pid].values,
+                    id = pid,
+                    save_pth = f"{save_path}/raw",
+                    save_name = save_name,
+                    marks = marks,
+                    color_by_z = True)
+                
+                figs.append(fig_pth)
+
+            # merge figures and deleted raw images
+            pngs2pdf(fig_dir = f"{save_path}/raw", 
+                            ptrn = item_sv_name,
+                            output = save_path)
+            # delete files in figs
+            for f in figs:
+                try:
+                    os.remove(f)
+                except:
+                    pass
+        if test and counter == 1:
+            print("\t[test] Stopping after first item.")
+            break
+
+### Plot % voxels above z-threshold: horizontal bar graph, plotted on surface
+def h_bar_percVrtx(item, key_df_raw, key_df_stats, idx_thresh = 'z_thresh'):
+    """
+    Input:
+        item: dict
+
+        key_df_raw: str
+            subjects x parcels with boolean values (can be ipsi/contra flipped)
+        key_df_stats: str
+            dataframe with statistics including z-threshold value
+        idx_thresh: str
+            index in df_stats with threshold value
+        
+    """
+    import tTsTGrpUtils as tsutil
+    import pandas as pd
+
+    region = item['region']
+    surf = item['surf']
+
+    df_raw = item[key_df_raw]
+    if isinstance(df_raw, str):
+        df_raw = tsutil.loadPickle(df_raw, verbose = False)
+    elif not isinstance(df_raw, pd.DataFrame):
+        raise ValueError(f"df not a dataframe nor string: {type(df_raw)}")
+
+    df_stats = item[key_df_stats]
+    if isinstance(df_stats, str):
+        df_stats = tsutil.loadPickle(df_stats, verbose = False)
+    elif not isinstance(df_stats, pd.DataFrame):
+        raise ValueError(f"df not a dataframe nor string: {type(df_stats)}")
+    
+    thresh = df_stats.loc['z_thresh'] # Series object with length of parcels
+    if not (thresh == thresh.iloc[0]).all(): # ensure that all values in thresh are identical
+        raise ValueError("Threshold values are not identical across parcels.")
+    thresh = float(thresh.iloc[0])
+    thresh_lbl = str(thresh).replace(".", "p")
+
+    if region == "cortex": # get lobar parcellation via glasser
+        tsutil.apply_glasser()
+    elif region == "hippocampus":
+
+
+### Within study Z-score distribution to Cohen's D
+def winD_vis(dl, save_path,
+             key_df_d = 'df_d_ic', idx_d = 'd_TLE_ic_ipsiTo-L', 
+             test = False, verbose = False):
+    """
+    Parcel-wise z-score distributions and corresponding D-scores for matched 3T and 7T studies.
+    NOTE. Assumes naming structure of df with z-scores.
+
+    Parameters
+    ----------
+    dl: list of dict
+        List of dictionarries containing data and metadata for each analysis.
+    save_path: str
+        
+    key_df_d: str
+        Key in each item of dl that contain d-scoring DataFrame.
+    idx_d: str
+        Index in df_d DataFrame to plot.
+    """
+    
+    import datetime
+    import tTsTGrpUtils as tsutil
+    import pandas as pd
+    
+    skip_idx = []
+    counter = 0
+    now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+    commonNames = set()
+
+    for i, item in enumerate(dl):
+        
+        # find pair
+        if i in skip_idx:
+            continue
+
+        idx_other = tsutil.get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth', 'parcellation'], skip_idx=[i])
+        if idx_other is None:
+            continue
+        else:
+            skip_idx += [i, idx_other]
+            counter += 1
+        
+        if counter % 10 == 0:
+            print(f"Progress: {counter} pairs of {len(dl)//2}")
+
+        tT_idx, sT_idx = tsutil.determineStudy(dl, i, idx_other, study_key = 'study')
+        
+        tT_item = dl[tT_idx]
+        sT_item = dl[sT_idx]
+
+        title = tsutil.printItemMetadata(tT_item, return_txt = True, printStudy=False)
+        
+        commonName =  f"{tT_item.get('region', None)}_{tT_item.get('parcellation', None)}_{tT_item.get('feature', None)}_{tT_item.get('label', None)}"
+        commonNames.add(commonName)
+        
+        save_name = f"{commonName}_{tT_item.get('smth', None)}_{now}"
+        print(f"\n[{i}, {idx_other}]\t{title}")
+        region = item.get('region', None)
+        if region is not None:
+            if region == 'hippocampus':
+                key_str = 'dk25'
+            elif region == 'cortex':
+                key_str = 'glsr'
+            else:
+                ValueError(f"Region not recognized: {region}")
+        else:
+            ValueError("Region key not found.")
+
+        # load dataframes
+        dfs_d = []
+        dfs_grp = []
+        dfs_ctrl = []
+        
+        for itm_study in  [tT_item, sT_item]:
+
+            df_d_ic = itm_study.get(key_df_d, None)
+            if df_d_ic is not None and isinstance(df_d_ic, str):
+                df_d_ic = tsutil.loadPickle(df_d_ic, verbose = False)
+            elif df_d_ic is None:
+                print("WARNING. Key not found: df_maps_parc_d_score")
+                continue
+            else:
+                assert isinstance(df_d_ic, pd.DataFrame), f"df_d not a dataframe nor string: {type(df_d_ic)}"
+            #print(f"\tRetrieving d values for index {d_key}. [Available indices: {df_d_ic.index.tolist()}]")
+            
+            try:
+                df_d_ic_srt = tsutil.sortCols(df_d_ic)
+                d_ic = df_d_ic_srt.loc[idx_d] # extract appropriate row from df_d
+            except Exception as e:
+                print(f"Type df_d_ic: {type(df_d_ic)}")
+                print(f"WARNING. Could not retrieve d values for index {idx_d}. Error: {e}")
+                print(f"Indices:\n{df_d_ic.index.tolist()}")
+                continue
+
+            df_grp_ic_key = f"df_maps_parc_{key_str}_mean_z_TLE_ic"
+            df_grp_ic = itm_study.get(df_grp_ic_key, None)
+            if df_grp_ic is not None and isinstance(df_grp_ic, str):
+                df_grp_ic = tsutil.loadPickle(df_grp_ic, verbose = False)
+            elif df_grp_ic is None:
+                print(f"WARNING. Key not found: {df_grp_ic_key}")
+                continue
+            else:
+                assert isinstance(df_grp_ic, pd.DataFrame), f"df_grp not a dataframe nor string: {type(df_grp_ic)}"
+            df_grp_ic = tsutil.sortCols(df_grp_ic)
+
+            df_ctrl_key = f"df_maps_parc_{key_str}_mean_z_ctrl"
+            df_ctrl = itm_study.get(df_ctrl_key, None)
+            if df_ctrl is not None and isinstance(df_ctrl, str):
+                df_ctrl = tsutil.loadPickle(df_ctrl, verbose = False)
+            elif df_ctrl is None:
+                ValueError(f"Key not found: {df_ctrl_key}")
+            else:
+                assert isinstance(df_ctrl, pd.DataFrame), f"df_ctrl not a dataframe nor string: {type(df_ctrl)}"
+
+            # rename ctrl columns ipsi/contra
+            ispiTo = itm_study.get('ipsiTo', None)
+            df_ctrl_ic = df_ctrl.copy()
+            if ispiTo is not None:
+                if ispiTo == 'L':
+                    df_ctrl_ic.columns = [col.replace('_L', '_ipsi').replace('_R', '_contra') for col in df_ctrl_ic.columns]
+                elif ispiTo == 'R':
+                    df_ctrl_ic.columns = [col.replace('_R', '_ipsi').replace('_L', '_contra') for col in df_ctrl_ic.columns]
+                else:
+                    ValueError(f"ipsiTo not recognized: {ispiTo}")
+            else:
+                df_ctrl_ic.columns = [col.replace('_L', '_ipsi').replace('_R', '_contra') for col in df_ctrl_ic.columns]
+                print("Warning: ipsiTo key not found. Defaulting to `L`.")
+            df_ctrl_ic = tsutil.sortCols(df_ctrl_ic)
+
+            
+            dfs_d.append(d_ic)
+            dfs_grp.append(df_grp_ic)
+            dfs_ctrl.append(df_ctrl_ic)
+            #print(f"\t[{item['study']}] d: {df_d_ic.shape}\tgrp: {df_grp_ic.shape}\tctrl: {df_ctrl_ic.shape}")
+
+        if len(dfs_d) != 2 or len(dfs_grp) != 2 or len(dfs_ctrl) != 2:
+            print("Warning: Did not find pairs for both studies. Skipping.")
+            continue
+        
+        path = plot_zToD(df_grp = dfs_grp, df_ctrl = dfs_ctrl, df_d = dfs_d,
+                        d_mode = 'rect', xlbl="Vertex/Parcel", ylbl="Z-Score", dlab="Cohen's D", title=title,
+                        save_path = f"{save_path}/raw", save_name = save_name, verbose = True)
+        
+        if test and counter == 1:
+            break
+
+    for commonName in commonNames:
+        print(commonName)
+        pngs2pdf(fig_dir = save_path, 
+                        ptrn = commonName,
+                        output = save_path)
+
+
+### Between stduy D-score statistics
 def plot_dD(df, 
             title=None, xlbl=None, ylbl=None, sorted=True, save_path=None, verbose = False):
     """
@@ -1153,7 +1509,7 @@ def btwD_vis(dl, save_path,
     import pandas as pd
     import datetime
     import tTsTGrpUtils as tsutil
-    
+
     counter = 0
     now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
     commonNames = set()

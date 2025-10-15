@@ -3282,7 +3282,7 @@ def toIC(df_r, df_l):
     # if pathology on L then col names ending with _L --> ipsi, _R --> contra
     df_l_ic = df_l.rename(columns=lambda x: x.replace('_L', '_ipsi').replace('_R', '_contra') if x.endswith('_L') or x.endswith('_R') else x)
     
-    df_ic = pd.concat([df_r_ic, df_l_ic], axis=0) # concatenate both dataframes
+    df_ic = pd.concat([df_l_ic, df_r_ic], axis=0) # concatenate both dataframes
 
     return df_ic
 
@@ -4598,8 +4598,16 @@ def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
     if verbose:
         cols_list = list(dict.fromkeys(df.columns))
         print(f"[rlbl_vrtx] Input cols (first 5 and last 5 cols): ({list(cols_list[:5] + cols_list[-5:])})")
-    # split df into cols for each hemi
-    if ipsiTo is not None:
+    
+    # search for suffixes and split accordingly
+    suf = ['_ipsi', '_contra', '_L', '_R']
+    suf_found = [s for s in suf if any(col.endswith(s) for col in df.columns)]
+    
+    if '_ipsi' in suf_found and '_contra' in suf_found:
+        if ipsiTo is None:
+            ipsiTo = 'L'
+            print(f"[relabel_vertex_cols] WARNING: Found columns with '_ipsi' and '_contra' suffixes but ipsiTo not provided. Defaulting to ipsiTo='L'.")
+    
         # seperate by ipsi and contra
         df_hemiIpsi = df[[col for col in df.columns if col.endswith('_ipsi')]]
         df_hemiContra = df[[col for col in df.columns if col.endswith('_contra')]]
@@ -4616,7 +4624,7 @@ def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
             df_hemiR = df_hemiIpsi
             df_hemiL = df_hemiContra
 
-    else:
+    elif '_L' in suf_found and '_R' in suf_found:
         df_hemiL = df[[col for col in df.columns if col.endswith('_L')]]
         df_hemiR = df[[col for col in df.columns if col.endswith('_R')]]
 
@@ -4628,6 +4636,8 @@ def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
             print(f"\tTotal vertices per hemi: {len(df_hemiL.columns)}")
             print(f"\tL: n unique, min, max = {len(np.unique(df_hemiL.columns.astype(int)))}, {min(df_hemiL.columns.astype(int))}, {max(df_hemiL.columns.astype(int))}")
             print(f"\tR: n unique, min, max = {len(np.unique(df_hemiR.columns.astype(int)))}, {min(df_hemiR.columns.astype(int))}, {max(df_hemiR.columns.astype(int))}")
+    else:
+        raise ValueError("[relabel_vertex_cols] Could not find appropriate hemisphere suffixes in column names. Expected '_L' and '_R' or '_ipsi' and '_contra'.")
 
     if split:
         if verbose:
@@ -4649,23 +4659,25 @@ def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
 
 def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, verbose=False):
     """
-    Input:
+    Input
+    --------
         df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both hemispheres should be present.
             should be fsLR-32k (32492 vertices per hemisphere) 
         surf: 'fsLR-32k' or 'fsLR-5k'
         labelType (case insensitive): final label to return. 
             options:
-                - 'glasser_int': integer [0:360] indicating glasser region
+                - 'glasser_int': integer [0:180] with hemi label indicating glasser region
                 - 'glasser_name_short': string with short glasser region name (e.g. 'V1', 'V2', etc)
                 - 'glasser_name_long': string with long glasser region name (e.g. 'Primary_Visual_Cortex', 'Second_Visual_Area', etc)
                 - 'lobe': string with lobe name ('Occ', 'Fr', 'Par', 'Temp')
-                - 'lobelong': string with long lobe name ('occipital', 'frontal', 'parietal', 'temporal')
+                - 'longlobe': string with long lobe name ('occipital', 'frontal', 'parietal', 'temporal')
 
         addHemiLbl: if True, adds hemisphere label to the output label.
         ipsiTo: how ipsi/contra is mapped to L/R.
             if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
             the hemisphere specified by ipsiTo ('L' or 'R'). If not provided, assumes columns end with '_L' and '_R'.
-        
+        toIC: bool TODO. IMprove this method. Likely by making relavel_vertex_cols more robust
+            if true, does not pass ipsiTo to relabel_vertex_cols
     Returns:
         df_glasser: mean values per region for the glasser atlas.
        
@@ -4685,12 +4697,15 @@ def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, ver
         raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
     
     assert df.shape[1] == nvtx*2, f"[apply_glasser] Input dataframe has {df.shape[1]} columns. Expected {nvtx*2} columns for surf {surf}."
+   
+    
     df_relbl = relabel_vertex_cols(df, ipsiTo, split = False, verbose = verbose) # remove '_L' or '_R'/'_ipsi' or '_contra' suffixes from column names, and convert to integer indices
-
+    
     # map vertex index -> region index (glasser region per vertex)
     vtx_idx = df_relbl.columns.astype(int)
     region_idxs = glasser_df['glasser'].values[vtx_idx]  # length == n_columns
-
+    
+    
     # load region details and build base name lookup
     glasser_details = pd.read_csv("/host/verges/tank/data/daniel/parcellations/glasser/glasser_details.csv")
     glasser_details.columns = [str(c).strip().replace('\ufeff', '') for c in glasser_details.columns]
@@ -4702,38 +4717,34 @@ def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, ver
     else:
         det_col = 'idx_h'
         if labelType.lower() == 'glasser_name_short':
-            det_col = 'SName'
+            det_col = 'SName_hemi'
         elif labelType.lower() == 'glasser_name_long':
-            det_col = 'LName'
+            det_col = 'LName_hemi'
         elif labelType.lower() == 'lobe':
-            det_col = 'SLobe'
+            det_col = 'SLobe_hemi'
         elif labelType.lower() == 'longlobe':
-            det_col = 'LLobe'
+            det_col = 'LLobe_hemi'
         else:
             print("[apply_glasser] Warning. Invalid labelType value, using default. Choose from 'glasser_int', 'glasser_name_short', 'glasser_name_long', 'lobe', or 'lobelong'.")
 
     names_map = glasser_details.set_index('unique_idx')[det_col].to_dict()
-        
 
-    # determine hemisphere of each vertex from original vertex index
     # nvtx is number of vertices per hemisphere (set above)
     hemi_raw = np.where(vtx_idx < nvtx, 'L', 'R')
 
     # choose suffix mapping: plain L/R or ipsi/contra if requested
     if addHemiLbl:
-        if ipsiTo is None:
-            hemi_suffix_map = {'L': 'L', 'R': 'R'}
-        else:
+        if ipsiTo is not None:
             if ipsiTo.upper() == 'L':
-                hemi_suffix_map = {'L': 'ipsi', 'R': 'contra'}
+                # replace 'L' by ipsi and R by contra in names_map
+                names_map = {k: v.replace("_L", "_ipsi").replace("_left", "_ipsi").replace("_right", "_contra").replace("_R", "_contra") if isinstance(v, str) else v for k, v in names_map.items()}
             elif ipsiTo.upper() == 'R':
-                hemi_suffix_map = {'L': 'contra', 'R': 'ipsi'}
+                names_map = {k: v.replace("_R", "_ipsi").replace("_L", "_contra") if isinstance(v, str) else v for k, v in names_map.items()}
             else:
                 raise ValueError("[apply_glasser] Invalid ipsiTo value. Choose 'L' or 'R'.")
-        final_names = [f"{names_map.get(r, r)}_{hemi_suffix_map[h]}" for r, h in zip(region_idxs, hemi_raw)]
     else:
-        final_names = [f"{names_map.get(r, r)}" for r in region_idxs]
-
+        names_map = {k: v.replace("_L", "").replace("_R", "") if isinstance(v, str) else v for k, v in names_map.items()}
+    final_names = [f"{names_map.get(reg, reg)}" for reg in region_idxs]
     df_relbl.columns = final_names
 
     return df_relbl
@@ -4853,6 +4864,273 @@ def glasser_mean(df_glasserLbl):
         df_glasser_mean: dataframe with mean values per region for the glasser atlas.    
     """
     df_glasser_mean = df_glasserLbl.groupby(df_glasserLbl.columns, axis=1).mean().reset_index(drop=True)
+
+def xtremeVrtxPerParc(item, key_df, thresh, save_path, save_name,
+                      lobes=True, verbose = False, test = False, time = None):
+    """
+    Takes a df of z-scores for each participant at each vertex.
+    Returns a summary of the number of vertices per parcel with z-values more extreme than a threshold.
+    NOTE. Ipsi/contra flips, with ipsiTo = 'L'
+    NOTE. Assumed TLE_R and TLE_L groups
+    NOTE. Output statistics are absolute counts of vertices, not the % of vertices within the parcel
+
+    Input:
+        item: dict
+            dictionary item with:
+                key_df: vertex-wise dataframe
+                region: region to determine type of parcellation
+                surf: surface type (e.g., 'fsLR-32k', 'den-0p5mm')
+        key_df: str
+            key for df of interest (usually 'df_z')
+        thresh: float
+            threshold for z-scores
+        save_path: str
+            path to save produced dataframes 
+        save_name: str
+            base name to use for saving
+
+        lobes: bool 
+            [For cortical data only] if should return lobar parcellations in addition to default parcellation. 
+        verbose: bool
+        test: bool
+            if should add 'TEST' to df naming when saving
+        time: str <optional>
+            if included, saves all items with the same time string
+
+    Output:
+        df_summary: DataFrame with number of vertices per parcel exceeding the threshold
+    """
+
+    import pandas as pd
+    import numpy as np
+
+    df = item[key_df]
+    if isinstance(df, str):
+        df = loadPickle(df)
+    elif not isinstance(df, pd.DataFrame):
+        raise TypeError(f"[xTremeVperParc] Objetc in key `{key_df}` is of type {type(df)}, not string or DataFrame.")
+    
+    region = item['region']
+    surf = item['surf']
+    ipsiTo = 'L'
+
+    if region == 'cortex':
+        df_parc = apply_glasser(df=df, surf=surf, labelType='glasser_int', addHemiLbl=True, ipsiTo=ipsiTo, verbose=False)
+        if lobes:
+            df_lobes = apply_glasser(df=df, surf=surf, labelType='longlobe', addHemiLbl=True, ipsiTo=ipsiTo, verbose=False)
+    elif region == 'hippocampus':
+        df_parc = apply_DK25(df=df, surf=surf, labelType='idx', addHemiLbl=True, ipsiTo=ipsiTo, verbose=False)
+        lobes = False
+    else:
+        raise ValueError(f"[xTremeVperParc] invalid region value `{region}`. Expecting one of 'cortex' or 'hippocampus'.")
+
+    # count number vertices per parcel
+    vPerParc = df_parc.groupby(df_parc.columns, axis=1).size()
+
+    assert vPerParc.sum() == df_parc.shape[1], "Sum of vertices per parcel should equal total number of vertices"
+
+    groups = {'ctrl': 'ctrl_IDs',
+            'TLE_ic': ['TLE_L_IDs', 'TLE_R_IDs']
+            }
+
+    for grp in groups:
+        
+        if isinstance(groups[grp], list):
+            ids = []
+            for subgrp in groups[grp]:
+                ids.extend(item[subgrp])
+        else:
+            ids = item[groups[grp]]
+        if verbose:
+            print(f"\t{grp}: {len(ids)} IDs")
+        df_parc_grp = df_parc.loc[ids]
+        
+        if verbose:
+            #print(f"Group {grp} df shape {df_z_parc_grp.shape} with cols: {list(df_z_parc_grp.columns[:5]) + ['...'] + list(df_z_parc_grp.columns[-5:])}")
+            pass
+
+        df_bool = df_parc_grp.abs() > thresh # boolean df of whether abs(z-score) exceeds threshold
+        df_sum = df_bool.groupby(df_bool.columns, axis=1).sum()
+
+        df_sum = sortCols(df_sum) # sort columns
+        
+        # Identify NaN values
+        nan_rows = df_sum[df_sum.isna().any(axis=1)]
+        if len(nan_rows) > 0:
+            print(f"[xtremeVrtxPerParc] WARNING. Group {grp} Rows with NaN values: {len(nan_rows)}")
+            print(nan_rows)
+
+        # summarise vertex counts by parcel
+        stats_dict = {
+            'vPerParc': vPerParc,
+            'n_pts': df_sum.shape[0],
+            'z_thresh': thresh,
+            'mean': df_sum.mean(axis=0),
+            'mdn': df_sum.median(axis=0).astype(int),
+            'std': df_sum.std(axis=0),
+            '25perc': df_sum.quantile(0.25, axis=0).astype(int),
+            '75perc': df_sum.quantile(0.75, axis=0).astype(int),
+            'IQR': (df_sum.quantile(0.75, axis=0) - df_sum.quantile(0.25, axis=0)).astype(int),
+            'min': df_sum.min(axis=0).astype(int),
+            'max': df_sum.max(axis=0).astype(int)
+        }
+
+        df_stats = pd.DataFrame(stats_dict).T
+        df_stats = sortCols(df_stats)
+
+        # save, add path to item
+        thresh_lbl = str(thresh).replace(".", "p")
+        if time is not None:
+            pth_sum = savePickle(obj = df_sum, root = save_path, 
+                            name = f"{save_name}_{grp}_raw",
+                            test = test, verbose = False,
+                            timeStamp = False, append = time)
+
+
+            pth_stats = savePickle(obj = df_stats, root = save_path, 
+                            name = f"{save_name}_{grp}_stats",
+                            test = test, verbose = False, 
+                            timeStamp = False, append = time)
+        
+        else:
+            pth_sum = savePickle(obj = df_sum, root = save_path, 
+                            name = f"{save_name}_{grp}_raw",
+                            test = test, verbose = False)
+            
+
+            pth_stats = savePickle(obj = df_stats, root = save_path, 
+                            name = f"{save_name}_{grp}_stats",
+                            test = test, verbose = False)
+
+
+        key_sum = f'xtremeVrtxPerParc_{key_df}_thresh-{thresh_lbl}_{grp}_raw'
+        key_stats = f'xtremeVrtxPerParc_{key_df}_thresh-{thresh_lbl}_{grp}_stats'
+        
+        item[key_sum] = pth_sum
+        item[key_stats] = pth_stats
+        
+        if verbose:
+            print(f'\t\t{key_sum}: {pth_sum}\n\t\t{key_stats}: {pth_stats}')
+        
+        if lobes: # repeat above steps for lobar parcellation
+            
+            vPerParc_lobes = df_lobes.groupby(df_lobes.columns, axis=1).size()
+            assert vPerParc_lobes.sum() == df_lobes.shape[1], "Sum of vertices per parcel should equal total number of vertices"
+            
+            df_lobes_grp = df_lobes.loc[ids] # group
+
+            df_bool = df_lobes_grp.abs() > thresh # threshold
+            df_sum = df_bool.groupby(df_bool.columns, axis=1).sum() # summarise by lobe
+            
+            # Identify NaN values
+            nan_rows = df_sum[df_sum.isna().any(axis=1)]
+            if len(nan_rows) > 0:
+                print(f"[xtremeVrtxPerParc] WARNING. Group {grp} Rows with NaN values in lobar parcellation: {len(nan_rows)}")
+                print(nan_rows)
+
+            # summarise vertex counts by parcel
+            stats_dict = {
+                'vPerParc_lobes': vPerParc_lobes,
+                'n_pts': df_sum.shape[0],
+                'z_thresh': thresh,
+                'mean': df_sum.mean(axis=0),
+                'mdn': df_sum.median(axis=0).astype(int),
+                'std': df_sum.std(axis=0),
+                '25perc': df_sum.quantile(0.25, axis=0).astype(int),
+                '75perc': df_sum.quantile(0.75, axis=0).astype(int),
+                'IQR': (df_sum.quantile(0.75, axis=0) - df_sum.quantile(0.25, axis=0)).astype(int),
+                'min': df_sum.min(axis=0).astype(int),
+                'max': df_sum.max(axis=0).astype(int)
+            }
+            df_stats = pd.DataFrame(stats_dict).T
+            df_stats = sortCols(df_stats)
+
+            # save, add path to item
+            thresh_lbl = str(thresh).replace(".", "p")
+            
+            if time is not None:
+                pth_sum = savePickle(obj = df_sum, root = save_path, 
+                            name = f"{save_name}_{grp}_lobes_raw",
+                            test = test, verbose = False,
+                                timeStamp=False, append = time)
+                pth_stats = savePickle(obj = df_stats, root = save_path, 
+                                name = f"{save_name}_{grp}_lobes_stats",
+                                test = test, verbose = False)
+            else:
+                pth_sum = savePickle(obj = df_sum, root = save_path, 
+                            name = f"{save_name}_{grp}_raw",
+                            test = test, verbose = False)
+                pth_stats = savePickle(obj = df_stats, root = save_path, 
+                                name = f"{save_name}_stats",
+                                test = test, verbose = False)
+                
+            key_sum = f'xtremeVrtxPerParc_{key_df}_thresh-{thresh_lbl}_{grp}_lobes_raw'
+            key_stats = f'xtremeVrtxPerParc_{key_df}_thresh-{thresh_lbl}_{grp}_lobes_stats'
+            
+            item[key_sum] = pth_sum
+            item[key_stats] = pth_stats
+            if verbose:
+                print(f'\t\t{key_sum}: {pth_sum}\n\t\t{key_stats}: {pth_stats}')
+
+
+    return item
+
+def get_xtremeVrtx(dl, key_df, thresh, lobes,
+                   save_path_dfs, save_path_dl_out, save_name, test = False):
+
+
+    """
+    For dict items in list of dicts, get number of extreme vertices per parcel.
+    NOTE. Calls xtremeVrtxPerParc
+
+    Parameters:
+    dl: list of dicts
+        list of dictionary items with:
+            key_df: vertex-wise dataframe
+            region: region to determine type of parcellation
+            surf: surface type (e.g., 'fsLR-32k', 'den-0p5mm')
+    thresh: float
+        threshold for z-scores. will catch all z-scores more extreme than the value 
+    lobes: bool
+        if true, returns lobar parcellation in addition to default parcelation. Only applies to cortex data
+    key_df: str
+        df holding vertex-wise z-scores.
+
+    save_path_dfs: str
+        path to save produced dataframes
+    save_path_dl_out: str
+        path to save updated dl with new paths to dataframes
+    save_name:
+
+    test: bool
+    """
+    import datetime
+
+    dl_out = []
+
+    thresh_lbl = str(thresh).replace(".", "p")
+    save_name = f"{save_name}_{thresh_lbl}"
+    if test:
+        dl = dl[0:1]
+        if not isinstance(dl, list):
+            dl = [dl]
+        print(f"[get_xtremeVrtx] TEST mode. Applying to first item only.")
+    now = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+
+    for item in dl:
+        printItemMetadata(item)
+        item_out = xtremeVrtxPerParc(item = item, key_df = key_df, thresh = thresh, lobes=lobes,
+                                     save_path = save_path_dfs, save_name = save_name,
+                                     verbose = True, test = test, time = now)
+        dl_out.append(item_out)
+    
+    # save item_out
+    path = savePickle(obj = dl_out, root = save_path_dl_out, 
+               name = save_name,
+               test = test, verbose = True,
+               timeStamp = False, append = now)
+
+    return dl_out, path
 
 
 ######################### VISUALIZATION FUNCTIONS #########################
