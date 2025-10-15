@@ -4962,7 +4962,7 @@ def xtremeVrtxPerParc(item, key_df, thresh, save_path, save_name,
 
         # summarise vertex counts by parcel
         stats_dict = {
-            'vPerParc': vPerParc,
+            'm_vertices': vPerParc,
             'n_pts': df_sum.shape[0],
             'z_thresh': thresh,
             'mean': df_sum.mean(axis=0),
@@ -5030,7 +5030,7 @@ def xtremeVrtxPerParc(item, key_df, thresh, save_path, save_name,
 
             # summarise vertex counts by parcel
             stats_dict = {
-                'vPerParc_lobes': vPerParc_lobes,
+                'm_vertices': vPerParc_lobes,
                 'n_pts': df_sum.shape[0],
                 'z_thresh': thresh,
                 'mean': df_sum.mean(axis=0),
@@ -5116,11 +5116,13 @@ def get_xtremeVrtx(dl, key_df, thresh, lobes,
             dl = [dl]
         print(f"[get_xtremeVrtx] TEST mode. Applying to first item only.")
     now = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
-
-    for item in dl:
+    print(f"[get_xtremeVrtx] Applying extreme vertex counting per parcel for {len(dl)} items in dl with threshold {thresh}\nSaving outputs to {save_path_dfs}")
+    
+    for idx, item in enumerate(dl):
         printItemMetadata(item)
+        item_name = f"idx-{idx}_{save_name}"
         item_out = xtremeVrtxPerParc(item = item, key_df = key_df, thresh = thresh, lobes=lobes,
-                                     save_path = save_path_dfs, save_name = save_name,
+                                     save_path = save_path_dfs, save_name = item_name,
                                      verbose = True, test = test, time = now)
         dl_out.append(item_out)
     
@@ -5131,6 +5133,8 @@ def get_xtremeVrtx(dl, key_df, thresh, lobes,
                timeStamp = False, append = now)
 
     return dl_out, path
+
+
 
 
 ######################### VISUALIZATION FUNCTIONS #########################
