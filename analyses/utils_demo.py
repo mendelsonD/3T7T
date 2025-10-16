@@ -885,7 +885,7 @@ def qc_combine(qc_pth, df_pths_pth, save_pth, save_name):
     time = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
 
     qc_sheet = pd.read_csv(qc_pth, dtype=str, keep_default_na=False, na_values=[])
-    
+
     # find vol_qc columns; find surf_qc cols
     qc_surf_cols = [col for col in qc_sheet.columns if col.startswith('QC_') or col.startswith('QC_')]
     qc_vol_cols = [col for col in qc_sheet.columns if col in ['T1w', 'T1map', 'FLAIR', 'DWI']]
