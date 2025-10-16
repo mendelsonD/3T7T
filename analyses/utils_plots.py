@@ -420,8 +420,8 @@ def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
     ax.legend()
 
     # set xticks sparsely to avoid overcrowding
-    if len(x) > 0:
-        step = max(1, len(cols) // 10)
+    if len(x) > 50:
+        step = max(1, len(x) // 120)
         ax.set_xticks(x[::step])
         ax.set_xticklabels([cols[i] for i in x[::step]], rotation=45, ha='right')
     ax.tick_params(axis='x', rotation=45)
@@ -430,7 +430,7 @@ def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
     return fig, ax, x, cols, df_ctrl
 
 def plot_rawToZ(
-    ctrl_fig_ax, df_grp, df_grp_z, id, save_pth, save_name, title=None,
+    ctrl_fig_ax, df_grp, df_grp_z, id, save_pth, save_name, min_val, max_value, title=None,
     marks=False, verbose=False, test=True, color_by_z=False
 ):
     """
@@ -495,15 +495,16 @@ def plot_rawToZ(
         # Use z-score to color markers, add colorbar
         norm = Normalize(vmin=-4, vmax=4)
         cmap = cm.get_cmap('bwr')
-        colors = cmap(norm(row_z))
         sc = ax_top.scatter(
             x_pos, row_raw, c=row_z, cmap='bwr', norm=norm,
-            label=f'{id} Raw (coloured by Z)', marker='o', alpha=0.8
-        )
+            label=f'{id} Raw (coloured by Z)', marker='o', alpha=0.8,
+            edgecolors='black', linewidths=0.5)
         # Add colorbar
         cbar = fig.colorbar(sc, ax=ax_top, orientation='vertical', pad=0.01)
         cbar.set_label('Z-Score')
-        cbar.set_ticks([-4, -3, -2, -1,0,1, 2,3, 4])
+        cbar.set_ticks([-4, -3, -2, -1, 0, 1, 2, 3, 4])
+
+        # set xticks
     else:
         # Plot raw values on top axis
         if marks:
@@ -523,14 +524,15 @@ def plot_rawToZ(
             ax_z.plot(x_pos, row_z, label=f'{id} Z-Score', color='red', marker='x', alpha=0.7, linewidth=1)
 
         ax_z.axhline(0, color='black', linestyle='--', linewidth=1, alpha=0.6)
-        ax_z.set_ylim(-4, 4)
         ax_z.set_ylabel("Z-Score")
         ax_z.set_xlabel('Vertex/Parcel')
         # set x ticks on bottom axis only
-        if len(x_pos) > 0:
-            step = max(1, len(cols) // 10)
+        if len(x_pos) > 50:
+            step = max(1, len(x_pos) // 2)
             ax_z.set_xticks(x_pos[::step])
             ax_z.set_xticklabels([cols[i] for i in x_pos[::step]], rotation=90, ha='right')
+
+    ax_top.set_ylim(float(min_val), float(max_value))
 
     # Titles
     if title is None:
@@ -550,6 +552,7 @@ def plot_rawToZ(
         if verbose:
             print(f"[plot_rawToZ] Saved: {name}")
         return name
+
 
 def plot_zToD(df_grp, df_ctrl, df_d, 
               d_mode = 'rect', xlbl="Vertex/Parcel", ylbl="Z-Score", dlab="Cohen's D", title=None, 
@@ -818,13 +821,15 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     
     return pth
 
-def z2D_vis(dl, save_path,
+def raw2Z_vis(dl, save_path,
             key_dfs_raw = ['df_maps_parc_glsr_mean', 'df_maps_parc_dk25_mean'],
             marks = True,
             verbose = False, test = False):
     """
     Visualize within study Z-scoring to Cohen's D computations.
     NOTE. Made to only accept z-scores. Would need to change savenaming methods to accept w-scores
+    
+    
     Parameters
     ----------
     dl: list of dict
@@ -845,15 +850,19 @@ def z2D_vis(dl, save_path,
     import tTsTGrpUtils as tsutil
     import datetime
     import os
+    import numpy as np
 
+    print(f"[z2D] Saving figures to {save_path}/raw")
 
     counter = 0
+
     for index, item in enumerate(dl): # iterate over all items
         counter += 1  
         item_txt = tsutil.printItemMetadata(item, return_txt = True)
         print(f"\n{item_txt}")
-
-        item_sv_name = f"{item.get('study',None)}_{item.get('region', None)}_{item.get('feature', None)}_{item.get('label', None)}_{item.get('smth', None)}"
+        ft = item.get('feature', None)
+        surf_lbl = item.get('label', None)
+        commonName = f"{item.get('study',None)}_{item.get('region', None)}_{item.get('feature', None)}_{item.get('label', None)}_{item.get('smth', None)}"
         
         ids_ctrl = item['ctrl_IDs']
         ids_tle_r = item['TLE_R_IDs']
@@ -864,7 +873,7 @@ def z2D_vis(dl, save_path,
 
         for raw_key in key_dfs_raw:
             
-            item_sv_name = f"{item_sv_name}_{raw_key}"
+            item_sv_name = f"{commonName}_{raw_key}"
 
             now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
             
@@ -910,6 +919,41 @@ def z2D_vis(dl, save_path,
             
             # show ctrl_fig
             figs = []
+
+            if ft == "T1map":
+                if surf_lbl == "midthickness":
+                    min_val = 1100
+                    max_val = 2400
+                elif surf_lbl == "white":
+                    min_val = 1000
+                    max_val = 1900
+                else:
+                    min_val = 1000
+                    max_val = 2400
+            elif ft == "thickness":
+                min_val = 0
+                max_val = 4.5
+            elif ft == "flair":
+                min_val = 50
+                max_val = 450
+            elif ft == "FA":
+                min_val = 0
+                max_val = 1
+            elif ft == "ADC":
+                min_val = 0
+                max_val = 0.0015
+            else:  # compute actual min and max across both control stats and patient group (handle all-NaN / empty cases)
+                ctrl_vals = df_raw_ctrl_stats_srt.values.ravel() if df_raw_ctrl_stats_srt is not None else np.array([])
+                grp_vals_all = df_raw_grp_srt.values.ravel() if df_raw_grp_srt is not None else np.array([])
+                all_vals = np.concatenate([ctrl_vals, grp_vals_all])
+                min_val = float(np.nanmin(all_vals))
+                max_value = float(np.nanmax(all_vals))
+                if np.isnan(min_val):
+                        min_val = 0
+                if np.isnan(max_value):
+                    max_value = 1.0
+
+
             for i, pid in enumerate(df_raw_grp_srt.index):
                 save_name = f"{item_sv_name}_{index}_{i}_{now}"
                 #print(f"\t\t\t{save_name}")
@@ -917,7 +961,7 @@ def z2D_vis(dl, save_path,
                 fig_pth = plot_rawToZ(ctrl_fig_ax = ctrl_fig_ax,
                     df_grp = df_raw_grp_srt.loc[pid].values,
                     df_grp_z = df_z_grp_srt.loc[pid].values,
-                    id = pid,
+                    id = pid, min_val = min_val, max_value = max_val,
                     save_pth = f"{save_path}/raw",
                     save_name = save_name,
                     marks = marks,
@@ -1247,7 +1291,7 @@ def percentXtremeVrtxPerParc_vis(dl,grp, key_df_ctx, key_df_hip, numerator, deno
             break
 
 ### Within study Z-score distribution to Cohen's D
-def winD_vis(dl, save_path,
+def z2D_vis(dl, save_path,
              key_df_d = 'df_d_ic', idx_d = 'd_TLE_ic_ipsiTo-L', 
              test = False, verbose = False):
     """
@@ -1774,6 +1818,7 @@ def btwD_vis(dl, save_path,
     import pandas as pd
     import datetime
     import tTsTGrpUtils as tsutil
+    import numpy as np
 
     counter = 0
     now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")

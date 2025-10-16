@@ -3738,6 +3738,7 @@ def btwD(dl, save_pth_df,
         d_7T - d_3T
         d_7T - d_3T / d_7T
         d_7T - d_3T / d_3T
+        d_7T - d_3T / ((d_7T + d_3T)/2)
     
     Inputs:
         dl: (list)              Dictionary items keys holding vertex-wise within study statistics for groups of interest
@@ -3959,7 +3960,10 @@ def btwD(dl, save_pth_df,
                 d_dif = df_d_stats_sT - df_d_stats_tT # 7 T - 3 T
                 d_dif_by3T = d_dif / df_d_stats_tT
                 d_dif_by7T = d_dif / df_d_stats_sT
+                d_dif_bySum = d_dif / (df_d_stats_tT + df_d_stats_sT)
+                d_dif_byMean = d_dif / ((df_d_stats_tT + df_d_stats_sT) / 2)
                 
+
                 # Stack the rows from each matrix into the metrics_df
                 d_dif_renamed = d_dif.copy()
                 d_dif_renamed.index = [idx + '_Δd' for idx in d_dif_renamed.index]
@@ -3969,6 +3973,12 @@ def btwD(dl, save_pth_df,
                 
                 d_dif_by7T_renamed = d_dif_by7T.copy()
                 d_dif_by7T_renamed.index = [idx + '_Δd_by7T' for idx in d_dif_by7T_renamed.index]
+
+                d_dif_bySum_renamed = d_dif_bySum.copy()
+                d_dif_bySum_renamed.index = [idx + '_Δd_bySum' for idx in d_dif_bySum_renamed.index]
+                
+                d_dif_byMean_renamed = d_dif_byMean.copy()
+                d_dif_byMean_renamed.index = [idx + '_Δd_byMean' for idx in d_dif_byMean_renamed.index]
 
                 metrics_df = pd.concat([d_dif_renamed, d_dif_by3T_renamed, d_dif_by7T_renamed])
 
@@ -4577,6 +4587,8 @@ def printItemMetadata(item, return_txt = False, idx=None, clean = False, printSt
     else:
         print(txt)
         
+
+####### Parcellations
 def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
     """
     Take df with columns '{idx}_{hemi}' and return two dfs, split according to hemisphere suffix.
@@ -4656,7 +4668,7 @@ def relabel_vertex_cols(df, ipsiTo=None, split = False, verbose = False):
             print("\t[relabel_vertex_cols] Returning single dataframe with combined hemispheres.")
         
         return df_out
-
+    
 def apply_glasser(df, surf, labelType=None, addHemiLbl = False, ipsiTo=None, verbose=False):
     """
     Input
@@ -4796,7 +4808,6 @@ def apply_DK25(df, surf, labelType = None, addHemiLbl = True, ipsiTo=None, verbo
     # apply labels
     df_l.columns = lbl[df_l.columns.astype(int)]
     df_r.columns = lbl[df_r.columns.astype(int)]
-   
     
     # index to appropriate labelType
     if labelType is None or labelType == 'idx': # keep index
@@ -4836,6 +4847,66 @@ def apply_DK25(df, surf, labelType = None, addHemiLbl = True, ipsiTo=None, verbo
     
     df_parc = pd.concat([df_l, df_r], axis=1)
     return df_parc
+
+def apply_piriform(df, surf, addHemiLbl, ipsiTo=None, verbose = False):
+    """
+    Apply piriform parcellation
+
+    Input:
+        df: vertex-wise dataframe with vertex in columns, pts in rows. All vertices from both
+        surf: 'fsLR-32k' or 'fsLR-5k'
+        addHemiLbl: if True, adds hemisphere label to the output label.
+        
+        ipsiTo: how ipsi/contra is mapped to L/R.
+            if provided, searches for columns ending with '_ipsi' and '_contra' and maps '_ipsi' indices to  
+            the hemisphere specified by ipsiTo ('L' or 'R'). If not provided, assumes columns end with '_L' and '_R'.
+        verbose: bool
+            If True, print progress messages.
+    """
+    import nibabel as nb
+    import numpy as np
+    import pandas as pd
+
+    piri_rt = f"export03/data/giorgia/MRI_data/group_analysis/PNI/group_mask_build"
+    
+    if surf == 'fsLR-32k':
+        lbl_file = f"GroupMask_TWIN_union_grown.piriform.32k_fsLR.func.gii"
+        nvtx = 32492
+    elif surf == 'fsLR-5k':
+        lbl_file = f"GroupMask_TWIN_union_grown.piriform.5k_fsLR.func.gii"
+        nvtx = 4842
+    else:
+        raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
+
+    lbl = nb.load(f"{piri_rt}/{lbl_file}").darrays[0].data
+
+    if verbose:
+        print(f"[apply_DK25] Label file has length {len(lbl)} (unique: {len(set(lbl))}). Path: {lbl_file}")
+
+    df_l, df_r = relabel_vertex_cols(df, ipsiTo=None, verbose = verbose, split = True)  # strip suffixes from column names   
+    
+    # apply labels
+    df_l.columns = lbl[df_l.columns.astype(int)]
+    df_r.columns = lbl[df_r.columns.astype(int)]
+
+    if addHemiLbl:
+        if ipsiTo:
+            if ipsiTo.upper() == 'L':
+                hemi_l = 'ipsi'
+                hemi_r = 'contra'
+            elif ipsiTo.upper() == 'R':
+                hemi_l = 'contra'
+                hemi_r = 'ipsi'
+        else:
+            hemi_l = 'L'
+            hemi_r = 'R'
+        
+    df_l.columns = [f"{col:g}_{hemi_l}" if isinstance(col, (int, float, np.integer, np.floating)) else f"{col}_{hemi_l}" for col in df_l.columns]
+    df_r.columns = [f"{col:g}_{hemi_r}" if isinstance(col, (int, float, np.integer, np.floating)) else f"{col}_{hemi_r}" for col in df_r.columns]
+    df_parc = pd.concat([df_l, df_r], axis=1)
+    
+    return df_parc
+
 
 def addHemifromParc(df, parc):
     """
