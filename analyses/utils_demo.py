@@ -596,7 +596,7 @@ def grpChk(df, grp_cols=['grp', 'grp_detailed']):
 def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=None):
     """
     From a dataframe with demographic information and features of interest, create a QC sheet to complete manually.
-    TODO. Add also surface QC column as well as paths to surfaces (cortical, hippocampal).
+    TODO. ORDER volumes consistently (T1w, T1map, FLAIR, [diffusion])
     NOTE. Inclues minimum dice score for hippocampal surfaces as QC value
 
     NOTE. Currently assumes df has columns 'MICS_ID', 'PNI_ID', 'study', 'SES'
@@ -809,6 +809,7 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
         if currentQC is not None:
             if os.path.isfile(currentQC):
                 df_currentQC = pd.read_csv(currentQC, dtype=str, keep_default_na=False, na_values=[])
+                
                 # match on ID, SES
                 # NOTE. UID assignment may differ between sheets, so do not match on that
                 logger.info(f"[mk_qcSheet] Merging existing QC sheet from {currentQC}")
@@ -861,3 +862,99 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
         return None, None
     
     return qc_sheet, out_pth
+
+
+def qc_combine(qc_pth, df_pths_pth, save_pth, save_name):
+    """
+    Combines QCs columns for volumes and surfaces by taking the minimum value for each comparison
+    Adds only combined QC cols to df_paths dataframe
+
+    Input:
+        qc_pth: str
+            Path to completed QC sheet
+        df_pths_pth: str
+            Path to the dataframe with demographic information, features of interest and map paths
+        
+        save_pth: str
+            Path to save the output QC file
+        save_name: str
+            Name of the output QC file (without path)
+    """
+    import datetime
+    print(f"[qc_combine] Combining QC columns from {qc_pth} with df paths from {df_pths_pth}")
+    time = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
+
+    qc_sheet = pd.read_csv(qc_pth, dtype=str, keep_default_na=False, na_values=[])
+    
+    # find vol_qc columns; find surf_qc cols
+    qc_surf_cols = [col for col in qc_sheet.columns if col.startswith('QC_') or col.startswith('QC_')]
+    qc_vol_cols = [col for col in qc_sheet.columns if col in ['T1w', 'T1map', 'FLAIR', 'DWI']]
+    # for hippocampal surfaces, make all values > 0.7 = 2, < 0.7 = 1, 0 or NA = 0
+    if 'QC_hipSurf' in qc_surf_cols:
+        def categorize_hip_qc(val):
+            try:
+                val_float = float(val)
+                if val_float >= 0.7:
+                    return '2'
+                elif 0 < val_float < 0.7:
+                    return '1'
+                else:
+                    return '0'
+            except (ValueError, TypeError):
+                return '0'  # Treat non-numeric or missing values as 0
+
+        qc_sheet['QC_hipSurf'] = qc_sheet['QC_hipSurf'].apply(categorize_hip_qc)
+        print("[qc_combine] Converted QC_hipSurf to categorical values: 0, 1, 2")
+
+    # combine vol_QC and surf_QC columns. Should have {vol_j}_{surf_i},
+    c_cols = set()
+    for s in qc_surf_cols:
+        for v in qc_vol_cols:
+            combined_col = f"{s}_{v}"
+            c_cols.add(combined_col)
+
+            #print(combined_col)
+            if combined_col not in qc_sheet.columns:
+                qc_sheet[combined_col] = np.nan
+            # send s, v create third column which is the row-wise min
+            def min_qc(row):
+                try:
+                    val_s = int(row[s]) if row[s] not in [None, '', 'NA'] else np.nan
+                except ValueError:
+                    val_s = np.nan
+                try:
+                    val_v = int(row[v]) if row[v] not in [None, '', 'NA'] else np.nan
+                except ValueError:
+                    val_v = np.nan
+                
+                if pd.isna(val_s) or pd.isna(val_v):
+                    return np.nan
+                else:
+                    min_val = min(val_s, val_v)
+                    if min_val != 2:
+                        #print(f"\t{val_s}, {val_v} -> {min_val}")
+                        pass
+                    return min(val_s, val_v)
+            
+            qc_sheet[combined_col] = qc_sheet.apply(min_qc, axis=1)
+            
+    
+    print(f"[qc_combine] Combined QC columns created: {list(c_cols)}")
+    
+    # read in df_pths
+    df_pths = pd.read_csv(df_pths_pth, dtype=str, keep_default_na=False, na_values=[])
+    df_pths['Date'] = pd.to_datetime(df_pths['Date'], errors='coerce', dayfirst=True)
+
+    # Ensure qc_sheet 'Date' column is datetime as well to avoid dtype mismatch when merging
+    qc_sheet['Date'] = pd.to_datetime(qc_sheet['Date'], errors='coerce', dayfirst=True)
+    
+    # Add cols to df_pths
+    df_out = df_pths.merge(qc_sheet[['UID', 'Date'] + list(c_cols)], on=['UID','Date'], how='left')
+
+    # save
+    pth_out = os.path.join(save_pth, f"{save_name}_{time}.csv")
+    df_out.to_csv(pth_out, index=False)
+    print(f"[qc_combine] Saved combined QC sheet: {pth_out}")
+
+    return df_out, pth_out
+

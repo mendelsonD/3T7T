@@ -694,6 +694,37 @@ def addToSeries(col, val, series):
     
     return series
         
+def downsample_vol(vol_pth, out_pth, res=0.8):
+    """
+    Downsample a volume to a specified isotropic resolution using FSL's flirt function.
+    NOTE. Incldue .nii.gz in all paths.
+
+    Input:
+        vol_pth: path to the input volume file (.nii.gz)
+        out_pth: path to the output downsampled volume file (.nii.gz)
+        res: desired isotropic resolution in mm (default is 0.8mm)
+
+    Output:
+        out_pth: path to the downsampled volume file
+    """
+    import subprocess as sp
+
+    cmd = [
+        "flirt",
+        "-in", vol_pth,
+        "-ref", vol_pth,
+        "-applyisoxfm", str(res),
+        "-out", out_pth
+    ]
+
+    sp.run(cmd, check=True)
+
+    if not chk_pth(out_pth):
+        print(f"\t[downsample_vol] WARNING: Downsampled volume not properly saved. Expected file: {out_pth}")
+        return None
+    else:
+        print(f"\t[downsample_vol] Downsampled volume saved to: {out_pth}")
+        return out_pth
 
 def idToMap(df_demo, studies, dict_demo, specs, 
             save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
@@ -764,7 +795,8 @@ def idToMap(df_demo, studies, dict_demo, specs,
         
         def ctx_maps(out_dir, study, df, idx, sub, ses, uid, surf, ft, smth, lbl, verbose=False):
             """
-            Get or compute cortical smoothed maps for a given subject and session, surface, label, feature, and smoothing kernel size.
+            Get or compute cortical smoothed maps for 
+            a given subject and session, surface, label, feature, and smoothing kernel size.
             """
             import os
             import pandas as pd
@@ -786,7 +818,8 @@ def idToMap(df_demo, studies, dict_demo, specs,
             else:
                 out_pth_L_filename = f"hemi-L_surf-{surf}_label-{lbl}_{ft}"
                 out_pth_R_filename = f"hemi-R_surf-{surf}_label-{lbl}_{ft}"
-                                            
+
+             # extract unsmoothed maps from micapipe directory                               
             pth_map_unsmth_L = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_L_filename}.func.gii"
             pth_map_unsmth_R = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_R_filename}.func.gii"
             
@@ -807,10 +840,11 @@ def idToMap(df_demo, studies, dict_demo, specs,
             # Remove smoothing suffix for path to unsmoothed maps
             col_unsmth_L = col_smth_L.replace(f"_smth-{smth}mm", "_unsmth")
             col_unsmth_R = col_smth_R.replace(f"_smth-{smth}mm", "_unsmth")
-
-            if chk_pth(pth_map_smth_L) and chk_pth(pth_map_smth_R): # If smoothed map already exists, do not recompute. Simply add path to df.
+            
+            # If smoothed map already exist in 3T7T project directory, do not recompute. Simply add path to df.
+            if chk_pth(pth_map_smth_L) and chk_pth(pth_map_smth_R):
                 if verbose:
-                    print(f"\t\tSmoothed maps exists: {pth_map_smth_L}\t{pth_map_smth_R}\n")
+                    logger.info(f"\t\tSmoothed maps exists: {pth_map_smth_L}\t{pth_map_smth_R}\n")
                 
                 pths_series = addToSeries(col = [col_unsmth_L, col_unsmth_R, col_smth_L, col_smth_R], 
                                           val = [pth_map_unsmth_L, pth_map_unsmth_R, pth_map_smth_L, pth_map_smth_R], 
@@ -864,7 +898,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 
                 if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
                     
-                    dir_raw = f" {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
+                    dir_raw = f" {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} "
                     pth_error = "NA: NO RAWDATA"
                     logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Hemi-L unsmoothed map due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe once resolved.\n")
                 
@@ -1125,7 +1159,8 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     return df
                 else:
                     skip_L = True # cannot continue to smoothing for this hemi
-                    if verbose: print(f"\t\tSurface (R only):\t{surf_R}")
+                    if verbose: 
+                        logger.info(f"\t\tSurface (R only):\t{surf_R}")
  
             elif not chk_pth(surf_R) and not skip_R:
 
@@ -1141,7 +1176,8 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     return df
                 else:
                     skip_R = True # cannot continue to smoothing for this hemi
-                    if verbose: logger.info(f"\t\tSurface (L only):\t{surf_L}")
+                    if verbose: 
+                        logger.info(f"\t\tSurface (L only):\t{surf_L}")
 
             else:
                 if verbose:
@@ -1219,7 +1255,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 elif not checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft): # Unsmoothed map doesn't exist. Check raw data.
                     dir_raw = f" ( {study['dir_root']}{study['dir_raw']}/sub-{sub}/ses-{ses} ) "
                     data_error = "NA: NO RAWDATA"
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe and hippunfold once resolved.\n")
+                    logger.info(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Surface missing due to MISSING RAW DATA. Check raw data ( {dir_raw} ). Process with micapipe and hippunfold once resolved.\n")
                     
                     pths_series = addToSeries(col = [col_unsmth_L, col_unsmth_R, col_smth_L, col_smth_R],
                                              val = [data_error, data_error, data_error, data_error],
@@ -1228,7 +1264,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                     return df_out
                 
                 else: # Must be due to micapipe error
-                    print(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Feature volume not found. Check micapipe processing ( {os.path.dirname(vol_pth)} ). Skipping.\n")
+                    logger.info(f"\t\t[WARNING] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Feature volume not found. Check micapipe processing ( {os.path.dirname(vol_pth)} ). Skipping.\n")
                     proc_error = "NA: MISSING MP PROCESSING (volume ft map)"
                     pths_series = addToSeries(col = [col_unsmth_L, col_unsmth_R, col_smth_L, col_smth_R],
                                              val = [proc_error, proc_error, proc_error, proc_error],
@@ -1301,7 +1337,13 @@ def idToMap(df_demo, studies, dict_demo, specs,
             if len(studies) > 1:
                 raise ValueError("[idToMap] 'study' column not found in df_demo, but multiple studies provided.\n\tEither a) provide a 'study' column to df_demo to indicate which study each row belongs to OR b) keep a single dictionary item with study directory information.")
         
+        counter = 0
         for idx, row in df_demo.iterrows():
+            counter += 1
+            if counter % 20 == 0:
+                print(f"Processing row {counter} of {len(df_demo)}...")
+
+
             study_code = row['study']
             
             if dict_demo['nStudies']: # determine study dictionary item
@@ -1332,7 +1374,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
             create_dir(out_dir)
 
             if specs['ctx']:
-                print(f"\n\tCORTICAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
+                logger.info(f"\n\tCORTICAL MAPS [{study_code} sub-{sub} ses-{ses}]...")
                 
                 for ft in specs['ft_ctx']:
                     for surf in specs['surf_ctx']:
@@ -1354,7 +1396,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                                                     idx=idx, sub=sub, ses=ses, uid=uid,
                                                     surf=surf, ft=ft, smth=smth, lbl=lbl, verbose=verbose)
                             
-            print('-'*100)
+            logger.info('-'*100)
         
         if save:
             date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
@@ -4867,13 +4909,13 @@ def apply_piriform(df, surf, addHemiLbl, ipsiTo=None, verbose = False):
     import numpy as np
     import pandas as pd
 
-    piri_rt = f"export03/data/giorgia/MRI_data/group_analysis/PNI/group_mask_build"
+    piri_rt = f"/host/verges/tank/data/daniel/parcellations/piriform_GA"
     
     if surf == 'fsLR-32k':
-        lbl_file = f"GroupMask_TWIN_union_grown.piriform.32k_fsLR.func.gii"
+        lbl_file = f"GroupMask_TWIN_union_grown_piriform_fsLR-32k.func.gii"
         nvtx = 32492
     elif surf == 'fsLR-5k':
-        lbl_file = f"GroupMask_TWIN_union_grown.piriform.5k_fsLR.func.gii"
+        lbl_file = f"GroupMask_TWIN_union_grown_piriform_fsLR-5k.func.gii"
         nvtx = 4842
     else:
         raise ValueError("[apply_glasser] Invalid surf value. Choose 'fsLR-32k' or 'fsLR-5k'.")
