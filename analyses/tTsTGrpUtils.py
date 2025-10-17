@@ -726,6 +726,68 @@ def downsample_vol(vol_pth, out_pth, res=0.8):
         print(f"\t[downsample_vol] Downsampled volume saved to: {out_pth}")
         return out_pth
 
+def ds_dict(dict_in, studies, vol_ds_pth, surf_out, res):
+    """
+    Apply downsampling to a volume and project features onto a surface.
+
+
+    Input:
+        dict_in: dict
+            keys:
+                df_demo:    Participants to downsample volumes for. Should also have ID, SES cols
+                study:      Name of study
+                feature:    Feature to map
+        studies: list
+            dictionaries with information about paths for each study
+        vol_ds_pth: str
+            path to save downsampled volume
+        surf_out: str
+            what surface to project downsampled values to
+
+        res: flt 
+            desired isotropic resolution in mm. NOTE. should be resolution of equivalent 3T volume.
+    """
+
+    df_demo = dict_in['df_demo']
+    study = dict_in['study']
+
+    feature = dict_in['feature']
+    surf_lbl = dict_in['label']
+
+    study_info = [s for s in studies if s['name'] == study][0] # assumes only one match
+    
+    
+    # TAKEN FROM extractMap
+    study_name = study['name']
+    study_code = study['study']
+    
+    col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+    #
+
+    for idx, row in df_demo.iterrows():
+        sub = row[col_ID]
+        ses = str(row['SES']).zfill(2) # ensure proper leading 0
+
+        mp_vol = get_mapVol_pth(root=study_info['dir_root'] + study_info['dir_mp'], 
+                                    sub=sub, ses=ses, study=study_info['study'], feature=feature, raw=False, space="nativepro")
+        
+        if chk_pth(mp_vol):
+            out_ds_pth = vol_ds_pth + f"/sub-{sub}_ses-{ses}_desc-ds{res}mm_{feature}.nii.gz"
+            downsampled_vol = downsample_vol(vol_pth=mp_vol, out_pth=out_ds_pth, res=res) # downsample, return path
+
+            # get path to surface with label 
+            surf_lh, surf_rh = get_surf_pth(root=study_info['dir_root'] + study_info['dir_deriv_micapipe'],
+                                            sub=sub, ses=ses, lbl="midthickness", space="nativepro", surf=surf_out, verbose=False)
+            
+            out_map_lh = vol_ds_pth + f"/sub-{sub}_ses-{ses}_hemi-L_space-nativepro_surf-{surf_out}_label-midthickness_{feature}.func.gii"
+            out_map_rh = vol_ds_pth + f"/sub-{sub}_ses-{ses}_hemi-R_space-nativepro_surf-{surf_out}_label-midthickness_{feature}.func.gii"
+
+            map(vol=downsampled_vol, surf=surf_lh, out=out_map_lh, method="trilinear", verbose=True)
+            map(vol=downsampled_vol, surf=surf_rh, out=out_map_rh, method="trilinear", verbose=True)
+        else:
+            print(f"\t[ds_dict] WARNING: Raw volume not found for sub-{sub}_ses-{ses}. Skipping downsampling and mapping.")
+    pass
+
 def idToMap(df_demo, studies, dict_demo, specs, 
             save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
             verbose=False):
@@ -959,7 +1021,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                 lbl=lbl
             )
 
-            logger.warning(f"VALUE OF `pths_series` BEFORE CHECKING SURFACES:\n{pths_series}")
+            
             if not chk_pth(surf_L) and not chk_pth(surf_R) and not skip_L and not skip_R: # check that surfaces exist
                 dir_surf = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
                 logger.warning(f"\t\t[ctx_maps] {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface not found. Skipping. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
@@ -1341,7 +1403,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
         for idx, row in df_demo.iterrows():
             counter += 1
             if counter % 20 == 0:
-                print(f"Processing row {counter} of {len(df_demo)}...")
+                print(f"{datetime.datetime.now()} - Processing row {counter} of {len(df_demo)}...")
 
 
             study_code = row['study']
@@ -1733,7 +1795,6 @@ def clean_demoPths(df, nStudies, save_pth, save_name, verbose=True):
             if verbose:
                 print("\tAll rows have >= 1 acceptable QC value.")
     
-    
     # cols_toShow = ['UID', 'Date', 'study'] + cols
     # print(df_clean[cols_toShow].head())
 
@@ -1806,8 +1867,13 @@ def clean_demoPths(df, nStudies, save_pth, save_name, verbose=True):
     if verbose:
         print(f"\tParticipants removed for missing study pair: {df_rmv[df_rmv['rmv_reason'] == 'missingStudy']['UID'].unique().tolist()}")
 
+    # remove any duplicated rows
+    df_clean = df_clean.drop_duplicates().reset_index(drop=True)
+    df_rmv = df_rmv.drop_duplicates().reset_index(drop=True)
+
     # Print number of unique participants in UID before and after cleaning
     print(f"\t{df_clean.shape[0]} rows remain with {df_clean['UID'].nunique()} unique IDs (total sessions: 3T={len(df_clean[df_clean['study'] == '3T']['UID'])}, 7T={len(df_clean[df_clean['study'] == '7T']['UID'])}).")
+    
 
     if save_pth is not None:
         date = pd.Timestamp.now().strftime("%d%b%Y-%H%M%S")
@@ -1870,9 +1936,53 @@ def clean_pths(dl, method="newest", silent=True): # TODO. Add option to choose s
 
     return dl_out
 
-def clean_ses(df_in, method="oldest", toReturn = "idx", col_QC = None, col_ID="UID", col_study=None, qc_thresh = 2, verbose=False):
+def apply_QCthresh(df, col_qc, cols_effect, thresh, verbose = False):
     """
-    Choose the most recent session or the most recent session with the highest QC.
+    Take in df with cols col_qc and cols_effect. If value in col_qc < thresh, set corresponding cols_effect values to NaN.
+
+    Input:
+        df: DataFrame with columns for QC and effect values.
+        col_qc: Column name for QC values (float or integer values)
+        cols_effect: List of column names for effect values to be updated based on QC.
+        thresh: Threshold value for QC.
+
+    Return:
+        df: DataFrame with updated cols_effect values
+    """
+
+    import numpy as np
+    import pandas as pd
+
+    assert col_qc in df.columns, f"[apply_QCthresh] df must contain col_qc `{col_qc}`. Cols in df: {df.columns}"
+    for col in cols_effect:
+        assert col in df.columns, f"[apply_QCthresh] df must contain cols_effect `{col}`. Cols in df: {df.columns}"
+    
+    df_out = df.copy()
+    df_out[col_qc] = pd.to_numeric(df_out[col_qc], errors='coerce')  # Convert QC column to numeric format
+    df_out.loc[df_out[col_qc] < thresh, cols_effect] = np.nan
+    count = df_out[df_out[col_qc] < thresh].shape[0]
+    
+    count_IDs = df_out[df_out[col_qc] < thresh]['UID'].nunique()
+
+    subset = df_out[df_out[col_qc] < thresh][col_qc]
+    if verbose:
+        if subset.empty:
+            print(f"[apply_QCthresh] No rows with {col_qc} < {thresh}")
+        else:
+            vc = subset.value_counts(dropna=False)
+            print(f"[apply_QCthresh] Unique values in '{col_qc}' for rows < {thresh} (value: count):")
+            print(vc.to_string())
+    return df_out, count, count_IDs
+
+
+def clean_ses(df, method="oldest", toReturn = "idx", col_ID="UID", col_study=None, verbose=False):
+    """
+    From a df, with potentially multiple sessions per unique ID, select a single row (ie., session) per ID.
+    This function can select the final session using a variety of methods:
+        - {ses_code}: choose a specific session code (e.g., '01', 'a1', etc)
+        - newest: choose the most recent session
+        - oldest: choose the oldest session
+        
 
     inputs:
         df: pd.dataframe 
@@ -1880,181 +1990,71 @@ def clean_ses(df_in, method="oldest", toReturn = "idx", col_QC = None, col_ID="U
                 optionally also have columns: <col_study>, <col_QC>
         
         method: method to use for choosing session. 
-            TODO. "max": return session code for each column such that you maximize present data.
             "newest": use most recent session
             "oldest": use oldest session in the list - equivalent to taking the first session
             {number}: session code to use (e.g., '01' or 'a1' etc)
-            "qc": choose session with highest QC (col_QC must be provided). Ties broken by date.
         toReturn: str
             "idx": return list of indices to retain
             "df": return cleaned dataframe
         
-        col_QC: str
-            name of QC column to consider when selecting session. If provided and method in ['qc','newest','oldest']
-            then QC is used as primary sort key (date used as tie-breaker).
         col_ID: str 
-            column name for subject ID in the dataframe
+            Column name for subject ID in the dataframe
         col_study: str
-           TODO. Confirm role of studies col: Column name for study information. If None, choosing single session from repeated IDs 
-        qc_thresh: float
-            Min QC value required to keep a index. Only applied if col_QC provided. 
-            If qc_thresh is None and method == "QC", then the session with the max QC value is used, regardless of the QC value of this session.
+            Column name for study information. If None, choosing single session from repeated IDs 
             
     output:
-        if toReturn == "idx":
-            list of indices to retain
-        else:
-            cleaned dataframe, save_path (or None)
+        list: 
+            indices of rows to retain
+        OR
+        dataframe:
+            cleaned dataframe with only one session per unique ID
     """
-    
     import pandas as pd
-    import datetime
-    import os
+    import numpy as np
 
-    # checks
-    if df_in is None or df_in.empty:
-        if verbose:
-            print(f"[ses_clean] WARNING: Empty dataframe. Skipping.")
-        return [] if toReturn == "idx" else (pd.DataFrame(), None)
-
-    if col_ID not in df_in.columns:
-        raise ValueError(f"[ses_clean] df must contain ID column `{col_ID}`. Cols in df: {df_in.columns}")
-    if 'SES' not in df_in.columns:
-        raise ValueError(f"[ses_clean] df must contain 'SES' column. Cols in df: {df_in.columns}")
-    if 'Date' not in df_in.columns:
-        raise ValueError(f"[ses_clean] df must contain 'Date' column. Cols in df: {df_in.columns}")
-    # format to allow date comparisons
-    df = df_in.copy()
-    df['Date_fmt'] = pd.to_datetime(df['Date'], format='%d.%m.%Y', errors='coerce')
-
-    if col_QC is not None and col_QC not in df.columns:
-        if verbose:
-            print(f"[ses_clean] WARNING: col_QC `{col_QC}` not found in dataframe columns. Ignoring QC parameter.")
-        col_QC = None
-
-    if verbose:
-        print(f"[ses_clean] Choosing session according to method: {method} | QC column: {col_QC}")
-
-    # prepare list of rows to keep
-    rows_to_keep = []
-
-    # helper to choose index to keep given a sub_df (multiple rows for one subject, optionally within a study)
-    def choose_index(sub_df):
-        """
-        returns index to keep (single) based on method and col_QC
-        """
-        if sub_df.shape[0] == 1:
-            return sub_df.index[0]
-
-        # If user specified a session code (e.g., '01', 'a1', etc)
-        if method not in ['newest', 'oldest', 'qc']:
-            # treat method as session code
-            matched = sub_df[sub_df['SES'] == method]
-            if matched.shape[0] >= 1:
-                # if multiple matches, break ties by QC or date
-                if col_QC is not None:
-                    # pick highest QC, tie-break by date
-                    sorted_m = matched.sort_values(by=[col_QC, 'Date_fmt'], ascending=[False, False])
-                else:
-                    sorted_m = matched.sort_values(by='Date_fmt', ascending=False)
-                return sorted_m.index[0]
-            else:
-                # no matching session code: fallback to newest/oldest behaviour
-                if col_QC is not None:
-                    sorted_all = sub_df.sort_values(by=[col_QC, 'Date_fmt'], ascending=[False, False])
-                    return sorted_all.index[0]
-                else:
-                    return sub_df['Date_fmt'].idxmax()
-
-        # method is 'newest' or 'oldest' or 'qc'
-        if method.startswith('qc'):
-            # support "qc" or "qc:<min_value>" to require a minimum QC threshold
-            if col_QC is None:
-                # if method qc but no col_QC provided, fallback to newest
-                return sub_df['Date_fmt'].idxmax()
-
-            # ensure QC column is numeric
-            sub_df = sub_df.copy()
-            sub_df[col_QC] = pd.to_numeric(sub_df[col_QC], errors='coerce')
-
-            # if a threshold was provided, filter out rows below threshold
-            if qc_thresh is not None:
-                filt = sub_df[col_QC] >= qc_thresh
-            if filt.any():
-                sub_df = sub_df.loc[filt]
-            else:
-                # no rows meet threshold -> fall back to previous behaviour but warn
-                # choose the highest QC (even if below threshold) as a fallback
-                # (do not raise to preserve robustness)
-                # Note: caller can check dates/rows if strict behaviour is needed.
-                pass
-
-            # pick highest QC, tie-break by date (newest)
-            sorted_df = sub_df.sort_values(by=[col_QC, 'Date_fmt'], ascending=[False, False])
-            return sorted_df.index[0]
-
-        if method == 'newest':
-            if col_QC is not None:
-                # primary QC then date (both descending)
-                sorted_df = sub_df.sort_values(by=[col_QC, 'Date_fmt'], ascending=[False, False])
-                return sorted_df.index[0]
-            else:
-                return sub_df['Date_fmt'].idxmax()
-
-        if method == 'oldest':
-            if col_QC is not None:
-                # primary QC ascending? sensible behavior: if user asked 'oldest' but QC exists, we keep lowest QC then oldest date.
-                # More likely user wants oldest session; QC shouldn't override oldest, so we sort date ascending, use QC as secondary.
-                sorted_df = sub_df.sort_values(by=['Date_fmt', col_QC], ascending=[True, False])
-                return sorted_df.index[0]
-            else:
-                return sub_df['Date_fmt'].idxmin()
-
-        # fallback
-        return sub_df['Date_fmt'].idxmax()
-
-    # If col_study provided, operate within each study independently
-    if col_study is not None:
-        if col_study not in df.columns:
-            raise ValueError(f"[ses_clean] col_study `{col_study}` not found in dataframe columns.")
-        studies = df[col_study].unique()
-        for study in studies:
-            sub_df_study = df[df[col_study] == study]
-            unique_ids = sub_df_study[col_ID].unique()
-            if verbose:
-                print(f"[ses_clean] Processing study `{study}` with {len(unique_ids)} unique IDs")
-            for uid in unique_ids:
-                rows = sub_df_study[sub_df_study[col_ID] == uid]
-                idx_keep = choose_index(rows)
-                rows_to_keep.append(idx_keep)
+    # validate input
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("Passed df must be a pandas DataFrame")
+    if col_ID not in df.columns:
+        raise AssertionError(f"[clean_ses] col_ID `{col_ID}` not found in dataframe columns: {df.columns.tolist()}")
+    if 'SES' not in df.columns:
+        raise AssertionError(f"[clean_ses] df must contain 'SES' column. Cols in df: {df.columns}")
+    
+    if col_study is not None and col_study not in df.columns:
+        raise AssertionError(f"[clean_ses] col_study `{col_study}` not found in dataframe columns: {df.columns.tolist()}")
+    elif col_study is not None:
+        grp_keys = [col_ID, col_study]
     else:
-        unique_ids = df[col_ID].unique()
-        if verbose:
-            print(f"[ses_clean] Processing {len(unique_ids)} unique IDs (no study grouping)")
-        for uid in unique_ids:
-            rows = df[df[col_ID] == uid]
-            idx_keep = choose_index(rows)
-            rows_to_keep.append(idx_keep)
+        grp_keys = [col_ID]
+    
+    if method in ['oldest', 'newest'] and 'Date' not in df.columns:
+        raise AssertionError(f"[clean_ses] df must contain 'Date' column. Cols in df: {df.columns}")
+    elif method in ['oldest', 'newest'] and 'Date' in df.columns:
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')  # Convert Date column to datetime format
 
-    # ensure unique and preserve order as in original df
-    rows_to_keep = [i for i in df.index if i in rows_to_keep]
+    idx_keep = []
+    grouped = df.groupby(grp_keys)
 
+    for name, group in grouped:        
+        if method == "oldest":
+            selected_idx = group['Date'].idxmin()
+        elif method == "newest":
+            selected_idx = group['Date'].idxmax()
+        else: # assume method is a session code
+            ses_matches = group[group['SES'] == method]
+            if not ses_matches.empty:
+                selected_idx = ses_matches.index[0]
+            else:
+                if verbose:
+                    print(f"[clean_ses] WARNING: No matching session '{method}' for ID '{name}'. Skipping.")
+                continue  # skip this ID if no matching session found
+
+        idx_keep.append(selected_idx)
+    
     if toReturn == "idx":
-        if verbose:
-            print(f"[ses_clean] Keeping {len(rows_to_keep)} rows out of {df.shape[0]}")
-        return rows_to_keep
-
-
-    if toReturn == "idx":
-        if verbose:
-            print(f"[ses_clean] Keeping {len(rows_to_keep)} rows out of {df.shape[0]} (returning indices).")
-        print(f"[ses_clean] Indices to keep: {rows_to_keep}")
-        return rows_to_keep
+        return idx_keep
     else:
-        df_clean = df.loc[rows_to_keep].copy().reset_index(drop=True)
-        if verbose:
-            print(f"[ses_clean] Keeping {len(rows_to_keep)} rows out of {df.shape[0]} (returning cleaned dataframe).")
-        return df_clean
+        return df.loc[idx_keep].reset_index(drop=True)
 
 
 def get_mapCols(allCols, split=True, verbose=False):
@@ -2289,19 +2289,15 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
         return pth_noSmth
 
 
-def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics, 
+def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
                save_df_pth, log_save_pth,
+               log_name = "04a_extractMap",
                append_name = None, region=None, verbose=False, test = False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
     NOTE. Assumes 'UID' is present -- uses this column to create index for demographics df.
 
     TODO. Add number of surfaces with no data, print at end of extractMap
-    TODO. Add session cleaning here
-            # iii. Choose a single session per participant
-            df_pths_clean_final, paths_clean_pth = tsutil.clean_ses(df_in = df_clean, 
-                                                                    save_pth = f"{specs['prjDir_root']}{specs['prjDir_outs']}", save_name = "03d_ses_clean",
-                                                                    col_ID="UID",  col_study='study', verbose=True)
     
     Input:
         df_mapPaths: pd.DataFrame 
@@ -2315,6 +2311,9 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
         demographics: dict  regarding demographics file.
             Required keys:
                 'pth', 'ID_7T', 'ID_3T', 'SES', 'date', 'grp'
+        qc_thresh: float
+            Minimum QC value to retain a map path. If None, do not apply QC filtering.
+        
         save_df_pth: str
             Path to save extracted dataframe.
 
@@ -2355,7 +2354,6 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
     if not os.path.exists(log_save_pth):
         os.makedirs(log_save_pth)
     
-    log_name = f"04a_extractMap"
     if region is not None:
         log_name = f"{log_name}_{region}"
     if append_name is not None:
@@ -2370,6 +2368,7 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
     logger = _get_file_logger(__name__, log_file_path)
     logger.info("Log started for extractMap function.")
     logger.info("Parameters:")
+    logger.info(f"  df_mapPaths <{df_mapPaths.shape}> cols: {df_mapPaths.columns.tolist()}")
     logger.info(f"  region: {region}")
     logger.info(f"  append_name: {append_name}")
     logger.info(f"  test : {test}")
@@ -2377,23 +2376,19 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
     out_dl = []
     
     try:
-    
+        
         if region is not None:
             if region == "cortex" or region == "ctx":
                 region == "cortex"
                 reg = "ctx"
-            elif region == "hippocampus" or region == "hipp":
+            elif region == "hippocampus" or region == "hip":
                 region == "hippocampus"
-                reg = "hipp"
+                reg = "hip"
             else:
                 raise ValueError(f"[extractMap] Unknown region: {region}. Should be 'cortex' or 'hippocampus'.")
             
             cols_L = [col for col in cols_L if reg in col]
             cols_R = [col for col in cols_R if reg in col]
-            print(cols_L)
-            logger.info(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {reg}).")
-        else:
-            logger.info(f"\n{len(cols_L) + len(cols_R)} map columns found.")
 
         if cols_L == [] or cols_R == []:
             logger.info("\n[extractMap] WARNING. No map columns found. Skipping.")
@@ -2406,7 +2401,12 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
             idx_rdm = np.random.choice(len(cols_L), size=idx_len, replace=False).tolist()  # randomly choose index
             cols_L = [cols_L[i] for i in idx_rdm]
             cols_R = [cols_R[i] for i in idx_rdm]
-            logger.info(f"[extractMap]: TEST MODE. Extract maps from {idx_len} random maps: indices {idx_rdm}.")
+            logger.info(f"TEST MODE. Extract maps from {idx_len} random maps: indices {idx_rdm}.")
+        
+        if region is not None:
+            logger.info(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {reg}).")
+        else:
+            logger.info(f"\n{len(cols_L) + len(cols_R)} map columns found.")
         
         # Add index to df_mapPaths
         df_mapPaths['UID_study_ses'] = df_mapPaths.apply(lambda row: f"{row['UID']}_{row['study']}_{row['SES']}", axis=1)
@@ -2424,79 +2424,93 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
             hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
             commonName = col_L[hemi_L_idx:]
 
-            if verbose:
-                logger.info(f"\n\tProcessing {commonName}... (cols: {col_L} {col_R})")
-            
-            df_demo = df_mapPaths.dropna(subset=[col_L, col_R]) # remove IDs with missing values in col_L or col_R
+            logger.info(f"\n\tProcessing {commonName}...\t\t[{col_L} {col_R}]")                
+            logger.info(f"\t\t\t{len(df_mapPaths['UID'].unique())} unique IDs in input data with {df_mapPaths.shape[0]} rows")
 
-            if verbose:
-                logger.info(f"\t\t{len(df_mapPaths) - len(df_demo)} rows removed due to missing values for these maps. [{(len(df_mapPaths))} rows before, {len(df_demo)} rows remain]")
+            logger.info(f"\t\t\tEnsuring QC values >= {qc_thresh}") # set maps with QC values less than qc_thresh to NA
             
-            # Remove participants who do not have data for all MRI studies in this analysis
+            # add to dict list
+            surf = col_L.split('surf-')[1].split('_label')[0]
+            lbl = col_L.split('_label-')[1].split('_')[0]
+            if lbl == 'thickness':
+                ft = 'thickness'
+            else:
+                ft = col_L.split('_label-')[1].split('_')[1]
+            
+            if '_unsmth' in commonName:
+                smth = 'NA'
+            else:
+                smth = col_L.split('_smth-')[1].split('mm')[0]
+                
+            # determine QC column
+            if ft == 'T1map':
+                vol = 'T1map'
+            elif ft == 'thickness':
+                vol = 'T1w'
+            elif ft == "flair":
+                vol = 'flair'
+            elif ft in ['FA', 'ADC']:
+                vol = 'DWI'
+            else:
+                raise ValueError(
+                    "[extractMap] WARNING. Feature not recognized, thus unable to link to name of raw MRI volume."
+                )
+                
+            col_QC = f"QC_{reg}Surf_{vol}" # 'QC_{ctx/hip}Surf_{vol for feature}
+            df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
+            
+            logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
+            #logger.info(f"Number of NA col L + col R:\n\t before QC: \n\t\t{df_mapPaths[[col_L, col_R]].isna().sum()}\n\tafter: \n\t\t{df_mapPaths_qc[[col_L, col_R]].isna().sum()}")
+            
+            logger.info(f"\t\t\tCleaning missing map paths...")
+            df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove IDs with missing values in col_L or col_R
+            logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
+            logger.info(f"\t\t\t\t\tRemoved: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()))}")
+
+            # Remove participants that do not have data for each study
+            logger.info(f"\t\t\tCleaning missing study pairs... ")
             required_studies = [s['study'] for s in studies]
             participant_counts = df_demo.groupby('UID')['study'].nunique()
             valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
             df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
             df_demo = df_demo[df_demo['UID'].isin(valid_ids)]
-
-            n_before = df_mapPaths['UID'].nunique()
+    
+            n_before = df_mapPaths_qc['UID'].nunique()
             n_after = df_demo['UID'].nunique()
             n_removed = n_before - n_after
 
-            if verbose:
-                if n_removed > 0:
-                    logger.info(f"\t\t{n_after} unique patients remain after removing {n_removed} IDs due to incomplete study.")
-                    logger.info(f"\t\tIDs removed: {sorted(df_tmp_drop['UID'].unique())}")
+            logger.info(f"\t\t\t\t{n_removed} unique IDs removed [{n_after} unique IDs with {df_demo.shape[0]} rows remain]")
+            logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
+            
             if n_after == 0:
-                logger.info(f"\t\t[extractMap] WARNING. No participants remain after filtering for complete study data. Skipping this map.")
+                logger.info(f"\t\t\tWARNING. No participants remain after filtering for complete study data. Skipping this map.")
                 continue
 
             for study in studies:
+                
                 study_name = study['name']
                 study_code = study['study']
                 
                 col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
                 
                 df_demo_study = df_demo[df_demo['study'] == study_code] # filter for rows from this study
-                
-                # Select a single session per UID-study combination
-                if '_T1map_' in commonName:
-                    vol = 'T1map'
-                elif 'label-thickness_' in commonName:
-                    vol = 'T1w'
-                elif '_FLAIR_' in commonName or '_flair_' in commonName:
-                    vol = 'flair'
-                elif '_FA_' in  commonName or '_ADC_' in commonName:
-                    vol = 'DWI'
-                else:
-                    raise ValueError(
-                        "[extractMap] WARNING. Unknown volume type in map name: "
-                        f"{commonName}. None of the following strings are present "
-                        "`_T1map_`, `label-thickness_`, `_FLAIR_`, `_FA_`, `_ADC_`. "
-                        "Skipping this map."
-                    )
-                
-                col_QC = f"QC_{reg}Surf_{vol}" # 'QC_{ctx/hip}Surf_{vol for feature}
-                if col_QC not in df_demo_study.columns:
-                    logger.info(f"\t\t[extractMap] WARNING. QC column `{col_QC}` not found in dataframe columns. Ignoring QC parameter.")
-                    ses_indices = clean_ses(df_in = df_demo, method = "newest", toReturn = "idx", 
-                                    col_ID="UID",  col_study='study', verbose=True)
-                else:
-                    print(f"\t\tUsing QC column: {col_QC} to select session.")
-                    ses_indices = clean_ses(df_in = df_demo, method = "QC", toReturn = "idx",
-                                    col_QC = col_QC, qc_thresh = 2,   
-                                    col_ID="UID",  col_study='study', verbose=True)
-                
-                df_demo_ses = df_demo.loc[ses_indices.index]
-                return
-                
-                if verbose:
-                    logger.info(f"\t\t{len(df_demo) - len(df_demo_ses)} rows removed due to multiple sessions per UID-study. [{len(df_demo)} rows before, {len(df_demo_ses)} rows remain for {len(df_demo_ses['UID'].unique())} unique participants]")
-                
-                if verbose:
-                    logger.info(f"\t[{study_code}] {len(df_demo_study)} rows")
+                logger.info(f"\n\t\t\t[{study_code}] Selecting unique session per ID... {len(df_demo_study['UID'].unique())} UIDs with {len(df_demo_study)} rows before session cleaning.")
 
-                maps = get_maps(df_demo_study, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=False)
+                # Select a single session per UID-study combination                
+                ses_indices = clean_ses(df = df_demo_study, method = "newest", toReturn = "idx", 
+                                col_ID="UID",  col_study='study', verbose=True)
+                
+                df_demo_ses = df_demo_study.loc[ses_indices]
+                logger.info(f"\t\t\t\t{len(df_demo_ses['UID'].unique())} UIDs with {df_demo_ses.shape[0]} rows remain for study {study_name}.")
+                if verbose:
+                    logger.info(f"\t\t\t\t\tUnique UIDs: {df_demo_ses['UID'].unique().tolist()}")
+                    logger.info(f"\t\t\t\t\tRetained [from clean_ses] ({len(ses_indices)}): {sorted(ses_indices)}")
+                    logger.info(f"\t\t\t\t\tPresent in current df ({len(df_demo_ses.index.tolist())}): {df_demo_ses.index.tolist()}")
+                
+                if verbose:
+                    logger.info(f"\t\t\t\t\t{len(df_demo_study) - len(df_demo_ses)} rows removed due to multiple sessions per UID-study. [{len(df_demo_study)} rows before, {len(df_demo_ses)} rows remain for {len(df_demo_ses['UID'].unique())} unique participants]")
+
+                maps = get_maps(df_demo_ses, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=False)
                 if maps.shape[0] == 0:
                     logger.info(f"\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
                     continue
@@ -2511,20 +2525,7 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                 maps_pth, save_stmt = savePickle(obj = maps, root = save_df_pth, name = map_name, 
                                                  timeStamp=False, append = start, 
                                                  verbose=False, rtn_txt = True)
-                logger.info(f"\t{save_stmt}")
-
-                # add to dict list
-                surf = col_L.split('surf-')[1].split('_label')[0]
-                lbl = col_L.split('_label-')[1].split('_')[0]
-                if lbl == 'thickness':
-                    ft = 'thickness'
-                else:
-                    ft = col_L.split('_label-')[1].split('_')[1]
-                
-                if '_unsmth' in commonName:
-                    smth = 'NA'
-                else:
-                    smth = col_L.split('_smth-')[1].split('mm')[0]
+                logger.info(f"\t\t\t\t{save_stmt}")
 
                 out_dl.append({
                     'study': study_name,
@@ -2533,12 +2534,12 @@ def extractMap(df_mapPaths, cols_L, cols_R, studies, demographics,
                     'label': lbl,
                     'feature': ft,
                     'smth': smth,
-                    'df_demo': df_demo_study,
+                    'df_demo': df_demo_ses,
                     'df_maps': maps_pth,
                 })
         
         if verbose:
-            logger.info(f"[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
+            logger.info(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
         
     except Exception as e:
         logger.error(f"An error occurred in extractMap: {e}", exc_info=True)
