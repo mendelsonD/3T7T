@@ -296,6 +296,8 @@ def get_surf_pth(root, sub, ses, lbl, space="nativepro", surf="fsLR-32k", verbos
     elif "hippunfold" in root:
         if verbose: print("Hipp detected")
         # Note: for MICA studies, hippocampal maps are in 'T1w' space which is equivalent to nativepro space 
+        if space == 'nativepro':
+            space = "T1w"
         if lbl == "thickness" or lbl == "hipp_thickness":
             lh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-L_space-{space}_{surf}_label-hipp_thickness.shape.gii"
             rh = f"{root}/sub-{sub}/ses-{ses}/surf/sub-{sub}_ses-{ses}_hemi-R_space-{space}_{surf}_label-hipp_thickness.shape.gii"
@@ -468,7 +470,6 @@ def map(vol, surf, out, method="trilinear", verbose=True):
         vol: path to unsmoothed feature map file (.func.gii)
         surf: path to the surface file (.surf.gii)
         out: output path and name
-        smth: smoothing kernel size in mm (default is 10mm)
         method <optional>: see options in help file for wb_command -volume-to-surface-mapping
             Default is "trilinear"
 
@@ -708,9 +709,15 @@ def downsample_vol(vol_pth, out_pth, res=0.8):
         out_pth: path to the downsampled volume file
     """
     import subprocess as sp
+    import os
 
+    os.environ['FSLDIR'] = '/mica1/01_programs/fsl_mica'
+    os.environ['FSLOUTPUTTYPE'] = 'NIFTI_GZ'
+    os.environ['PATH'] = os.path.join(os.environ['FSLDIR'], 'bin') + ':' + os.environ.get('PATH','')
+    
     cmd = [
-        "flirt",
+       
+        "/data_/mica1/01_programs/fsl_mica/bin/flirt",
         "-in", vol_pth,
         "-ref", vol_pth,
         "-applyisoxfm", str(res),
@@ -723,79 +730,314 @@ def downsample_vol(vol_pth, out_pth, res=0.8):
         print(f"\t[downsample_vol] WARNING: Downsampled volume not properly saved. Expected file: {out_pth}")
         return None
     else:
-        print(f"\t[downsample_vol] Downsampled volume saved to: {out_pth}")
+        print(f"\t\t[downsample_vol] Downsampled volume saved to: {out_pth}")
         return out_pth
 
-def ds_dict(dict_in, studies, vol_ds_pth, surf_out, res):
+def downsample_df(df, studies, feature, dsVols_savePth, demographics, res, df_savePth, df_save_name, override=False, verbose = True):
     """
-    Apply downsampling to a volume and project features onto a surface.
+    Apply downsampling to a specified volume. Do so for all rows in a df, add path to new column. Return updated df.
 
 
     Input:
-        dict_in: dict
-            keys:
-                df_demo:    Participants to downsample volumes for. Should also have ID, SES cols
-                study:      Name of study
-                feature:    Feature to map
+        df: pd.DataFrame
+            with rows as subjects
         studies: list
             dictionaries with information about paths for each study
         vol_ds_pth: str
             path to save downsampled volume
+        map_out_pth: str
+            path to save projected maps
         surf_out: str
             what surface to project downsampled values to
-
+        demographics: dict
+            information linking study name with appropriate ID column 
+        df_save_name: str
+            name of the dataframe to save intermittently (exclude .csv)
+            
         res: flt 
             desired isotropic resolution in mm. NOTE. should be resolution of equivalent 3T volume.
+
+        override: bool
+            whether to override existing downsampled volumes. Default is False.
     """
-
-    df_demo = dict_in['df_demo']
-    study = dict_in['study']
-
-    feature = dict_in['feature']
-    surf_lbl = dict_in['label']
-
-    study_info = [s for s in studies if s['name'] == study][0] # assumes only one match
+    import os
+    import datetime
+    import pandas as pd 
+    import datetime
     
+    print(f"{datetime.datetime.now()} - [downsample_df] Downsampling volumes to {res}mm isotropic resolution and adding paths to dataframe...")
+
+    # Get column numbers for columns
+    study_colNum = df.columns.get_loc('study')
+    ses_colNum = df.columns.get_loc('SES')
+
+    out_colName = f"vol_{feature}_ds-{str(res).replace('.', 'p')}mm"
+    out_col = pd.Series(name = out_colName)
+    studies_present = set()
+    counter = 0
+    df_intermediate = df.copy()
+    intermit_pths = ""
     
-    # TAKEN FROM extractMap
-    study_name = study['name']
-    study_code = study['study']
-    
-    col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
-    #
-
-    for idx, row in df_demo.iterrows():
-        sub = row[col_ID]
-        ses = str(row['SES']).zfill(2) # ensure proper leading 0
-
-        mp_vol = get_mapVol_pth(root=study_info['dir_root'] + study_info['dir_mp'], 
-                                    sub=sub, ses=ses, study=study_info['study'], feature=feature, raw=False, space="nativepro")
-        
-        if chk_pth(mp_vol):
-            out_ds_pth = vol_ds_pth + f"/sub-{sub}_ses-{ses}_desc-ds{res}mm_{feature}.nii.gz"
-            downsampled_vol = downsample_vol(vol_pth=mp_vol, out_pth=out_ds_pth, res=res) # downsample, return path
-
-            # get path to surface with label 
-            surf_lh, surf_rh = get_surf_pth(root=study_info['dir_root'] + study_info['dir_deriv_micapipe'],
-                                            sub=sub, ses=ses, lbl="midthickness", space="nativepro", surf=surf_out, verbose=False)
+    # iterate rows using index so `idx` is the dataframe index and `row` can be indexed by column position
+    for idx in df.index:
+        row = df.loc[idx].values
+        counter += 1
+        if counter % 10 == 0:
+            now = datetime.datetime.now()
+            print(f"{now} Processing {idx} of {len(df)}...")
             
-            out_map_lh = vol_ds_pth + f"/sub-{sub}_ses-{ses}_hemi-L_space-nativepro_surf-{surf_out}_label-midthickness_{feature}.func.gii"
-            out_map_rh = vol_ds_pth + f"/sub-{sub}_ses-{ses}_hemi-R_space-nativepro_surf-{surf_out}_label-midthickness_{feature}.func.gii"
+            # save intermittently
+            df_intermediate[out_colName] = out_col
+            sv_name_intermediate = f"{df_save_name}_{now.strftime('%d%b%Y_%H%M%S')}.csv"
+            df_save_pth_full = os.path.join(df_savePth, sv_name_intermediate)
+            df_intermediate.to_csv(df_save_pth_full, index=False)
+            print(f"\t Intermittent save: {df_save_pth_full}. Deleting previous intermittent save if present...")
+            os.remove(intermit_pths) if intermit_pths != "" else None
+            intermit_pths = df_save_pth_full
+        
+        study = row[study_colNum]
+        studies_present.add(study)
+        study_info = [s for s in studies if s['study'] == study][0] # assumes only one match
+        study_name = study_info['name']
+        col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+        ID_colNum = df.columns.get_loc(col_ID)
+        
+        sub = row[ID_colNum]
+        ses = str(row[ses_colNum]).zfill(2) # ensure proper leading 0
+        print(f"\tProcessing {study} sub-{sub}_ses-{ses} ({counter} / {len(df)})...")
+        vol_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_mp']
+        vol_pth = get_mapVol_pth(root=vol_root, 
+                                    sub=sub, ses=ses, study=study_info['study'], 
+                                    feature=feature, raw=False, space="nativepro")
+        if verbose:
+            print(f"\t\tOrig vol path: {vol_pth}")
+        
+        if chk_pth(vol_pth): # if original volume exists, perform down sampling
+            res_lbl = str(res).replace(".", "p")
+            out_ds_name = os.path.basename(vol_pth).replace(".nii.gz", f"_ds-{res_lbl}mm.nii.gz")
+            id_ses = f"sub-{sub}_ses-{ses}"
+            
+            out_rt = os.path.join(dsVols_savePth, id_ses)
+            create_dir(out_rt, verbose=False)
+            out_ds_pth = os.path.join(out_rt, out_ds_name)
+            
+            if not chk_pth(out_ds_pth) or ( chk_pth(out_ds_pth) and override ):
+                #print(f"\t[ds_dict] Downsampling volume for {id_ses} at {out_ds_pth}")
+                ds_vol = downsample_vol(vol_pth=vol_pth, out_pth=out_ds_pth, res=res) # downsample, return path
+            elif chk_pth(out_ds_pth) and not override :
+                ds_vol = out_ds_pth
+                print(f"\t[ds_dict] Downsampled volume already exists for {id_ses} at {chk_pth(out_ds_pth)}. Skipping downsampling.")
 
-            map(vol=downsampled_vol, surf=surf_lh, out=out_map_lh, method="trilinear", verbose=True)
-            map(vol=downsampled_vol, surf=surf_rh, out=out_map_rh, method="trilinear", verbose=True)
         else:
+            ds_vol = "NA"
             print(f"\t[ds_dict] WARNING: Raw volume not found for sub-{sub}_ses-{ses}. Skipping downsampling and mapping.")
-    pass
+
+        # add path to output column
+        out_col.at[idx] = ds_vol
+        
+    df[out_colName] = out_col
+    # save final
+    now = datetime.datetime.now()
+    save_name_final = f"{df_save_name}_{now.strftime('%d%b%Y_%H%M%S')}.csv"
+    df_save_pth_full = os.path.join(df_savePth, save_name_final)
+    df_intermediate.to_csv(df_save_pth_full, index=False)
+    print(f"\t Final csv saved: {df_save_pth_full}")
+    
+    return df
+
+def ds_maps(vol_pth, surf_root, sub, ses, smth, surface, label, feature, res, sv_pth, override = False):
+    """
+    Project features from downsampled volumes on to maps. Apply smoothing as appropriate.
+    NOTE. Assumes all is in nativepro space.
+
+    Input:
+        vol_pth: str
+            path to downsampled volume
+        surf_root: str
+            path to micapipe or hippunfold processed surfaces
+
+        sub: str
+            subject ID (no `sub-` prefix)
+        ses: str
+            session ID (with leading zero if applicable; no `ses-` prefix)
+        surface: str
+            surface type and resolution (e.g., "fsLR-32k", "fsLR-5k", "0p5mm")
+        label: lst
+            surface label (e.g., "white", "pial", "midthickness", "inner", "outer)
+        feature: str
+            type of map to retrieve (e.g., "T1map", "FLAIR", "ADC", "FA")
+        smth: lst
+            list of smoothing kernels to apply (in mm). Note, unsmoothed map computed by default
+        res: flt
+            resolution of downsampled image (mm)
+        sv_pth: str
+            path to save smoothed and unsmoothed maps
+        override: bool
+            whether to override existing smoothed and unsmoothed maps. Default is False.
+
+    """
+    # get surface maps path 
+    if isinstance(surface, str):
+        surface = [surface]
+    if isinstance(label, str):
+        label = [label]
+    
+    if isinstance(smth, str) or isinstance(smth, int) or isinstance(smth, float):
+        smth = [smth] # make into list
+    elif smth == None:
+        smth = [] # no smoothing
+    elif isinstance(smth, list):
+        pass
+    else:
+        raise ValueError(f"[ds_maps] Smoothing kernel must be str, int or float. Type `{type(smth)}` provided.")
+    
+    for surf in surface:
+        for lbl in label:
+            # surface segmentations
+            surf_lh, surf_rh = get_surf_pth(root=surf_root,
+                                            sub=sub, ses=ses, lbl=lbl, space="nativepro", surf=surf, verbose=False)
+            if not chk_pth(surf_lh) and not chk_pth(surf_lh):
+                print(f"\t[ds_maps] WARNING: Surface segmentation does not exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping.")
+                continue
+            # determine path to unsmoothed map 
+            if "micapipe" in surf_root:
+                region = "ctx"
+            elif "hippunfold" in surf_root:
+                region = "hipp"
+            else:
+                region = "UNKNOWN"
+            
+            L_smthNA_pth, R_smthNA_pth = get_dsMap_pth(sv_pth, sub, ses, region, surf, lbl, feature, res, "NA")
+            
+            if not chk_pth(L_smthNA_pth) and not chk_pth(R_smthNA_pth):
+                # compute unsmoothed map
+                L_smthNA_pth = map(vol=vol_pth, surf=surf_lh, out=L_smthNA_pth, method="trilinear", verbose=True)
+                R_smthNA_pth = map(vol=vol_pth, surf=surf_rh, out=R_smthNA_pth, method="trilinear", verbose=True)
+            elif override:
+                print(f"\t[ds_maps] Overriding existing unsmoothed maps for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}.")
+                L_smthNA_pth = map(vol=vol_pth, surf=surf_lh, out=L_smthNA_pth, method="trilinear", verbose=True)
+                R_smthNA_pth = map(vol=vol_pth, surf=surf_rh, out=R_smthNA_pth, method="trilinear", verbose=True)
+            else:
+                print(f"\t[ds_maps] Unsmooth maps already exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping unsmoothed map generation.")
+                
+            # compute smoothed maps            
+            if len(smth) > 0:
+                for k in smth:
+                    L_smthK_pth, R_smthK_pth = get_dsMap_pth(sv_pth, sub, ses, region, surf, lbl, feature, res, k)
+                    if not chk_pth(L_smthK_pth) and not chk_pth(R_smthK_pth):
+                        L_smthK_pth = smooth_map(surf=surf_lh, map=L_smthNA_pth, out_name=L_smthK_pth, kernel=k, verbose=True)
+                        R_smthK_pth = smooth_map(surf=surf_rh, map=R_smthNA_pth, out_name=R_smthK_pth, kernel=k, verbose=True)
+                    elif override:
+                        print(f"\t[ds_maps] Overriding existing smoothed maps (k={k}mm) for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}.")
+                        L_smthK_pth = smooth_map(surf=surf_lh, map=L_smthNA_pth, out_name=L_smthK_pth, kernel=k, verbose=True)
+                        R_smthK_pth = smooth_map(surf=surf_rh, map=R_smthNA_pth, out_name=R_smthK_pth, kernel=k, verbose=True)
+                    else:
+                        print(f"\t[ds_maps] Smoothed maps (k={k}mm) already exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping smoothed map generation.")
+    return
+
+def get_dsMaps(df, map_savePth, features, specs, studies, demographics,  res = 0.8):
+    """
+    Generate smoothed and unsmoothed maps for downsampled volumes.
+
+    Input:
+        df: pd.DataFrame
+            with rows as subjects
+        map_savePth: str
+            directory to save generated surface maps
+        studies: list
+            dictionaries with information about paths for each study
+        features: list
+            list of strings refering to features to project to surface
+        specs: dict
+            specifications for regions to perform (cortex, hippocampus), surfaces, labels, features, smoothing kernels, downsampled resolutions
+        studies: list
+            dict items with information about studies
+        demographics: dict
+            information on demographics file
+
+    Output:
+        saved unsmoothed and smoothed maps for these participants
+    """
+    import datetime
+
+    print(f"{datetime.datetime.now()} - [get_dsMaps] Generating smoothed and unsmoothed maps from downsampled volumes...")
+    if isinstance(features, str):
+        features = [features]
+    
+    res_lbl = str(res).replace(".", "p")
+
+    for ft in features:
+        print(f"Processing feature: {ft}...")
+        ds_pth_col = f'vol_{ft}_ds-{res_lbl}mm' # find name of column referring to volume for this feature. NOTE. use same naming convetion as in downsample_df function
+        
+        for idx in df.index:
+            
+            row = df.loc[idx]
+            study = row['study']
+            study_info = [s for s in studies if s['study'] == study][0] # assumes only one match
+            study_name = study_info['name']
+            col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+            sub = row[col_ID]
+            ses = str(row['SES']).zfill(2) # ensure proper leading 0
+            
+            vol_pth = row[ds_pth_col]
+            print(f"\tProcessing {study} sub-{sub}_ses-{ses}... [vol path: {vol_pth}]")
+
+            if specs['ctx']:
+                surf_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_mp'] # since using micapipe surfaces
+                # compute unsmoothed and smoothed maps (if smoothing is specified)
+                ds_maps(vol_pth = vol_pth, surf_root = surf_root, sub = sub, ses = ses, smth = specs['smth_ctx'], 
+                        surface = specs['surf_ctx'], label = specs['lbl_ctx'], feature = ft, res = res, sv_pth = map_savePth)
+            
+            if specs['hipp']:
+                surf_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_hu']
+                
+                ds_maps(vol_pth = vol_pth, surf_root = surf_root, sub = sub, ses = ses, smth = specs['smth_hipp'], 
+                        surface = specs['surf_hipp'], label = specs['lbl_hipp'], feature = ft, res = res, sv_pth = map_savePth)
+
+    return
+
+def get_dsMap_pth(root, sub, ses, region, surf, label, feature, res, smth):
+    """
+    Get file naming pattern for downsampled maps.
+
+    Inputs:
+        root: str
+            path to directory holding these maps
+        sub: str
+        ses: str
+        region: str
+            "ctx", "hipp" or "UNKNOWN" for micapipe, hippunfold and other surface segmentations
+        surf: str
+        label: str
+        feature: str
+        res: flt or int
+        smth: flt, int or str
+            size of smoothing kernel. `NA` for not smmothed
+
+    outputs:
+        L, R: path to left, right maps
+    """
+    
+    res_lbl = str(res).replace(".", "p")
+    if isinstance(smth, float) and smth.is_integer(): # remove trailing 0 if present
+        smth = int(smth)
+    smth_lbl = str(smth).replace(".", "p")
+
+    L = f"{root}/sub-{sub}_ses-{ses}/sub-{sub}_ses-{ses}_{region}_hemi-L_space-nativepro_surf-{surf}_label-{label}_{feature}_res-{res_lbl}_smth-{smth_lbl}mm.func.gii"
+    R = f"{root}/sub-{sub}_ses-{ses}/sub-{sub}_ses-{ses}_{region}_hemi-R_space-nativepro_surf-{surf}_label-{label}_{feature}_res-{res_lbl}_smth-{smth_lbl}mm.func.gii"
+
+    return L, R
 
 def idToMap(df_demo, studies, dict_demo, specs, 
             save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
             verbose=False):
     """
-    TODO. SAVE df intermittently (robust against interruptions). Save with time stamp. 
-        Then, at the end save the final version, find all files matching the naming pattern with times greater than the start time and less than current time and delete these intermediate files.
     From demographic info, add path to unsmoothed, smoothed maps. If smoothed map does not exist, compute. 
     Do this for all parameter combinations (surface, label, feature, smoothing kernel) provided in a dictionary item.
+
+    TODO. SAVE df intermittently (robust against interruptions). Save with time stamp. 
+        Then, at the end save the final version, find all files matching the naming pattern with times greater than the start time and less than current time and delete these intermediate files.
 
     Parameters
     ----------
@@ -1167,6 +1409,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
                                             series = pths_series)
             else:
                 pass
+
             # A. Find hippunfold surface
             surf_L, surf_R = get_surf_pth( # Get surface .func files
                     root=root_hu,
@@ -6924,6 +7167,7 @@ def plot_ridgeplot(matrix, matrix_df=None, Cmap='rocket', Range=(0.5, 2), Xlab="
     import numpy as np
     import pandas as pd
     from matplotlib import use
+
     use('Agg')  # Use non-interactive backend for compatibility
 
     # If input is DataFrame, convert to numpy array
