@@ -822,15 +822,15 @@ def downsample_df(df, studies, feature, dsVols_savePth, demographics, res, df_sa
             out_ds_pth = os.path.join(out_rt, out_ds_name)
             
             if not chk_pth(out_ds_pth) or ( chk_pth(out_ds_pth) and override ):
-                #print(f"\t[ds_dict] Downsampling volume for {id_ses} at {out_ds_pth}")
+                #print(f"\t\t[downsample_df] Downsampling volume for {id_ses} at {out_ds_pth}")
                 ds_vol = downsample_vol(vol_pth=vol_pth, out_pth=out_ds_pth, res=res) # downsample, return path
             elif chk_pth(out_ds_pth) and not override :
                 ds_vol = out_ds_pth
-                print(f"\t[ds_dict] Downsampled volume already exists for {id_ses} at {chk_pth(out_ds_pth)}. Skipping downsampling.")
+                print(f"\t\t[downsample_df] Downsampled volume already exists for {id_ses} at {chk_pth(out_ds_pth)}. Skipping downsampling.")
 
         else:
             ds_vol = "NA"
-            print(f"\t[ds_dict] WARNING: Raw volume not found for sub-{sub}_ses-{ses}. Skipping downsampling and mapping.")
+            print(f"\t\t[downsample_df] WARNING: Raw volume not found for sub-{sub}_ses-{ses}. Skipping downsampling and mapping.")
 
         # add path to output column
         out_col.at[idx] = ds_vol
@@ -981,6 +981,9 @@ def get_dsMaps(df, map_savePth, features, specs, studies, demographics,  res = 0
             ses = str(row['SES']).zfill(2) # ensure proper leading 0
             
             vol_pth = row[ds_pth_col]
+            if vol_pth == "NA":
+                print(f"\tSkipping {study} sub-{sub}_ses-{ses}... No downsampled volume found.")
+                continue
             print(f"\tProcessing {study} sub-{sub}_ses-{ses}... [vol path: {vol_pth}]")
 
             if specs['ctx']:
