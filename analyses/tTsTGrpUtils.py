@@ -86,6 +86,47 @@ def savePickle(obj, root, name, timeStamp = True, append=None, test=False, verbo
     else:
         return pth
 
+def filt_dl(dl, key_ft, foi, key_ids=None, verbose = True):
+    """
+    From a list of dictionary items, return only items whose feature is in features of interest and with non-0 ctrl and groups
+    
+    Parameters
+    ----------
+    dl: list of dict
+        each dict contains at least keys key_ft, key_ids
+
+    key_ft: str
+        key in each dict for feature name
+    foi: list of str
+        features of interest
+    key_ids: lst
+        list of lists of strings refering to keys for list of participant IDs. Checks that at least one key within each sublist is non-zero.
+        e.g.: [['IDs_ctrl], ['IDs_grp_L', 'IDs_grp_R']] -> will ensure that IDs_ctrl is non-empty and at least one of IDs_grp_L or IDs_grp_R is non-empty
+    
+    output
+    ----------
+    dlf: filtered list of dict items
+    """
+    dlf = []
+    for item in dl:
+        try:
+            if item[key_ft] in foi:
+                ids_ok = True
+                if key_ids is not None:
+                    for id_keys in key_ids:
+                        # Ensure at least one key in id_keys is present, not None, and its value is a non-empty list
+                        if not any(item.get(k) is not None and isinstance(item.get(k), list) and len(item.get(k)) > 0 for k in id_keys):
+                            ids_ok = False
+                            break
+                if ids_ok:
+                    dlf.append(item)
+        except Exception as e:
+            print(f"[filt_items] Skipping item due to error: {e}")
+            continue
+    if verbose:
+        print(f"[filt_items] Filtered {len(dl)} -> {len(dlf)} items based on features of interest and non-empty IDs.")
+    return dlf
+
 def _get_file_logger(name, log_file_path):
     """
     Return a logger configured to write to log_file_path.
@@ -141,6 +182,116 @@ def _get_file_logger(name, log_file_path):
     logger._tTsT_configured = True
 
     return logger
+
+def chk_pth(pth):
+    """
+    Check if the path exists and is a file.
+    
+    inputs:
+        pth: path to check
+    
+    outputs:
+        True if the path exists and is a file, False otherwise
+    """
+    
+    import os
+    
+    if os.path.exists(pth) and os.path.isfile(pth):
+        return True
+    else:
+        return False
+
+def sortCols(df):
+    """
+    Sort DataFrame columns. Rules: 
+        All _L columns first (sorted by number), then all _R columns (sorted by number).
+        If ends with _contra, put before _ipsi (same logic).
+        If neither, put at the end.
+
+    Input:
+        df: DataFrame with columns to sort
+
+    Output:
+        df_sorted: DataFrame with sorted columns
+    """
+    import re
+    import pandas as pd
+
+    def col_type(col):
+        col = str(col)
+        if col.endswith('_L'):
+            return 'L'
+        elif col.endswith('_R'):
+            return 'R'
+        elif col.endswith('_contra'):
+            return 'contra'
+        elif col.endswith('_ipsi'):
+            return 'ipsi'
+        else:
+            return 'other'
+
+    def col_num(col):
+        col = str(col)
+        match = re.match(r"(\d+)", col)
+        if match:
+            return int(match.group(1))
+        else:
+            return float('inf')
+
+    # Group columns
+    L_cols = [col for col in df.columns if col_type(col) == 'L']
+    R_cols = [col for col in df.columns if col_type(col) == 'R']
+    contra_cols = [col for col in df.columns if col_type(col) == 'contra']
+    ipsi_cols = [col for col in df.columns if col_type(col) == 'ipsi']
+    other_cols = [col for col in df.columns if col_type(col) == 'other']
+
+    # Sort each group by number
+    L_cols = sorted(L_cols, key=col_num)
+    R_cols = sorted(R_cols, key=col_num)
+    contra_cols = sorted(contra_cols, key=col_num)
+    ipsi_cols = sorted(ipsi_cols, key=col_num)
+    other_cols = sorted(other_cols)
+
+    # Order: L, contra, R, ipsi, other
+    sorted_cols = L_cols + ipsi_cols + R_cols + contra_cols + other_cols
+    df_sorted = df[sorted_cols]
+    return df_sorted
+
+def get_rdmPairedIndices(dl, idx_len, mtch = ['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes']):
+    """
+    Return list of indices paired on 
+    
+    Input:
+        dl:
+            list of dictionary items
+        idx_len: int
+            number of unique pairs to return
+        mtch: list of str
+            keys in dl items to match on
+    
+    """
+    import numpy as np
+    
+    idx_rdm = []
+    while len(idx_rdm) < idx_len * 2:
+        i = np.random.choice(len(dl), size=1, replace=False)[0]
+        item = dl[i]
+
+        if item.get('downsampledRes', None) != 'native':
+            difdsRes = True
+        else: # res of pair must match
+            difdsRes = False
+            pass
+        
+        #print(i)
+        i_other = get_pair(dl, idx = i, mtch=mtch, difdsRes=difdsRes)
+        
+        if not isinstance(i_other, list) and i_other is not None and i is not None:
+            indices = [i_other,i]
+            idx_rdm.extend(indices) # add unique matches only
+        idx_rdm = list(set(idx_rdm)) # ensure unique indices only
+    
+    return idx_rdm
 
 ################### DATA PREPERATION ####################################
 def add_date(demo_pths, demo):
@@ -214,25 +365,6 @@ def stdizeNA(df, missing_patterns=None, verbose=True):
     num_changed = len(changed)
     print(f"[stdizeNA] Standardized {num_changed} missing values")
     return df
-
-
-def chk_pth(pth):
-    """
-    Check if the path exists and is a file.
-    
-    inputs:
-        pth: path to check
-    
-    outputs:
-        True if the path exists and is a file, False otherwise
-    """
-    
-    import os
-    
-    if os.path.exists(pth) and os.path.isfile(pth):
-        return True
-    else:
-        return False
     
 def mp_mapsPth(dir, sub, ses, hemi, surf, lbl, ft):
     """
@@ -491,11 +623,11 @@ def map(vol, surf, out, method="trilinear", verbose=True):
     sp.run(cmd, check=True)
 
     if not chk_pth(out):
-        print(f"\t[map] WARNING: Unsmoothed map not properly saved. Expected file: {out}")
+        print(f"\t\t[map] WARNING: Unsmoothed map not properly saved. Expected file: {out}")
         return None
     else:
         if verbose:
-            print(f"\t[map] Unsmoothed map saved to: {out}")
+            print(f"\t\t[map] Unsmoothed map saved to: {out}")
         return out
 
 def smooth_map(surf, map, out_name, kernel=10, verbose=True):
@@ -522,11 +654,11 @@ def smooth_map(surf, map, out_name, kernel=10, verbose=True):
     sp.run(cmd, check=True)
 
     if not chk_pth(out_name):
-        print(f"\t[smooth_map] WARNING: Smoothed map not properly saved. Expected file: {out_name}")
+        print(f"\t\t[smooth_map] WARNING: Smoothed map not properly saved. Expected file: {out_name}")
         return None
     else:
         if verbose:
-            print(f"\t[smooth_map] Smoothed map saved to: {out_name}")
+            print(f"\t\t[smooth_map] Smoothed map saved to: {out_name}")
         return out_name
 
 def create_dir(dir_path, verbose=False):
@@ -733,7 +865,7 @@ def downsample_vol(vol_pth, out_pth, res=0.8):
         print(f"\t\t[downsample_vol] Downsampled volume saved to: {out_pth}")
         return out_pth
 
-def downsample_df(df, studies, feature, dsVols_savePth, demographics, res, df_savePth, df_save_name, override=False, verbose = True):
+def downsample_df(df, specs, studies, demographics, df_save_name, override=False, verbose = True):
     """
     Apply downsampling to a specified volume. Do so for all rows in a df, add path to new column. Return updated df.
 
@@ -743,19 +875,21 @@ def downsample_df(df, studies, feature, dsVols_savePth, demographics, res, df_sa
             with rows as subjects
         studies: list
             dictionaries with information about paths for each study
-        vol_ds_pth: str
-            path to save downsampled volume
-        map_out_pth: str
-            path to save projected maps
-        surf_out: str
-            what surface to project downsampled values to
+        specs: dict
+            specifications for the downsampling process wih keys:
+                'ds_foi': list of features to downsample (e.g., ['T1map', 'FLAIR'])
+                'ds_res': list of desired isotropic resolutions (mm) for each feature
+                'prjDir_root': root project directory
+                'ds_vol_dir': directory to save downsampled volumes (relative to root)
+                'prjDir_outs': directory to save output dataframes (relative to root)
+
         demographics: dict
             information linking study name with appropriate ID column 
         df_save_name: str
             name of the dataframe to save intermittently (exclude .csv)
             
-        res: flt 
-            desired isotropic resolution in mm. NOTE. should be resolution of equivalent 3T volume.
+        res: list (of len(features)) 
+            desired isotropic resolution (mm) for each listed feature. NOTE. should be resolution of equivalent 3T volume.
 
         override: bool
             whether to override existing downsampled volumes. Default is False.
@@ -765,87 +899,123 @@ def downsample_df(df, studies, feature, dsVols_savePth, demographics, res, df_sa
     import pandas as pd 
     import datetime
     
-    print(f"{datetime.datetime.now()} - [downsample_df] Downsampling volumes to {res}mm isotropic resolution and adding paths to dataframe...")
+    features = specs['ds_foi']
+    res = specs['ds_res']
+    soi = specs['ds_study'] # studies to include
+    if isinstance(features, str):
+        features = [features]
+    if isinstance(res, (int, float, str)):
+        res = [res] * len(features)
+    if len(features) != len(res):
+        res = [res[0]] * len(features)
+        print(f"\t[downsample_df] WARNING: Length of features ({len(features)}) does not match length of res ({len(res)}). Using first res value for all features.")
+    if isinstance(soi, str):
+        soi = [soi]
 
-    # Get column numbers for columns
+    print(f"{datetime.datetime.now()} - [downsample_df] Downsampling volumes adding paths to dataframe...\n\t\tVolumes: {features}\n\t\tResampled res: {res}")
+
+    dsVols_savePth = f"{specs['prjDir_root']}{specs['ds_vol_dir']}"
+    df_savePth = f"{specs['prjDir_root']}{specs['prjDir_outs']}"
+    
     study_colNum = df.columns.get_loc('study')
     ses_colNum = df.columns.get_loc('SES')
 
-    out_colName = f"vol_{feature}_ds-{str(res).replace('.', 'p')}mm"
-    out_col = pd.Series(name = out_colName)
-    studies_present = set()
-    counter = 0
-    df_intermediate = df.copy()
-    intermit_pths = ""
-    
-    # iterate rows using index so `idx` is the dataframe index and `row` can be indexed by column position
-    for idx in df.index:
-        row = df.loc[idx].values
-        counter += 1
-        if counter % 10 == 0:
-            now = datetime.datetime.now()
-            print(f"{now} Processing {idx} of {len(df)}...")
-            
-            # save intermittently
-            df_intermediate[out_colName] = out_col
-            sv_name_intermediate = f"{df_save_name}_{now.strftime('%d%b%Y_%H%M%S')}.csv"
-            df_save_pth_full = os.path.join(df_savePth, sv_name_intermediate)
-            df_intermediate.to_csv(df_save_pth_full, index=False)
-            print(f"\t Intermittent save: {df_save_pth_full}. Deleting previous intermittent save if present...")
-            os.remove(intermit_pths) if intermit_pths != "" else None
-            intermit_pths = df_save_pth_full
+    for ft, r in zip(features, res):
+        print
+        out_colName = f"vol_{ft}_ds-{str(r).replace('.', 'p')}mm"
+        out_col = pd.Series(name = out_colName)
+        studies_present = set()
+        counter = 0
+        df_intermediate = df.copy()
+        intermit_pths = ""
         
-        study = row[study_colNum]
-        studies_present.add(study)
-        study_info = [s for s in studies if s['study'] == study][0] # assumes only one match
-        study_name = study_info['name']
-        col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
-        ID_colNum = df.columns.get_loc(col_ID)
-        
-        sub = row[ID_colNum]
-        ses = str(row[ses_colNum]).zfill(2) # ensure proper leading 0
-        print(f"\tProcessing {study} sub-{sub}_ses-{ses} ({counter} / {len(df)})...")
-        vol_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_mp']
-        vol_pth = get_mapVol_pth(root=vol_root, 
-                                    sub=sub, ses=ses, study=study_info['study'], 
-                                    feature=feature, raw=False, space="nativepro")
-        if verbose:
-            print(f"\t\tOrig vol path: {vol_pth}")
-        
-        if chk_pth(vol_pth): # if original volume exists, perform down sampling
-            res_lbl = str(res).replace(".", "p")
-            out_ds_name = os.path.basename(vol_pth).replace(".nii.gz", f"_ds-{res_lbl}mm.nii.gz")
-            id_ses = f"sub-{sub}_ses-{ses}"
+        # iterate rows using index so `idx` is the dataframe index and `row` can be indexed by column position
+        for idx in df.index:
+            row = df.loc[idx].values
+            counter += 1
+            if counter % 20 == 0:
+                now = datetime.datetime.now()
+                print(f"{now} {idx} of {len(df)}...")
+                
+                # save intermittently
+                df_intermediate[out_colName] = out_col
+                sv_name_intermediate = f"{df_save_name}_{counter}_{now.strftime('%d%b%Y_%H%M%S')}.csv"
+                df_save_pth_full = os.path.join(df_savePth, sv_name_intermediate)
+                df_intermediate.to_csv(df_save_pth_full, index=False)
+                print(f"\t Intermittent save: {df_save_pth_full}. Deleting previous intermittent save if present...")
+                try:
+                    os.remove(intermit_pths) if intermit_pths != "" else None
+                except Exception as e:
+                    pass
+                intermit_pths = df_save_pth_full
             
-            out_rt = os.path.join(dsVols_savePth, id_ses)
-            create_dir(out_rt, verbose=False)
-            out_ds_pth = os.path.join(out_rt, out_ds_name)
-            
-            if not chk_pth(out_ds_pth) or ( chk_pth(out_ds_pth) and override ):
-                #print(f"\t\t[downsample_df] Downsampling volume for {id_ses} at {out_ds_pth}")
-                ds_vol = downsample_vol(vol_pth=vol_pth, out_pth=out_ds_pth, res=res) # downsample, return path
-            elif chk_pth(out_ds_pth) and not override :
-                ds_vol = out_ds_pth
-                print(f"\t\t[downsample_df] Downsampled volume already exists for {id_ses} at {chk_pth(out_ds_pth)}. Skipping downsampling.")
+            study = row[study_colNum]
+            studies_present.add(study)
+            study_info = [s for s in studies if s['study'] == study][0] # assumes only one match
+            study_name = study_info['name']
+            if study_name not in soi:
+                if verbose:
+                    print(f"\tSkipping downsampling for study {study} as not in specified ds_study list.")
+                out_col.at[idx] = "NA"
+                continue
 
-        else:
-            ds_vol = "NA"
-            print(f"\t\t[downsample_df] WARNING: Raw volume not found for sub-{sub}_ses-{ses}. Skipping downsampling and mapping.")
+            col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+            ID_colNum = df.columns.get_loc(col_ID)
+            
+            sub = row[ID_colNum]
+            ses = str(row[ses_colNum]).zfill(2) # ensure proper leading 0
+            if verbose:
+                print(f"\tProcessing {study} sub-{sub}_ses-{ses} ({counter} of {len(df)})...")
+            vol_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_mp']
+            
+            vol_pth = get_mapVol_pth(root=vol_root, 
+                                        sub=sub, ses=ses, study=study_info['study'], 
+                                        feature=ft, raw=False, space="nativepro")
+            if verbose:
+                print(f"\t\tOrig vol path: {vol_pth}")
+            
+            if chk_pth(vol_pth): # if original volume exists, perform down sampling
+                res_lbl = str(r).replace(".", "p")
+                out_ds_name = os.path.basename(vol_pth).replace(".nii.gz", f"_ds-{res_lbl}mm.nii.gz")
+                id_ses = f"sub-{sub}_ses-{ses}"
+                
+                out_rt = os.path.join(dsVols_savePth, id_ses)
+                create_dir(out_rt, verbose=False)
+                out_ds_pth = os.path.join(out_rt, out_ds_name)
+                
+                if not chk_pth(out_ds_pth) or ( chk_pth(out_ds_pth) and override ):
+                    #print(f"\t\t[downsample_df] Downsampling volume for {id_ses} at {out_ds_pth}")
+                    ds_vol = downsample_vol(vol_pth=vol_pth, out_pth=out_ds_pth, res=res) # downsample, return path
+                elif chk_pth(out_ds_pth) and not override :
+                    ds_vol = out_ds_pth
+                    if verbose:
+                        print(f"\t\t[downsample_df] Downsampled volume already exists for {id_ses} at {chk_pth(out_ds_pth)}. Skipping downsampling.")
 
-        # add path to output column
-        out_col.at[idx] = ds_vol
-        
-    df[out_colName] = out_col
+            else:
+                ds_vol = "NA"
+                if verbose:
+                    print(f"\t\t[downsample_df] WARNING: Raw volume not found for sub-{sub}_ses-{ses}. Skipping downsampling and mapping.")
+
+            # add path to output column
+            out_col.at[idx] = ds_vol
+            
+        df[out_colName] = out_col
+
     # save final
     now = datetime.datetime.now()
     save_name_final = f"{df_save_name}_{now.strftime('%d%b%Y_%H%M%S')}.csv"
     df_save_pth_full = os.path.join(df_savePth, save_name_final)
     df_intermediate.to_csv(df_save_pth_full, index=False)
     print(f"\t Final csv saved: {df_save_pth_full}")
-    
+    # remove intermittent save
+    try:
+        os.remove(intermit_pths) if intermit_pths != "" else None
+    except Exception as e:
+        pass
+
     return df
 
-def ds_maps(vol_pth, surf_root, sub, ses, smth, surface, label, feature, res, sv_pth, override = False):
+def ds_maps(vol_pth, surf_root, sub, ses, smth, surface, label, feature, res, sv_pth, override = False, verbose = False):
     """
     Project features from downsampled volumes on to maps. Apply smoothing as appropriate.
     NOTE. Assumes all is in nativepro space.
@@ -889,7 +1059,7 @@ def ds_maps(vol_pth, surf_root, sub, ses, smth, surface, label, feature, res, sv
     elif isinstance(smth, list):
         pass
     else:
-        raise ValueError(f"[ds_maps] Smoothing kernel must be str, int or float. Type `{type(smth)}` provided.")
+        raise ValueError(f"\t\t[ds_maps] ERROR. Smoothing kernel must be str, int or float. Type `{type(smth)}` provided.")
     
     for surf in surface:
         for lbl in label:
@@ -897,7 +1067,7 @@ def ds_maps(vol_pth, surf_root, sub, ses, smth, surface, label, feature, res, sv
             surf_lh, surf_rh = get_surf_pth(root=surf_root,
                                             sub=sub, ses=ses, lbl=lbl, space="nativepro", surf=surf, verbose=False)
             if not chk_pth(surf_lh) and not chk_pth(surf_lh):
-                print(f"\t[ds_maps] WARNING: Surface segmentation does not exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping.")
+                print(f"\t\t[ds_maps] WARNING: Surface segmentation does not exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping.")
                 continue
             # determine path to unsmoothed map 
             if "micapipe" in surf_root:
@@ -911,49 +1081,64 @@ def ds_maps(vol_pth, surf_root, sub, ses, smth, surface, label, feature, res, sv
             
             if not chk_pth(L_smthNA_pth) and not chk_pth(R_smthNA_pth):
                 # compute unsmoothed map
-                L_smthNA_pth = map(vol=vol_pth, surf=surf_lh, out=L_smthNA_pth, method="trilinear", verbose=True)
-                R_smthNA_pth = map(vol=vol_pth, surf=surf_rh, out=R_smthNA_pth, method="trilinear", verbose=True)
+                L_smthNA_pth = map(vol=vol_pth, surf=surf_lh, out=L_smthNA_pth, method="trilinear", verbose=verbose)
+                R_smthNA_pth = map(vol=vol_pth, surf=surf_rh, out=R_smthNA_pth, method="trilinear", verbose=verbose)
             elif override:
-                print(f"\t[ds_maps] Overriding existing unsmoothed maps for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}.")
-                L_smthNA_pth = map(vol=vol_pth, surf=surf_lh, out=L_smthNA_pth, method="trilinear", verbose=True)
-                R_smthNA_pth = map(vol=vol_pth, surf=surf_rh, out=R_smthNA_pth, method="trilinear", verbose=True)
+                if verbose:
+                    print(f"\t\t[ds_maps] Overriding existing unsmoothed maps for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}.")
+                L_smthNA_pth = map(vol=vol_pth, surf=surf_lh, out=L_smthNA_pth, method="trilinear", verbose=verbose)
+                R_smthNA_pth = map(vol=vol_pth, surf=surf_rh, out=R_smthNA_pth, method="trilinear", verbose=verbose)
             else:
-                print(f"\t[ds_maps] Unsmooth maps already exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping unsmoothed map generation.")
+                if verbose:
+                    print(f"\t[ds_maps] Unsmooth maps already exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping unsmoothed map generation.")
                 
             # compute smoothed maps            
             if len(smth) > 0:
                 for k in smth:
                     L_smthK_pth, R_smthK_pth = get_dsMap_pth(sv_pth, sub, ses, region, surf, lbl, feature, res, k)
                     if not chk_pth(L_smthK_pth) and not chk_pth(R_smthK_pth):
-                        L_smthK_pth = smooth_map(surf=surf_lh, map=L_smthNA_pth, out_name=L_smthK_pth, kernel=k, verbose=True)
-                        R_smthK_pth = smooth_map(surf=surf_rh, map=R_smthNA_pth, out_name=R_smthK_pth, kernel=k, verbose=True)
+                        L_smthK_pth = smooth_map(surf=surf_lh, map=L_smthNA_pth, out_name=L_smthK_pth, kernel=k, verbose=verbose)
+                        R_smthK_pth = smooth_map(surf=surf_rh, map=R_smthNA_pth, out_name=R_smthK_pth, kernel=k, verbose=verbose)
                     elif override:
-                        print(f"\t[ds_maps] Overriding existing smoothed maps (k={k}mm) for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}.")
-                        L_smthK_pth = smooth_map(surf=surf_lh, map=L_smthNA_pth, out_name=L_smthK_pth, kernel=k, verbose=True)
-                        R_smthK_pth = smooth_map(surf=surf_rh, map=R_smthNA_pth, out_name=R_smthK_pth, kernel=k, verbose=True)
+                        if verbose:
+                            print(f"\t[ds_maps] Overriding existing smoothed maps (k={k}mm) for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}.")
+                        L_smthK_pth = smooth_map(surf=surf_lh, map=L_smthNA_pth, out_name=L_smthK_pth, kernel=k, verbose=verbose)
+                        R_smthK_pth = smooth_map(surf=surf_rh, map=R_smthNA_pth, out_name=R_smthK_pth, kernel=k, verbose=verbose)
                     else:
-                        print(f"\t[ds_maps] Smoothed maps (k={k}mm) already exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping smoothed map generation.")
+                        if verbose:
+                            print(f"\t[ds_maps] Smoothed maps (k={k}mm) already exist for sub-{sub}_ses-{ses}, surf-{surf}, label-{lbl}, feature-{feature}. Skipping smoothed map generation.")
     return
 
-def get_dsMaps(df, map_savePth, features, specs, studies, demographics,  res = 0.8):
+def get_dsMaps(df, specs, studies, demographics, override = False, verbose= False):
     """
     Generate smoothed and unsmoothed maps for downsampled volumes.
 
     Input:
         df: pd.DataFrame
             with rows as subjects
-        map_savePth: str
-            directory to save generated surface maps
+        specs: dict
+            Information regarding analyses, including keys:
+                'ds_foi' <lst>: features whose volumes should be downsampled
+                'ds_res' <flt, int or lst>: desired isotropic resolution (mm) for downsampled volumes
+                'ctx' <bool>: whether to process cortex
+                'hipp' <bool>: whether to process hippocampus
+                'surf_ctx' <str or lst>: surface type(s) for cortex (e.g., "fsLR-32k", "fsLR-5k")
+                'lbl_ctx' <str or lst>: label(s) for cortex (e.g., "white", "pial", "midthickness")
+                'smth_ctx' <flt, int, str or lst>: smoothing kernel(s) for cortex (in mm). 'NA' for no smoothing
+                'surf_hipp' <str or lst>: surface type(s) for hippocampus (e.g., "0p5mm")
+                'lbl_hipp' <str or lst>: label(s) for hippocampus (e.g., "inner", "outer")
+                'smth_hipp' <flt, int, str or lst>: smoothing kernel(s) for hippocampus (in mm). 'NA' for no smoothing
+                'prjDir_root' <str>: root path to project directory
+                'prjDir_maps' <str>: path to save smoothed and unsmoothed maps relative to prjDir_root
         studies: list
             dictionaries with information about paths for each study
-        features: list
-            list of strings refering to features to project to surface
-        specs: dict
-            specifications for regions to perform (cortex, hippocampus), surfaces, labels, features, smoothing kernels, downsampled resolutions
         studies: list
             dict items with information about studies
         demographics: dict
             information on demographics file
+
+        override: bool
+            whether to override existing smoothed and unsmoothed maps. Default is False.
 
     Output:
         saved unsmoothed and smoothed maps for these participants
@@ -961,22 +1146,48 @@ def get_dsMaps(df, map_savePth, features, specs, studies, demographics,  res = 0
     import datetime
 
     print(f"{datetime.datetime.now()} - [get_dsMaps] Generating smoothed and unsmoothed maps from downsampled volumes...")
+    
+    features = specs['ds_foi']
+    res = specs['ds_res']
+    soi = specs['ds_study']
     if isinstance(features, str):
         features = [features]
-    
-    res_lbl = str(res).replace(".", "p")
+    if isinstance(res, float) or isinstance(res, int):
+        res = [res] * len(features)
+        if len(features) > 1:
+            print(f"[get_dsMaps] Single resolution {res[0]}mm provided. Applying to all features.")
+    elif isinstance(res, list):
+        if len(res) != len(features):
+            res = [res[0] * len(features)]
+            print(f"[get_dsMaps] List of resolutions provided does not match number of features. Applying first resolution {res[0]}mm to all features.")
+    else:
+        raise ValueError(f"[get_dsMaps] res must be a float, int or list of floats/ints, not `{type(res)}`")
+    if isinstance(soi, str):
+        soi = [soi]
 
-    for ft in features:
-        print(f"Processing feature: {ft}...")
-        ds_pth_col = f'vol_{ft}_ds-{res_lbl}mm' # find name of column referring to volume for this feature. NOTE. use same naming convetion as in downsample_df function
+    for ft, r in zip(features, res):
         
+        r_lbl = str(r).replace(".", "p")
+        print(f"Processing feature: {ft}...")
+        ds_pth_col = f'vol_{ft}_ds-{r_lbl}mm' # find name of column referring to volume for this feature. NOTE. use same naming convetion as in downsample_df function
+        
+        counter = 0
         for idx in df.index:
             
+            counter += 1
+            if counter % 10 == 0:
+                now = datetime.datetime.now()
+                print(f"{now} Processing {idx} of {len(df)} for feature {ft}...")
+
             row = df.loc[idx]
             study = row['study']
             study_info = [s for s in studies if s['study'] == study][0] # assumes only one match
             study_name = study_info['name']
-            col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+            if study_name not in soi:
+                if verbose:
+                    print(f"\tSkipping mapping for study {study} as not in specified ds_study list.")
+                continue
+            col_ID = get_IDCol(study, demographics) # determine ID col name for this study
             sub = row[col_ID]
             ses = str(row['SES']).zfill(2) # ensure proper leading 0
             
@@ -984,19 +1195,21 @@ def get_dsMaps(df, map_savePth, features, specs, studies, demographics,  res = 0
             if vol_pth == "NA":
                 print(f"\tSkipping {study} sub-{sub}_ses-{ses}... No downsampled volume found.")
                 continue
-            print(f"\tProcessing {study} sub-{sub}_ses-{ses}... [vol path: {vol_pth}]")
+            if verbose:
+                print(f"\t[{idx}] Processing {study} sub-{sub}_ses-{ses}... [vol path: {vol_pth}]")
 
             if specs['ctx']:
                 surf_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_mp'] # since using micapipe surfaces
+                
                 # compute unsmoothed and smoothed maps (if smoothing is specified)
                 ds_maps(vol_pth = vol_pth, surf_root = surf_root, sub = sub, ses = ses, smth = specs['smth_ctx'], 
-                        surface = specs['surf_ctx'], label = specs['lbl_ctx'], feature = ft, res = res, sv_pth = map_savePth)
+                        surface = specs['surf_ctx'], label = specs['lbl_ctx'], feature = ft, res = r, sv_pth = specs['prjDir_root'] + specs['prjDir_maps'], override = override)
             
             if specs['hipp']:
                 surf_root = study_info['dir_root'] + study_info['dir_deriv'] + study_info['dir_hu']
                 
                 ds_maps(vol_pth = vol_pth, surf_root = surf_root, sub = sub, ses = ses, smth = specs['smth_hipp'], 
-                        surface = specs['surf_hipp'], label = specs['lbl_hipp'], feature = ft, res = res, sv_pth = map_savePth)
+                        surface = specs['surf_hipp'], label = specs['lbl_hipp'], feature = ft, res = r, sv_pth = specs['prjDir_root'] + specs['prjDir_maps'], override = override)
 
     return
 
@@ -1031,6 +1244,169 @@ def get_dsMap_pth(root, sub, ses, region, surf, label, feature, res, smth):
     R = f"{root}/sub-{sub}_ses-{ses}/sub-{sub}_ses-{ses}_{region}_hemi-R_space-nativepro_surf-{surf}_label-{label}_{feature}_res-{res_lbl}_smth-{smth_lbl}mm.func.gii"
 
     return L, R
+
+def get_dsMaps_pths(df, specs, studies, demographics, region, surf, lbl, ft, res, smth):
+    """
+    Create a series object to be added to a df with paths to downsampled maps. 
+
+    input:
+        df: pd.DataFrame
+            cols: 'UID', 'study', '{3T_ID}', '{7T_ID}', 'SES'
+        specs: dict
+            information regarding analyses, with keys including:
+                'prjDir_root' <str>: root path to project directory
+                'prjDir_maps' <str>: path to save smoothed and unsmoothed relative to prjDir_root
+        studies: dict
+            information about included studies
+        demographics: dict
+            provides mapping between study code and appropriate ID_col
+        reg_name: str
+            name of region (ctx, hipp)
+        surf: str
+            name of surface (eg., 'fsLR-32k', 'fsLR-5k', '0p5mm', etc)
+        lbl: str
+            surface label (eg., 'white', 'pial', 'midthickness', 'inner', 'outer')
+        ft: str
+            name of feature
+        res: flt
+            resolution of downsampled volume
+        smth: flt, int or str
+            size of smoothing kernel. `NA` for not smmothed
+        
+    """
+    import pandas as pd
+    import numpy as np
+    
+    soi = specs['ds_study']
+    if isinstance(soi, str):
+        soi = [soi]
+
+    res_lbl = str(res).replace(".", "p")
+    
+    L_name = f"{region}_hemi-L_surf-{surf}_label-{lbl}_{ft}_res-{res_lbl}_smth-{smth}mm"
+    R_name = f"{region}_hemi-R_surf-{surf}_label-{lbl}_{ft}_res-{res_lbl}_smth-{smth}mm"
+    
+    col_L = pd.Series(name = L_name)
+    col_R = pd.Series(name = R_name)
+
+    for idx in df.index:
+        row = df.loc[idx]
+        study = row['study']
+        study_info = [s for s in studies if s['study'] == study][0] # assumes only one match
+        study_name = study_info['name']
+        if study_name not in soi:
+            col_L.at[idx] = np.nan
+            col_R.at[idx] = np.nan
+            continue
+
+        col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
+        id = row[col_ID]
+        ses = row['SES']
+        ses_lbl = str(ses).zfill(2)
+
+        L, R = get_dsMap_pth(root=specs['prjDir_root'] + specs['prjDir_maps'], sub=id, ses=ses_lbl, region=region, surf=surf, label=lbl, feature=ft, res=res, smth=smth)
+        
+        # if either path doesnt exist, set both to NA to avoid uneven analyses
+        if not chk_pth(L) or not chk_pth(R):
+            L = np.nan
+            R = np.nan
+        
+        col_R.at[idx] = R
+        col_L.at[idx] = L
+    
+    # concat series objects to input df and return
+    df_out = df.copy()
+    df_out[L_name] = col_L
+    df_out[R_name] = col_R
+
+    cols = [L_name, R_name]
+
+    return df_out, cols
+
+
+def get_dsMaps_pths_iter(df_pths, specs, studies, demographics, save_name):
+    """
+    Wrapper function to call get_dsMaps_pths
+
+
+    input:
+        df_pths: pd.DataFrame
+            dataframe with paths to downsampled volumes
+        specs: dict
+            Information regarding analyses, including keys:
+                'ds_foi' <lst>: features whose volumes should be downsampled
+                'ds_res' <flt, int or lst>: desired isotropic resolution (mm) for downsampled volumes
+                'ctx' <bool>: whether to process cortex
+                'hipp' <bool>: whether to process hippocampus
+                'surf_ctx' <str or lst>: surface type(s) for cortex (e.g., "fsLR-32k", "fsLR-5k")
+                'lbl_ctx' <str or lst>: label(s) for cortex (e.g., "white", "pial", "midthickness")
+                'smth_ctx' <flt, int, str or lst>: smoothing kernel(s) for cortex (in mm). 'NA' for no smoothing
+                'surf_hipp' <str or lst>: surface type(s) for hippocampus (e.g., "0p5mm")
+                'lbl_hipp' <str or lst>: label(s) for hippocampus (e.g., "inner", "outer")
+                'smth_hipp' <flt, int, str or lst>: smoothing kernel(s) for hippocampus (in mm). 'NA' for no smoothing
+        studies: dict
+            information of included studies
+        demographics: dict
+            information linking study name with appropriate ID column
+        save_name: str
+            name of the dataframe to save (exclude .csv)
+        save_pth: str
+            path to save the dataframe
+
+    output:
+        df_out: pd.DataFrame
+            df_pths with addition of new path columns
+        pth: str
+            path to saved csv of df_out
+    """
+    import pandas as pd
+
+    print("[get_dsMaps_pths_iter] Adding path to downsampled maps to df")
+    features = specs['ds_foi']
+    res = specs['ds_res']
+
+    if isinstance(features, str):
+        features = [features]
+    if isinstance(res, float) or isinstance(res, int):
+        res = [res] * len(features)
+        if len(features) > 1:
+            print(f"[get_dsMaps_pths_iter] Single resolution {res[0]}mm provided. Applying to all features.")
+    elif isinstance(res, list):
+        if len(res) != len(features):
+            res = [res[0] * len(features)]
+            print(f"[get_dsMaps_pths_iter] List of resolutions provided does not match number of features. Applying first resolution {res[0]}mm to all features.")
+    else:
+        raise ValueError(f"[get_dsMaps_pths_iter] res must be a float, int or list of floats/ints, not `{type(res)}`")
+    
+    df_out = df_pths.copy()
+    dsMapCols = []
+
+    for reg_name, region, surfs, lbls, smths in zip( ['ctx', 'hipp'], [specs['ctx'], specs['hipp']], [specs['surf_ctx'], specs['surf_hipp']], [specs['lbl_ctx'], specs['lbl_hipp']], [specs['smth_ctx'], specs['smth_hipp']] ) :
+        if not region: # if false, skip
+            continue
+        for surf in surfs:
+            for lbl in lbls:
+                for smth in smths:
+                    for ft, r in zip(features, res):
+                        # call function that creates downsampled map column in df
+                        df_out, dsMapCols_new = get_dsMaps_pths(df = df_out, specs = specs,
+                                                                demographics = demographics, studies = studies,
+                                                                region = reg_name, 
+                                                                surf = surf, lbl = lbl, 
+                                                                ft = ft, res = r, smth = smth)
+                        dsMapCols.extend(dsMapCols_new)
+
+    dsMapCols = list(set(dsMapCols)) # unique
+
+    print(f"[get_dsMaps_pths_iter] {len(dsMapCols)} downsampled map columns added to df: {dsMapCols}")
+
+    # save df
+    pth = f"{specs['prjDir_root']}{specs['prjDir_outs']}/{save_name}_{pd.Timestamp.now().strftime('%d%b%Y-%H%M%S')}.csv"
+    df_out.to_csv(f"{pth}", index=False)
+    print(f"[get_dsMaps_pths_iter] Saved to {pth}")
+
+    return df_out, pth
+
 
 def idToMap(df_demo, studies, dict_demo, specs, 
             save=True, save_pth=None, save_name="02a_mapPths", test=False, test_frac = 0.1,
@@ -1731,7 +2107,7 @@ def idToMap(df_demo, studies, dict_demo, specs,
 def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
     """
     Create dict item for each, study, feature, label, smoothing pair (including hippocampal)
-    Note: multiple groups should be kept in same DF. Seperate groups later on
+    Note: multiple patient groups should be kept in same DF. Seperate groups later on
 
     Input:
         df: DataFrame with columns for ID, SES, Date, and paths to left and right hemisphere maps.
@@ -1780,6 +2156,14 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
         print(f"[get_maps] WARNING. No valid entries found in df for columns {col_L} and/or {col_R}. Returning None.")
         return None
     
+    # TODO. Remove indices with NA in either column from df_maps
+    na_values = uniqueNAvals(df_maps[[col_L, col_R]])
+    if len(na_values) > 0 and verbose:
+        print(f"[get_maps] Unique NA values found in map columns: {na_values}")
+
+    for na_val in na_values:
+        df_maps = df_maps[~((df_maps[col_L] == na_val) | (df_maps[col_R] == na_val))]
+
     # Stack all hemisphere maps into a DataFrame (vertices as columns)
     map_L_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_L]])
     map_R_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_R]])
@@ -2460,9 +2844,9 @@ def get_IDCol(study_name, demographics):
     Output:
         col_ID: column name for subject ID in the demographics file
     """
-    if study_name == "MICs":
+    if study_name == "MICs" or study_name == "3T":
         col_ID = demographics['ID_3T']
-    elif study_name == "PNI":
+    elif study_name == "PNI" or study_name == "7T":
         col_ID = demographics['ID_7T']
     else:
         raise ValueError(f"Unknown study name: {study_name}")
@@ -2535,9 +2919,9 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
         return pth_noSmth
 
 
-def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
+def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_thresh,
                save_df_pth, log_save_pth,
-               log_name = "04a_extractMap",
+               log_name = "04d_extractMap",
                append_name = None, region=None, verbose=False, test = False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
@@ -2550,6 +2934,9 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
             map paths kept in column passed in cols.
         cols_L, cols_R: list of str
             column names to extract from the dataframe.
+        specs: dict
+            specifications for extraction with required key:
+                'ds_study' <lst>: what studies should be considered for downsampling
         studies:
             list of dicts  regarding studies in the analysis.
             Each dict should contain:
@@ -2609,6 +2996,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
     start = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_file_path = os.path.join(log_save_pth, f"{log_name}_log_{start}.txt")
     print(f"\n[extractMap] Saving log to: {log_file_path}")
+    print(f"Reading in maps, creating dictionary list (each combo of: study-feature-label-surface-smoothing).\n\tNote. Not seperating groups yet.")
 
     # Configure module logger (handlers added per-file by _get_file_logger)
     logger = _get_file_logger(__name__, log_file_path)
@@ -2641,7 +3029,6 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
             return out_dl
         
         if test:
-            import random
             import numpy as np
             idx_len = 2
             idx_rdm = np.random.choice(len(cols_L), size=idx_len, replace=False).tolist()  # randomly choose index
@@ -2669,6 +3056,10 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
             # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
             hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
             commonName = col_L[hemi_L_idx:]
+            if "_res-" in commonName:
+                downsampledRes = commonName.split('_res-')[1].split('_')[0].replace("p", ".")
+            else:
+                downsampledRes = "native"
 
             logger.info(f"\n\tProcessing {commonName}...\t\t[{col_L} {col_R}]")                
             logger.info(f"\t\t\t{len(df_mapPaths['UID'].unique())} unique IDs in input data with {df_mapPaths.shape[0]} rows")
@@ -2687,8 +3078,10 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
                 smth = 'NA'
             else:
                 smth = col_L.split('_smth-')[1].split('mm')[0]
-                
-            # determine QC column
+            
+            # Clean and select final sessions 
+            ## 1. QC criteria
+            ### determine QC column
             if ft == 'T1map':
                 vol = 'T1map'
             elif ft == 'thickness':
@@ -2709,30 +3102,35 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
             #logger.info(f"Number of NA col L + col R:\n\t before QC: \n\t\t{df_mapPaths[[col_L, col_R]].isna().sum()}\n\tafter: \n\t\t{df_mapPaths_qc[[col_L, col_R]].isna().sum()}")
             
             logger.info(f"\t\t\tCleaning missing map paths...")
-            df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove IDs with missing values in col_L or col_R
+            df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
             logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
             logger.info(f"\t\t\t\t\tRemoved: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()))}")
 
-            # Remove participants that do not have data for each study
-            logger.info(f"\t\t\tCleaning missing study pairs... ")
-            required_studies = [s['study'] for s in studies]
-            participant_counts = df_demo.groupby('UID')['study'].nunique()
-            valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
-            df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
-            df_demo = df_demo[df_demo['UID'].isin(valid_ids)]
-    
+            ## 2. Remove participants that do not have data for each study
+            if downsampledRes == "native":
+                logger.info(f"\t\t\tCleaning missing study pairs... ")
+                required_studies = [s['study'] for s in studies]
+                participant_counts = df_demo.groupby('UID')['study'].nunique()
+                valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
+                df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
+                df_demo = df_demo[df_demo['UID'].isin(valid_ids)]  
+                logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")             
+            else: # should not compare repeated studies
+                pass
+            
             n_before = df_mapPaths_qc['UID'].nunique()
             n_after = df_demo['UID'].nunique()
             n_removed = n_before - n_after
 
             logger.info(f"\t\t\t\t{n_removed} unique IDs removed [{n_after} unique IDs with {df_demo.shape[0]} rows remain]")
-            logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
-            
             if n_after == 0:
                 logger.info(f"\t\t\tWARNING. No participants remain after filtering for complete study data. Skipping this map.")
                 continue
-
+            
             for study in studies:
+                if downsampledRes != "native" and ft in specs['ds_foi'] and (study['name'] not in specs['ds_study']) and (study['study'] not in specs['ds_study']):
+                    #print(f"\t\t\tSkipping study {study['name']} for native resolution maps.")
+                    continue
                 
                 study_name = study['name']
                 study_code = study['study']
@@ -2740,6 +3138,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
                 col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
                 
                 df_demo_study = df_demo[df_demo['study'] == study_code] # filter for rows from this study
+ 
                 logger.info(f"\n\t\t\t[{study_code}] Selecting unique session per ID... {len(df_demo_study['UID'].unique())} UIDs with {len(df_demo_study)} rows before session cleaning.")
 
                 # Select a single session per UID-study combination                
@@ -2747,6 +3146,9 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
                                 col_ID="UID",  col_study='study', verbose=True)
                 
                 df_demo_ses = df_demo_study.loc[ses_indices]
+                # remove dupplicated rows
+                df_demo_ses = df_demo_ses[~df_demo_ses.index.duplicated(keep='first')]
+
                 logger.info(f"\t\t\t\t{len(df_demo_ses['UID'].unique())} UIDs with {df_demo_ses.shape[0]} rows remain for study {study_name}.")
                 if verbose:
                     logger.info(f"\t\t\t\t\tUnique UIDs: {df_demo_ses['UID'].unique().tolist()}")
@@ -2757,8 +3159,8 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
                     logger.info(f"\t\t\t\t\t{len(df_demo_study) - len(df_demo_ses)} rows removed due to multiple sessions per UID-study. [{len(df_demo_study)} rows before, {len(df_demo_ses)} rows remain for {len(df_demo_ses['UID'].unique())} unique participants]")
 
                 maps = get_maps(df_demo_ses, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=False)
-                if maps.shape[0] == 0:
-                    logger.info(f"\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
+                if maps is None or maps.shape[0] == 0:
+                    logger.info(f"\t\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
                     continue
                 
                 map_name = f"{study_code}_{commonName}"
@@ -2780,6 +3182,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R, studies, demographics, qc_thresh,
                     'label': lbl,
                     'feature': ft,
                     'smth': smth,
+                    'downsampledRes': downsampledRes,
                     'df_demo': df_demo_ses,
                     'df_maps': maps_pth,
                 })
@@ -2994,8 +3397,8 @@ def extractMap_SES(df_mapPaths, col_sesNum = 'ses_num', col_studyID = 'ID_study'
     
     return out_dl
 
-def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth, 
-                     stats=None, save_pth=None, save_name=None,
+def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth, stats,
+                     save_pth=None, save_name=None,
                      verbose=False, test=False):
     """
     Parcellate vertex-wise dataframes.
@@ -3024,7 +3427,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
         stats: lst
             whether and how to summarise parcellated maps. 
             Options: 
-                None - returns relabeled vertex names without summarising
+                '' or 'none' - returns relabeled vertex names without summarising
                 'mean', 'median', 'max', 'min', 'std','iqr'
 
         save_pth: str
@@ -3054,7 +3457,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
     # Prepare log file path
     logger = _get_file_logger(__name__, log_file_path)
     logger.info("Log started for winComp function.")
-    print(f"[winComp] Saving log to: {log_file_path}")
+    print(f"[parcellate_items] Saving log to: {log_file_path}")
 
     logger.info("Parameters:")
     logger.info(f"  df_keys: {df_keys}")
@@ -3071,10 +3474,16 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
     try:
         assert type(dl) == list, f"\t[parcellate_items] dl should be a list of dicts. Found {type(dl)}."
         assert type(parcellationSpecs) == list, f"\t[parcellate_items] parc_region should be a list of dicts. Found {type(parcellationSpecs)}."
+        
         if type(stats) == str:
             stats = [stats]
+        allowed_stats = ['', 'none', 'mean', 'mdn', 'median', 'max', 'min', 'std', 'iqr']
         for s in stats:
-            assert s.lower() in ['mean', 'mdn', 'median', 'max', 'min', 'std','iqr', None], f"\t[parcellate_items] Unknown stat: {s}. Supported: 'mean', 'mdn', 'median', 'max', 'min', 'std','iqr', `None`."
+            if s is None:
+                continue
+            s_l = str(s).lower()
+            if s_l not in allowed_stats:
+                raise ValueError(f"[parcellate_items] Unknown stat `{s}`. Supported: {allowed_stats}")
         
         if type(df_keys) == str:
             df_keys = [df_keys]
@@ -3139,11 +3548,11 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
             for df_key in df_keys:
                 for s in stats:
                     
-                    if s is None:
+                    if s == '' or s == None or s.lower() == 'none':
                         key_out = f'{df_key}_parc-{parc_name_shrt}'
                     else:
                         s = s.lower()
-                        key_out = f'{df_key}_parc_{parc_name_shrt}_{s}'
+                        key_out = f'{df_key}_parc-{parc_name_shrt}_{s}'
                     key_outs.append(key_out)
 
                     df = item.get(df_key, None)
@@ -3169,7 +3578,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth,
                     else:
                         pass
 
-                    if s is None:
+                    if s in ['none', '']:
                         pass
                     elif s == 'mean':
                         df_parc = df_parc.groupby(df_parc.columns, axis=1).mean()
@@ -4198,25 +4607,9 @@ def btwD(dl, save_pth_df,
     try:
         
         if test:
-            idx = np.random.choice(len(dl), size=test_len, replace=False).tolist()  # randomly choose index
-            if isinstance(idx, int):
-                idx = [idx]
-            
-            test_indices = list(idx)
-            for i in idx: # for each randomly selected index, find its matching pai
-                idx_other = get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=idx)
-                if idx_other is None:
-                    test_indices.remove(i)
-                    continue
-                if isinstance(idx_other, int):
-                    idx_other = [idx_other]
-               
-                for j in idx_other:
-                    if j not in test_indices:
-                        test_indices.append(j)
-                
-            dl_iterate = [dl[i] for i in test_indices]
-            logger.info(f"[TEST MODE] Running d-scoring on {test_len} pair(s) of randomly selected dict items: {test_indices}")
+            rdm_indices = get_rdmPairedIndices(dl, test_len, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'])
+            dl_iterate = [dl[i] for i in rdm_indices]
+            logger.info(f"[TEST MODE] Running d-scoring on {test_len} pair(s) of randomly selected dict items: {rdm_indices}")
         else:
             dl_iterate = dl.copy() # Create a copy of the original list to iterate over
 
@@ -4236,15 +4629,14 @@ def btwD(dl, save_pth_df,
             else:
                 skip_idx.append(i)
                        
-            idx_other = get_pair(dl_iterate, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
+            idx_other = get_pair(dl_iterate, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], skip_idx=skip_idx)
             if idx_other is None:
                 logger.info(f"\tNo matching index found. Skipping.")
                 continue
-            skip_idx.append(idx_other)
             
             if test:
-                index = test_indices[i]
-                index_other = test_indices[idx_other]
+                index = rdm_indices[i]
+                index_other = rdm_indices[idx_other]
             else:
                 index = i
                 index_other = idx_other
@@ -4637,7 +5029,7 @@ def find_paired_TLE_index(dl, idx, mtch=['study','label']):
                 return j
     return None  # Not found
 
-def get_pair(dl, idx, mtch=['study', 'grp', 'label'], skip_idx=None):
+def get_pair(dl, idx, mtch=['region', 'feature'], difStudy = True, difdsRes = False, skip_idx=None):
     """
     Get corresponding idx for item in dictionary list.
     NOTE. Assumes only a single match exists.
@@ -4663,18 +5055,38 @@ def get_pair(dl, idx, mtch=['study', 'grp', 'label'], skip_idx=None):
     for j, other in enumerate(dl):
         if j not in skip_idx:
             match = True
+            if difStudy:
+                if other.get('study', None) == item.get('study', None):
+                    match = False
+                    continue
+            
             for key in mtch:
-                if other.get(key, None) != item.get(key, False):
+                if key == 'downsampledRes' and difdsRes:
+                    if other.get('downsampledRes', None) == item.get('downsampledRes', None):
+                        match = False
+                        break
+                    else: # next key
+                        continue    
+                itm_k = item.get(key, False)
+                oth_k = other.get(key, False)
+                #print(f"\t\t{key}: item[{idx}] = {itm_k} | other[{j}] = {oth_k}")
+                if itm_k != oth_k and itm_k is not False and oth_k is not False:
                     match = False
                     break
             if match:
                 matches.append(j)
-    if len(matches) == 1:
+                #print(f"[get_pair] {matches}")
+    
+    if len(matches) == 0:
+        #print(f"[get_pair] No matches found for index {idx} with keys {mtch}.")
+        return None
+    elif len(matches) == 1:
         return matches[0]
     elif len(matches) > 1:
-        print(f"[get_pair] WARNING: Multiple matches found for index {idx} with keys {mtch}. Returning all matches: {matches}")
+        #print(f"[get_pair] WARNING: Multiple matches found for index {idx} with keys {mtch}. Returning all matches: {matches}")
         return matches
     else:
+        #print(f"[get_pair] WARNING: Unexpected condition encountered. output object `matches` is of type `{type(matches)}`.")
         return None  # Not found
 
 def ipsi_contra(df, hemi_ipsi='L', rename_cols = True):
@@ -4964,6 +5376,11 @@ def printItemMetadata(item, return_txt = False, idx=None, clean = False, printSt
     surf = item.get('surf', None)
     label = item.get('label', None)
     smth = item.get('smth', None)
+    res = item.get('downsampledRes', None)
+    
+    if res is not None:
+        label = f"{label}, res {res}"
+
     if idx is not None:
         if printStudy == True:
             txt = f"[{study}] - {region}: {feature}, {surf}, {label}, {smth}mm (idx {idx})"
@@ -5609,462 +6026,6 @@ def get_xtremeVrtx(dl, key_df, thresh, lobes,
 
 
 ######################### VISUALIZATION FUNCTIONS #########################
-
-def plotMatrices(dl, df_keys, 
-                 name_append=False, sessions = None, save_pth=None, min_stat = -4, max_stat = 4, test=False):
-    """
-    Plot matrix visualizations for map values from corresponding study
-
-    dl: 
-        dictionary list with paired items from different studies
-    df_keys: lst
-        keys in the dictionary items to plot (e.g., 'map_smth')
-    
-    name_append: bool
-        if true, adds key name to save file
-    sessions: (list of ints)
-        if provided, will plot different sessions next to eachother rather than different studies
-    save_pth:
-        if provided, save the plots to this path instead of showing them interactively
-    min_stat, max_stat: int, int
-        applied only if the key contains either '_z_' or '_w_': min and max values for color scale
-    test: bool
-        if true, runs in test mode, applying parcellations to 3 random items and appends 'TEST' to outputs
-    """
-    import matplotlib.pyplot as plot
-    from matplotlib import gridspec
-    import numpy as np
-    import datetime
-    import os
-
-    skip_idx = []
-    counter = 0
-    
-    if type(df_keys) == str:
-        df_keys = [df_keys] 
-
-    print(f"Plotting matrices for {list(df_keys)}...")
-    
-    if test:
-        idx_len = 3
-        idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
-        idx_other_rdm = [get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth']) for i in idx_rdm]
-        print(f"TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {idx_rdm}.")
-        rdm_indices = idx_rdm + idx_other_rdm
-        dl = [dl[i] for i in rdm_indices]
-
-    # If dl is a single dictionary (not a list), wrap it in a list
-    if isinstance(dl, dict):
-        print("[plotMatrices] WARNING: dl is a single dictionary, wrapping in a list.")
-        dl = [dl]
-
-    counter = 0
-    for idx, item in enumerate(dl):
-        counter += 1
-        if counter % 10 == 0:
-            print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processed {counter} of {len(dl)}... ")
-        
-
-        if idx in skip_idx:
-            continue
-        skip_idx.append(idx)
-        if sessions:
-            if item.get('sesNum', None) not in sessions or item.get('sesNum', None) not in sessions:
-                continue
-            
-        counter = counter+1
-        
-        idx_other = get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth'], skip_idx=skip_idx)
-        
-        if test:
-            index = rdm_indices[idx]
-            index_other = rdm_indices[idx_other]
-        else:
-            index = idx
-            index_other = idx_other
-
-        skip_idx.append(idx_other)
-        
-        if type(idx_other) == list:
-            # get the indices whose session number is in 'sessions'. Add also the index 'idx'. 
-            # If not in 'sessions' then, add to skip idx
-            matches = []
-            
-            for indices in [idx, *idx_other]:
-                itm = dl[indices]
-                sesNum = itm.get('sesNum', None)
-                if sesNum in sessions:
-                    matches.append(indices)
-            if len(matches) == 2:
-                # sort matches by the ses num of that index
-                matches = sorted(matches, key=lambda x: dl[x].get('sesNum', float('inf')))
-                idx = matches[0]
-                idx_other = matches[1]
-                
-                item = dl[idx]
-                item_other = dl[idx_other]
-            else:
-                print(f"[plotMatrices] WARNING: More than 2 matches found for index {index} with keys ['region', 'surf', 'label', 'feature', 'smth'] and sessions {sessions}. Skipping.")
-                continue
-
-        if idx_other is None:
-            item_txt = printItemMetadata(item, return_txt=True)
-            print(f"\tWARNING. No matching index found for: {item_txt} (idx: {index}).\nSkipping.")
-            continue
-        skip_idx.append(idx_other)
-        
-        item_other = dl[idx_other]
-        if item_other is None:
-            item_txt = printItemMetadata(item, return_txt=True)
-            print(f"\tWARNING. Item other is None: {item_txt} (idx: {index}).\nSkipping.")
-            continue
-        
-        if sessions is None:
-            if item['study'] == 'MICs':
-                idx_one = idx
-                idx_two = idx_other
-
-                item_one = item
-                item_two = item_other
-            else:
-                idx_one = idx_other
-                idx_two = idx
-
-                item_one = item_other
-                item_two = item
-        else:
-            
-            idx_one = idx
-            idx_two = idx_other
-
-            item_one = item
-            item_two = item_other
-
-            ses_one = item_one.get('sesNum', None)
-            ses_two = item_two.get('sesNum', None)
-
-        if item_one is None and item_two is None:
-            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-            item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-            print(f"\tWARNING. Both items are None (item one: {item_one_txt}, item two: {item_two_txt}).\nSkipping.")
-            continue
-        elif item_one is None:
-            item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-            print(f"\tWARNING. Item_one is None: {item_one_txt}.\nSkipping.")
-            continue
-        elif item_two is None:
-            item_two_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-            print(f"\tWARNING. Item_two is None: {item_two_txt}.\nSkipping.")
-            continue
-        
-        if sessions is None:
-            print(f"\t[idx 3T, 7T: {idx_one}, {idx_two}] {printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
-        else:
-            print(f"\t[ses 1, 2: {idx_one} ({ses_one}), {idx_two} ({ses_two})] {printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
-        
-        for key in df_keys:
-
-            if item_one.get('study', None) and item_two.get('study', None):
-                if test:
-                    title_one = f"{key} {item_one['study']} [idx: {rdm_indices[idx_one]}]"
-                    title_two = f"{key} {item_two['study']} [idx: {rdm_indices[idx_two]}]"
-                else:
-                    title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
-                    title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
-            else:
-                if test:
-                    title_one = f"{key} SES num: {ses_one} [idx: {rdm_indices[idx_one]}]"
-                    title_two = f"{key} SES num: {ses_two} [idx: {rdm_indices[idx_two]}]"
-                else:
-                    title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
-                    title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
-            
-            feature_one = item_one['feature']
-            feature_two = item_two['feature']
-            
-            try:
-                df_one = item_one[key]
-                if type(df_one) is str:
-                    pth = df_one 
-                    df_one = loadPickle(pth, verbose = False) 
-            except KeyError:
-                print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_one}. Skipping.")
-                #print_dict(dl, idx = [idx_one])
-                print(f"\t\t{'-'*50}")
-                continue
-            except Exception as e:
-                print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
-                #print_dict(dl, idx=[idx_one])
-                print(f"\t\t{'-'*50}")
-                continue
-            
-            try:
-                df_two = item_two[key]
-                if type(df_two) is str:
-                    pth = df_two
-                    df_two = loadPickle(pth, verbose = False) 
-            except KeyError:
-                print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_two}. Skipping.")
-                #print_dict(dl, idx = [idx_two])
-                print(f"\t\t{'-'*50}")
-                continue
-            except Exception as e:
-                print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
-                #print_dict(dl, idx=[idx_one])
-                print(f"\t\t{'-'*50}")
-                continue
-            
-            if df_one is None and df_two is None:
-                item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=False)
-                item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=False)
-                print(f"\t\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
-                print('-'*50)
-                continue
-            elif df_one is None:
-                item_one_txt = printItemMetadata(item_one, idx=idx_one, return_txt=True)
-                print(f"\t\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
-                print('-'*50)
-                continue
-            elif df_two is None:
-                item_two_txt = printItemMetadata(item_two, idx=idx_two, return_txt=True)
-                print(f"\t\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
-                print('-'*50)
-                continue
-            else:
-                print(f"\t\tPlotting key: {key}...")
-            # determine min and max values across both matrices for consistent color scaling
-            assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
-            assert item_one['region'] == item_two['region'], f"Regions do not match: {item_one['region']}, {item_two['region']}"
-            assert item_one['surf'] == item_two['surf'], f"Surfaces do not match: {item_one['surf']}, {item_two['surf']}"
-            assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
-            assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
-        
-            if "_z" in key or "_w" in key:
-                cmap = "seismic"
-                min_val = min_stat
-                max_val = max_stat
-            else:
-                cmap = 'inferno'
-                if feature_one.lower() == "thickness":
-                    min_val = 0
-                    max_val = 4
-                    cmap = 'Blues'
-                elif feature_one.lower() == "flair":
-                    min_val = -500
-                    max_val = 500
-                    cmap = "seismic"
-                elif feature_one.lower() == "t1map":
-                    min_val = 1000
-                    max_val = 2800
-                    cmap = "inferno"
-                elif feature_one.lower() == "fa":
-                    min_val = 0
-                    max_val = 1
-                    cmap="Blues"
-                elif feature_one.lower() == "adc": # units: mm2/s
-                    min_val = 0
-                    max_val = 0.0025
-                    cmap = "Blues"
-                else:
-                    min_val = min(np.percentile(df_two.values, 95), np.percentile(df_one.values, 95))
-                    max_val = max(np.percentile(df_two.values, 5), np.percentile(df_one.values, 5))
-
-            # Create a grid layout with space for the colorbar
-            fig = plot.figure(figsize=(30, 25))
-            spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
-
-            # Create subplots
-            ax1 = fig.add_subplot(spec[0])
-            ax2 = fig.add_subplot(spec[2])
-
-            # Define x-axis label
-            if item_one.get('parcellation', None) is not None and 'parc' in key:
-                x_axisLbl = item_one.get('parcellation', None).upper()
-            else:
-                x_axisLbl = 'Vertex'
-
-            # Plot the matrices
-            visMatrix(df_one, feature=feature_one, title=title_one, 
-                    show_index=True, ax=ax1, x_axisLbl = x_axisLbl,
-                    min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
-            visMatrix(df_two, feature=feature_two, title=title_two, 
-                    show_index=True, ax=ax2, x_axisLbl = x_axisLbl,
-                    min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
-
-            # Add a colorbar between the plots
-            cmap_title = feature_one
-
-            if "_z_" in df_keys:
-                cmap_title = f"Z-score [{cmap_title}]"
-            elif "_w_" in df_keys:
-                cmap_title = f"W-score [{cmap_title}]"
-            else:
-                if feature_one.upper() == "ADC":
-                    cmap_title = "ADC (mm²/s)"
-                elif feature_one.upper() == "T1MAP":
-                    cmap_title = "T1 (ms)"
-            
-            cbar_ax = fig.add_subplot(spec[1])
-            norm = plot.Normalize(vmin=min_val, vmax=max_val)
-            cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
-            cbar.set_label(cmap_title, fontsize=20, labelpad=0)
-            cbar.ax.yaxis.set_label_position("left")
-            cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
-
-            # Add a common title
-            region = item_one['region']
-            surface = item_one['surf']
-            label = item_one['label']
-            smth = item_one['smth']
-            if sessions:
-                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
-            else:
-                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
-
-            if save_pth is not None:
-                if name_append:
-                    if sessions is not None:
-                        save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_key-{key}_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                    else:
-                        save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_key-{key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                elif sessions is not None:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                else:
-                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                
-                if test:
-                    save_name = f"TEST_{save_name}"
-
-                fig_pth = f"{save_pth}/{save_name}.png"
-                fig.savefig(fig_pth, dpi=300, bbox_inches='tight')
-                file_size = os.path.getsize(fig_pth) / (1024 * 1024)  # size in MB
-                print(f"\tSaved ({file_size:0.1f} MB): {fig_pth}")
-                plot.close(fig)
-
-
-def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, x_axisLbl = None,
-              cmap='seismic', show_index=False, ax=None, nan_color='green', nan_side="right"):
-    """
-    Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        The data to visualize, where rows are indices and columns are vertices.
-    
-    feature : str, optional
-        Label for the colorbar (default is "Map Value").
-    title : str, optional
-        Title for the plot.
-    
-    x_axisLbl: str, optional
-        Label for the x-axis. If None, use default: 'Vertex'
-    min_val : float, optional
-        Minimum value for colormap scaling. If None, uses the minimum of the data.
-    max_val : float, optional
-        Maximum value for colormap scaling. If None, uses the maximum of the data.
-    cmap : str or matplotlib.colors.Colormap, optional
-        Colormap to use for visualization (default is 'seismic').
-    show_index : bool, optional
-        If True, displays DataFrame index labels on the y-axis.
-    ax : matplotlib.axes.Axes, optional
-        Existing axes to plot on. If None, creates a new figure and axes.
-    
-    Returns
-    -------
-    matplotlib.figure.Figure or matplotlib.axes.Axes
-        The figure or axes containing the visualization, depending on `return_fig`.
-    """
-    
-    import numpy as np
-    from matplotlib import use
-    import matplotlib.pyplot as plt
-    use('Agg')
-
-    if df is None or df.shape[0] == 0 or df.shape[1] == 0:
-        print("[visMatrix] WARNING: DataFrame is empty or None. Skipping visualization.")
-        return None
-    
-    # Convert DataFrame to numpy array, mask NaNs
-    data = df.values
-    mask = np.isnan(data)
-
-    # Use provided cmap parameter
-    if isinstance(cmap, str):
-        cmap_obj = plt.get_cmap(cmap)
-    else:
-        cmap_obj = cmap
-    
-    cmap_obj.set_bad(color=nan_color) # Color for NaN values
-
-    if min_val is None:
-        min_val = np.nanmin(data)
-    if max_val is None:
-        max_val = np.nanmax(data)
-    
-    # Use provided axes or create new figure
-    anyNaN = np.isnan(data).any()
-    if ax is None:
-        fig_length = max(6, min(0.1, 0.1 * data.shape[0]))
-        fig_width = 10
-        if anyNaN:  # Increase width if NaN annotations are present
-            fig_width += 2
-        fig, ax = plt.subplots(figsize=(fig_width, fig_length))
-        create_colorbar = True
-    else:
-        fig = ax.get_figure()
-        create_colorbar = False  # Let caller handle colorbar
-    
-    im = ax.imshow(data, aspect='auto', cmap=cmap_obj, vmin=min_val, vmax=max_val, interpolation='none')
-    im.set_array(np.ma.masked_where(mask, data))
-
-    if anyNaN:
-        print(f"\tNaN values present [{title}: {feature}]")
-        for i, row in enumerate(data):
-            nan_count = np.isnan(row).sum()
-            if nan_count > 0:  # Annotate next to the row
-                if nan_side == "right":
-                    ax.annotate(f"NAN: {nan_count}", 
-                                xy=(data.shape[1], i), 
-                                xytext=(data.shape[1] + 1, i),  # Place outside the plot
-                                va='center', ha='left', fontsize=9, color='black')
-                elif nan_side == "left":
-                    ax.annotate(f"NAN: {nan_count}", 
-                                xy=(-1, i), 
-                                xytext=(-2, i),  # Place outside the plot
-                                va='center', ha='right', fontsize=9, color='black')
-            
-    if title:
-        ax.set_title(title, fontsize=23)
-
-    if x_axisLbl is None:
-        ax.set_xlabel("Vertex", fontsize=15)
-    else:
-        ax.set_xlabel(x_axisLbl, fontsize=15)
-    
-    ax.tick_params(axis='x', labelsize=10)
-    
-    if create_colorbar:
-        if feature.upper == "ADC":
-            feature = "ADC (mm²/s)"
-        elif feature.upper == "T1MAP":
-            feature = "T1 (ms)"
-        cbar = plt.colorbar(im, ax=ax, label=feature, shrink=0.25)
-        cbar.ax.tick_params(axis='y', direction='in', length=5)  # Place ticks inside the color bar)
-
-    if show_index:
-        if nan_side == "left":# nan_side and index side should be different
-            ax.yaxis.set_label_position("right") 
-            ax.yaxis.tick_right()
-        else:
-            ax.yaxis.set_label_position("left")
-            ax.yaxis.tick_left()
-        ax.set_yticks(np.arange(len(df.index)))
-        ax.set_yticklabels(df.index.astype(str), fontsize=8)
-        ax.tick_params(axis='y', pad=5, labelsize=14)
-
-
-    plt.close(fig)
-    return ax
     
 def pngs2pdf(fig_dir, output=None, verbose=False):
     """
@@ -6135,491 +6096,7 @@ def pngs2pdf(fig_dir, output=None, verbose=False):
             images[0].save(output_pdf, save_all=True, append_images=images[1:])
             print(f"\tPDF created: {output_pdf}")
 
-def sortCols(df):
-    """
-    Sort DataFrame columns. Rules: 
-        All _L columns first (sorted by number), then all _R columns (sorted by number).
-        If ends with _contra, put before _ipsi (same logic).
-        If neither, put at the end.
 
-    Input:
-        df: DataFrame with columns to sort
-
-    Output:
-        df_sorted: DataFrame with sorted columns
-    """
-    import re
-    import pandas as pd
-
-    def col_type(col):
-        col = str(col)
-        if col.endswith('_L'):
-            return 'L'
-        elif col.endswith('_R'):
-            return 'R'
-        elif col.endswith('_contra'):
-            return 'contra'
-        elif col.endswith('_ipsi'):
-            return 'ipsi'
-        else:
-            return 'other'
-
-    def col_num(col):
-        col = str(col)
-        match = re.match(r"(\d+)", col)
-        if match:
-            return int(match.group(1))
-        else:
-            return float('inf')
-
-    # Group columns
-    L_cols = [col for col in df.columns if col_type(col) == 'L']
-    R_cols = [col for col in df.columns if col_type(col) == 'R']
-    contra_cols = [col for col in df.columns if col_type(col) == 'contra']
-    ipsi_cols = [col for col in df.columns if col_type(col) == 'ipsi']
-    other_cols = [col for col in df.columns if col_type(col) == 'other']
-
-    # Sort each group by number
-    L_cols = sorted(L_cols, key=col_num)
-    R_cols = sorted(R_cols, key=col_num)
-    contra_cols = sorted(contra_cols, key=col_num)
-    ipsi_cols = sorted(ipsi_cols, key=col_num)
-    other_cols = sorted(other_cols)
-
-    # Order: L, contra, R, ipsi, other
-    sorted_cols = L_cols + ipsi_cols + R_cols + contra_cols + other_cols
-    df_sorted = df[sorted_cols]
-    return df_sorted
-
-def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, 
-                   parc = None, stat=None, hline = None, marks = False, 
-                   hline_idx = None, pad_top_rows=2,
-                   offset = 3, spacing=None, alpha = 0.3):
-    """
-    Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
-
-    Input:
-        df_a, df_b:         DataFrames with identical columns and identical row indices.
-                                NOTE. Numerical indeces should be sorted 
-        lbl_a, lbl_b:       Labels for the two groups
-        title:              Title for the plot
-        
-        <optionals>
-        parc:               Indicate how the surface has been parcellated. If None, assumes vertex names have suffix '_L', '_R' 
-            Options: 'glasser', None
-        stat:  str             If parcellation is provided, this  provided, this variable is added to the x-axis label 
-            (made for when multiple vertices are summarised with a statistic for a single value per parcel)
-        hline: <int or None> if provided, draw a horizontal line at this y-value. 
-        marks:              Whether to use marks instead of lines
-        pad_top_rows: int   Adds empty top rows to increase spacing between title and plot    
-        offset:             Vertical distance between plots
-        spacing: <int or None>  If provided, use this list to set the y-tick positions.
-    
-    Output:
-        axis object
-    """
-
-    import numpy as np
-    import pandas as pd
-    from matplotlib import use
-    import matplotlib.pyplot as plt
-    use('Agg')  # Use a non-interactive backend, prevents memory build up.
-    # see if ipsiContra. If not, assume L/R
-    
-    n = df_a.shape[0]
-    
-    # sort columns
-    df_a_sort = sortCols(df_a)
-    df_b_sort = sortCols(df_b)
-
-    # choose a random column, check if ends with '_ipsi' or '_contra'
-    rdm_col = df_a_sort.columns[np.random.randint(0, df_a_sort.shape[1])].lower()
-    if rdm_col.endswith('_ipsi') or rdm_col.endswith('_contra'):
-        ipsi_contra = True
-    else:
-        ipsi_contra = True
-
-    # Reverse the order of rows so the top row of the plot corresponds to the top row of the DataFrame
-    df_a_sort = df_a_sort.iloc[::-1]
-    df_b_sort = df_b_sort.iloc[::-1]
-    
-    # Optionally prepend a few blank rows at the top to increase space between title and first real row.
-    # These rows will not be plotted; they simply create extra vertical gap.
-    original_n = df_a_sort.shape[0]
-    if pad_top_rows and pad_top_rows > 0:
-        pad_idx = [f"_pad_{i}" for i in range(pad_top_rows)]
-        pad_df = pd.DataFrame(np.nan, index=pad_idx, columns=df_a_sort.columns, dtype="float64")
-        df_a_sort = pd.concat([pad_df, df_a_sort], axis=0)
-        df_b_sort = pd.concat([pad_df, df_b_sort], axis=0)
-
-    vertices = df_a_sort.columns
-    n_rows = df_a_sort.shape[0]
-
-    fig_length = min(50, 0.75 * n_rows) # max height of 50
-    fig_width = 55
-    fig, ax = plt.subplots(figsize=(fig_width, fig_length))
-    
-    # relative font sizes
-    scale = fig_width / 100
-    sizes = {
-        'linewdth': 2,
-        'mrkrsize': 4,
-        'title': 100,
-        'legend': 70,
-        'y_tick': 50,
-        'x_tick': 65,
-        'x_lbl': 90,
-        'annot': 80,
-    }
-
-    if spacing is None:
-        # compute typical amplitude per participant and choose spacing > max amplitude
-        per_row_amp = (df_a_sort.max(axis=1) - df_a_sort.min(axis=1)).abs().tolist() + \
-                      (df_b_sort.max(axis=1) - df_b_sort.min(axis=1)).abs().tolist()
-        max_amp = max(per_row_amp) if len(per_row_amp) > 0 else float(offset)
-        spacing_val = max(float(offset), float(max_amp) * 1.2 + 1.0)  # margin
-    else:
-        spacing_val = float(spacing)
-
-    x = np.arange(len(vertices))
-    # iterate through rows but skip pad rows (they are just for spacing)
-    for i in range(n_rows):
-        idx_label = df_a_sort.index[i]
-        if str(idx_label).startswith("_pad_"):  # don't plot pad rows
-            continue
-        baseline = i * spacing_val
-
-        y_a = df_a_sort.iloc[i].values + baseline
-        y_b = df_b_sort.iloc[i].values + baseline
-        
-        if marks:
-            ax.scatter(x, y_a, color='red', alpha=alpha, s=sizes['mrkrsize'], label=lbl_a if i == 0 else "")
-            ax.scatter(x, y_b, color='blue', alpha=alpha, s=sizes['mrkrsize'], label=lbl_b if i == 0 else "")
-        else:
-            ax.plot(x, y_a, color='red', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_a if i == 0 else "")
-            ax.plot(x, y_b, color='blue', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_b if i == 0 else "")
-        
-        if hline is not None:
-            ax.axhline(y=baseline + hline, color='black', linestyle='--', linewidth=1, alpha=1)
-
-    if parc is None:
-        split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
-        if split_idx is None: # assume ipsi contra labels instead
-            split_idx = next((k for k, col in enumerate(vertices) if '_ipsi' in col), None)
-            if split_idx is not None:
-                ipsi_contra = True
-            else:
-                # assume split idx is half way through
-                split_idx = len(vertices) // 2
-                print("[plot_ridgeLine] WARNING: Could not determine hemisphere split from column names. Assuming halfway split.")
-                
-    elif parc.lower() == "glasser" or parc.lower() == "glsr":
-        split_idx = 181
-    elif parc.lower() == "dk25" or parc.lower() == "dk":
-        split_idx = 25
-    else:
-        ValueError("[plot_ridgeLine] Invalid parc value. Choose 'glasser', 'DK25' or None.")
-    
-    # Set title
-    fig.suptitle(title, fontsize=int(sizes['title'] * scale), y=0.995)
-
-    # Legend (lay entries out horizontally next to title)
-    handles, labels = ax.get_legend_handles_labels()
-    if handles:
-        ncol = max(1, len(labels))  # typically 2 (lbl_a, lbl_b); adjust if more labels appear
-        legend_x = 0.85  # tune to move legend horizontally; closer to 1.0 moves it to the right edge
-        legend_y = 0.995  # just under the top of the figure (near title)
-        fig.legend(handles, labels,
-                   loc='upper right',
-                   bbox_to_anchor=(legend_x, legend_y),
-                   ncol=ncol,
-                   frameon=False,
-                   fontsize=int(sizes['legend'] * scale),
-                   markerscale=max(1, sizes['mrkrsize'] * scale))
-        
-    """ place legend just outside the right side with the same visual spacing
-    ax.legend(fontsize=sizes['legend']*scale,
-              markerscale=max(1, sizes['mrkrsize']*2),
-              loc='upper left',
-              bbox_to_anchor=(1.0 + pad_frac, 1.0),
-              borderaxespad=0)
-    """
-
-    # y ticks
-    # y ticks: place at participant baselines only (exclude pad rows)
-    participant_idx = [i for i, lbl in enumerate(df_a_sort.index) if not str(lbl).startswith("_pad_")]
-    ytick_positions = [i * spacing_val for i in participant_idx]
-    ax.set_yticks(ytick_positions)
-    labels = ax.set_yticklabels(df_a_sort.index[participant_idx].astype(str), fontsize=int(sizes['y_tick'] * scale))
-    
-    for lbl in labels: # ensure vertical alignment is centered for all tick label Text objects
-        lbl.set_va('center')
-    
-    ax.tick_params(axis='y', which='major', pad=max(2, int(4 * scale))) # horizontal padding so labels don't touch axis
-
-    approx_char_width_px = (sizes['x_tick'] * scale) * 0.6
-    pad_px = approx_char_width_px * 5  # 5 characters worth of space
-
-    # figure physical width in pixels
-    fig_w_in, _ = fig.get_size_inches()
-    dpi = fig.dpi if hasattr(fig, "dpi") else plt.rcParams.get("figure.dpi", 100)
-    fig_w_px = fig_w_in * dpi
-
-    # fraction of figure width to reserve on each side
-    pad_frac = pad_px / fig_w_px
-
-    # convert fraction -> data units (x-axis runs from 0 .. len(vertices)-1)
-    x_min = 0
-    x_max = max(0, len(vertices) - 1)
-    data_span = x_max - x_min if x_max > x_min else 1.0
-    pad_data = pad_frac * data_span
-    
-    ax.set_xlim(x_min - pad_data, x_max + pad_data) # set x-limits so data starts/ends with the requested padding
-    ax.margins(x=0)
-
-    # xtick placement/labels (keep using vertex labels at three positions)
-    xticks = np.linspace(0, len(vertices) - 1, 3)
-    ax.set_xticks(xticks)
-    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=sizes['x_tick']*scale, rotation=45, ha='right')
-    ax.tick_params(axis='x', labelsize=sizes['x_tick']*scale)
-    
-    if parc is not None:
-        if stat is not None:
-            ax.set_xlabel(f"{parc.upper()} ({stat})", fontsize=sizes['x_lbl']*scale)
-        else:
-            ax.set_xlabel(parc, fontsize=sizes['x_lbl']*scale)
-    else:
-        ax.set_xlabel("Vertex", fontsize=sizes['x_lbl']*scale)
-
-    # Hemisphere labels
-    x0, x1 = ax.get_xlim()
-    data_span_eff = x1 - x0 if (x1 - x0) != 0 else 1.0
-    left_data = (split_idx / 2.0)
-    right_data = ((split_idx + len(vertices)) / 2.0)
-    left_frac = (left_data - x0) / data_span_eff
-    right_frac = (right_data - x0) / data_span_eff
-    
-    # clamp to avoid text going off-figure
-    left_frac = min(1.0, max(0.0, left_frac))
-    right_frac = min(1.0, max(0.0, right_frac))
-    
-    # axes fraction for vertical placement (negative = below axis)
-    y_ax_frac = -0.03  # move labels away from y-axis
-    label_fs = int(sizes['annot'] * scale)
-    va_setting = 'top'  # anchor the top of the text at the y coordinate so it sits below the axis
-    if not ipsi_contra:
-        ax.text(left_frac, y_ax_frac, "Left",
-                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
-        ax.text(right_frac, y_ax_frac, "Right",
-                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
-    else:
-        ax.text(left_frac, y_ax_frac, "Contralateral",
-                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
-        ax.text(right_frac, y_ax_frac, "Ipsilateral",
-                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
-
-    # add vertical lines
-    row_offsets = (np.arange(n_rows) * spacing_val)[:, None]  # shape (n,1)
-    
-    y_a_all = (np.nan_to_num(df_a_sort.values.astype(float), nan=np.nan) + row_offsets).reshape(-1)
-    y_b_all = (np.nan_to_num(df_b_sort.values.astype(float), nan=np.nan) + row_offsets).reshape(-1)
-    y_all = np.hstack([y_a_all, y_b_all])
-    y_min = float(np.nanmin(y_all))
-    y_max = float(np.nanmax(y_all))
-    pad = max(0.5, 0.1 * spacing_val)  # small padding so lines don't touch markers
-    ax.set_ylim(y_min - pad, y_max + pad)
-
-    ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=max(1, sizes['mrkrsize'] * 0.75), alpha=0.4)
-    
-    if hline_idx is not None: # plot hlines at each provided index
-         for hx in hline_idx:
-            ax.axvline(x=hx, color='gray', linestyle='--', linewidth=max(0.5, sizes['mrkrsize'] * 0.75), alpha=0.3)
-    
-    # remove y-axis line
-    ax.spines['left'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['top'].set_visible(False)
-    ax.yaxis.set_ticks_position('none')
-
-    ax.margins(x=fig_width*0.01, y=fig_width*0.01)
-    fig.tight_layout(rect=[0, 0, 1, 1]) # add padding
-    fig.subplots_adjust(top=0.97) # lower values move title up more
-
-    return fig
-
-def plotLine(dl, df_keys = ['df_maps'], marks=True, 
-            parc=[None], stat =[None],
-            alpha = 0.02, spacing = 1,
-            hlines = None, name_append=None, save_pth=None, 
-            verbose = False, test = False):
-    
-    """
-    Plot ridgeline graphs to compare maps between corrsponding dfs (eg., 3T vs 7T).
-    Note. All values are rescaled participant-wise: (x - mdn(x)) / IQR(x) 
-
-
-    Input:
-        dl:           list of dict items with dataframes to plot
-        df_key: lst        keys in dict items for dataframe to plot
-        marks:          whether to use marks instead of lines
-        parc: lst          indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
-        stat: lst       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
-        alpha: int         transparency of lines/marks
-        offset: int        vertical distance between each individual's plot
-        
-        hline_idx: lst  list of list of indices to draw horitzontal lines at
-        name_append:    string to append to saved file names
-        save_pth:       path to save figures. If None, will not save.
-        verbose:        whether to print item metadata  
-        test:           whether to run in test mode (only first 2 items in dl)
-    
-    Output:
-        saves plot to path    
-    """
-    import matplotlib.pyplot as plt
-    import datetime
-    import numpy as np
-    import os
-
-    skip_idx = []
-    counter = 0
-    start_time = datetime.datetime.now()
-    print(f"[{start_time}] Plotting ridgeline plots for {list(df_keys)}...")
-    
-    if type(df_keys) is str:
-        df_keys = [df_keys]
-    if type(parc) is str:
-        parc = [parc]
-    if type(stat) is str:
-        stat = [stat]
-
-    if test:
-        idx_len = 3
-        idx_rdm = np.random.choice(len(dl), size=idx_len, replace=False).tolist()  # randomly choose index
-        idx_other_rdm = [get_pair(dl, idx=i, mtch=['region', 'surf', 'label', 'feature', 'smth']) for i in idx_rdm]
-        # flatten idx_other_rdm if any are lists (get_pair can return a list)
-        idx_other_flat = []
-        for idx in idx_other_rdm:
-            if isinstance(idx, list):
-                idx_other_flat.extend(idx)
-            elif idx is not None:
-                idx_other_flat.append(idx)
-        rdm_indices = idx_rdm + idx_other_flat
-        dl = [dl[i] for i in rdm_indices]
-        print(f"\tTEST MODE. Plotting {idx_len} random items and their pairs: {rdm_indices}")
-    
-    for idx in range(len(dl)):
-
-        if idx in skip_idx:
-            continue
-        counter += 1
-
-        skip_idx.append(idx)
-        idx_other = get_pair(dl, idx, mtch = ['region', 'feature', 'label', 'surf', 'smth'], skip_idx=skip_idx)
-        skip_idx.append(idx_other)
-        if idx_other is None:
-            print(f"\tNo matching index found. Skipping.")
-            continue
-        
-        # determine which study is tT and which is sT
-        idx_tT, idx_sT = determineStudy(dl, idx = idx, idx_other = idx_other, study_key = 'study')
-        item_tT = dl[idx_tT]
-        item_sT = dl[idx_sT]
-        
-        print(f"\t[idx 3T, 7T: {idx_tT}, {idx_sT}] {printItemMetadata(item_tT, return_txt = True, clean = True, printStudy = False)}")
-       
-        # extract df
-        for df_key, p, s, hlines_idx in zip(df_keys, parc, stat, hlines if hlines is not None else [None]*len(df_keys)):
-            df_tT = item_tT.get(df_key, None)
-            df_sT = item_sT.get(df_key, None)
-
-            if type(df_tT) is str:
-                pth = df_tT 
-                df_tT = loadPickle(pth, verbose = False)
-            if type(df_sT) is str:
-                pth = df_sT 
-                df_sT = loadPickle(pth, verbose = False)
-
-            if df_tT is None or df_sT is None:
-                if verbose:
-                    print(f"\t{df_key} is None. Skipping.")
-                continue
-            elif df_tT.shape[0] == 0 or df_sT.shape[0] == 0:
-                if verbose:
-                    print(f"\t{df_key} is empty. Skipping.")
-                continue
-            else:
-                print(f"\tPlotting {df_key}")
-            
-            # ensure that all columns overlap
-            cols_tT = set(df_tT.columns) # use as x-axis
-            cols_sT = set(df_sT.columns)
-            cols_common = list(cols_tT.intersection(cols_sT))
-            assert len(cols_common) == len(cols_tT) and len(cols_common) == len(cols_sT), f"Columns do not match between studies: {cols_tT} vs {cols_sT}"
-            
-            # rename indices to match. Use UID only
-            uid_tT = df_tT.index.str.split('_').str[0]
-            uid_sT = df_sT.index.str.split('_').str[0]
-            
-            # ensure that all indices overlap
-            idxs_common = list(set(uid_tT).intersection(set(uid_sT)))
-            idxs_common = sorted(idxs_common) # sort by UID
-
-            assert len(idxs_common) == len(uid_tT) and len(idxs_common) == len(uid_sT), f"Indices do not match between studies: {set(uid_tT)} vs {set(uid_sT)}"
-            
-            # set index to UID
-            df_tT.index = uid_tT
-            df_sT.index = uid_sT
-            
-            # take only overlapping indices
-            df_tT = df_tT.loc[idxs_common, cols_common]
-            df_sT = df_sT.loc[idxs_common, cols_common]
-
-            # create title
-            region = item_tT.get('region', None)
-            feature = item_tT.get('feature', None)
-            surface = item_tT.get('surf', None)
-            label = item_tT.get('label', None)
-            smth = item_tT.get('smth', None)
-            title = f"{region}: {feature}, {surface}, {label}, smth-{smth}mm ({df_key})"
-            if 'TLE' in df_key:
-                title = title + f" [TLE only]"  # TODO CHANGE SO THAT NOT HARD CODED 
-            
-            hline = None
-            if '_z' in df_key.lower():
-                title = title + " [Z-score]"
-                hline = 0 # value at which to plot a horizontal line for each subject
-            elif '_w' in df_key.lower():
-                title = title + " [W-score]"
-                hline = 0 # value at which to plot a horizontal line for each subject
-            elif feature.lower() in ['t1map', 'flair']: # rescale values (participant wise)
-                # Robust rescaling: subtract median and divide by IQR (interquartile range)
-                df_tT = (df_tT - df_tT.median(axis=1).values[:, None]) / (df_tT.quantile(0.75, axis=1).values - df_tT.quantile(0.25, axis=1).values)[:, None]
-                df_sT = (df_sT - df_sT.median(axis=1).values[:, None]) / (df_sT.quantile(0.75, axis=1).values - df_sT.quantile(0.25, axis=1).values)[:, None]
-                title = title + " [standardized]"
-
-            # ridge line plot
-            fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
-                                hline=hline, marks=marks, title=title, 
-                                parc=p, stat=s, alpha=alpha, 
-                                hline_idx = hlines_idx, spacing = spacing)
-
-            if save_pth is not None:
-                if name_append is not None:
-                    save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{name_append}_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                else:
-                    save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                if test:
-                    save_name = f"TEST_{save_name}"
-
-                fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight', pad_inches = 0.08)
-                file_size = os.path.getsize(f"{save_pth}/{save_name}.png") / (1024 * 1024)  # size in MB
-                print(f"\t\tSaved ({file_size:0.1f} MB): {save_pth}/{save_name}.png")
-                plt.close(fig)
-
-    end_time = datetime.datetime.now()
-    print(f"[{end_time}] Complete. Duration: {end_time - start_time}")
-    
 def pairedItems(item, dictlist, mtch=['grp', 'lbl']):
     """
     Given a dict item and a list of dicts, return a list of indices in dictlist
@@ -7027,7 +6504,7 @@ def showBrain(lh, rh, region = "ctx",
     
     # Plot the surface with a title
     if filename : 
-        print(f"[showBrains] Plot saved to {filename}")
+        print(f"[showBrain] Plot saved to {filename}")
         return plot_hemispheres(
                 surf_lh, surf_rh, array_name=data, 
                 size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',

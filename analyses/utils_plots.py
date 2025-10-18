@@ -1,43 +1,4 @@
 ##### Functions common to multiple plotting steps
-def filt_dl(dl, key_ft, foi, key_ids, verbose = True):
-    """
-    From a list of dictionary items, return only items whose feature is in features of interest and with non-0 ctrl and groups
-    
-    Parameters
-    ----------
-    dl: list of dict
-        each dict contains at least keys key_ft, key_ids
-
-    key_ft: str
-        key in each dict for feature name
-    foi: list of str
-        features of interest
-    key_ids: lst
-        list of lists of strings refering to keys for list of participant IDs. Checks that at least one key within each sublist is non-zero.
-        e.g.: [['IDs_ctrl], ['IDs_grp_L', 'IDs_grp_R']] -> will ensure that IDs_ctrl is non-empty and at least one of IDs_grp_L or IDs_grp_R is non-empty
-    
-    output
-    ----------
-    dlf: filtered list of dict items
-    """
-    dlf = []
-    for item in dl:
-        try:
-            if item[key_ft] in foi:
-                ids_ok = True
-                for id_keys in key_ids:
-                    # Ensure at least one key in id_keys is present, not None, and its value is a non-empty list
-                    if not any(item.get(k) is not None and isinstance(item.get(k), list) and len(item.get(k)) > 0 for k in id_keys):
-                        ids_ok = False
-                        break
-                if ids_ok:
-                    dlf.append(item)
-        except Exception as e:
-            print(f"[filt_items] Skipping item due to error: {e}")
-            continue
-    if verbose:
-        print(f"[filt_items] Filtered {len(dl)} -> {len(dlf)} items based on features of interest and non-empty IDs.")
-    return dlf
 
 def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
     """
@@ -126,31 +87,80 @@ def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
 
     return output_pdf
 
-# functions to create stacked histograms
-def dCor(d_a, d_b, verbose = False):
+
+def correl(row_a, row_b, method = "Pearson", verbose = False):
+    """
+    Compute correlations.
+
+    Parameters:
+        row_a, row_b: pd.Series
+            Rows of same length to correlate.
+        method: str, 
+            correlation method. Currently only "Pearson" is implemented.
+    """
+    
     from scipy.stats import pearsonr
     import pandas as pd
 
-    if not isinstance(d_a, pd.Series) or not isinstance(d_b, pd.Series):
+    if not isinstance(row_a, pd.Series) or not isinstance(row_b, pd.Series):
         raise ValueError("Inputs must be pandas Series.")
     
     # Identify NaN indices in both series
-    nan_indices = set(d_a[d_a.isna()].index) | set(d_b[d_b.isna()].index)
+    nan_indices = set(row_a[row_a.isna()].index) | set(row_b[row_b.isna()].index)
     n_nan = len(nan_indices)
     
-    if len(d_a) != len(d_b):
+    if len(row_a) != len(row_b):
         raise ValueError("Input Series must be of the same length.")
     
-    if n_nan > 0:
-        
-        d_a = d_a.drop(index=nan_indices)
-        d_b = d_b.drop(index=nan_indices)
+    if n_nan > 0: # drop nan indices from both dfs
+        row_a = row_a.drop(index=nan_indices)
+        row_b = row_b.drop(index=nan_indices)
         if verbose:
             print(f"[dCor] Removing {n_nan} NaN values from both series.")
-            print(f"[dCor] New lengths: {len(d_a)}, {len(d_b)}")
+            print(f"[dCor] New lengths: {len(row_a)}, {len(row_b)}")
     
-    cor, _ = pearsonr(d_a, d_b)
+    cor, _ = pearsonr(row_a, row_b)
     return cor, n_nan
+
+def correl_df(a,b, method = "Pearson"):
+    """
+    From two dfs with overlapping indices and same columns, compute correlation between rows with same index.
+    NOTE. Assumes that overlapping index label is the substring found before the first '_' char.
+
+    input: 
+        a,b: pd.DataFrames or str (paths to dfs)
+        method: str
+            correlation method. Currently only "Pearson" is implemented.
+
+    return:
+        pd.Series with correlation values for each index present in both dataframes
+    """
+    import pandas as pd
+    import tTsTGrpUtils as tsutil
+
+    if isinstance(a, str):
+        a = tsutil.loadPickle(a, verbose = False)
+        assert isinstance(a, pd.DataFrame), f"Loaded object from path {a} is not a pandas DataFrame."
+    if isinstance(b, str):
+        b = tsutil.loadPickle(b, verbose = False)
+        assert isinstance(b, pd.DataFrame), f"Loaded object from path {b} is not a pandas DataFrame."
+    
+    a_strip = a.copy()
+    b_strip = b.copy()
+    a_strip.index = [idx.split('_')[0] for idx in a.index]  
+    b_strip.index = [idx.split('_')[0] for idx in b.index]
+
+    cors = pd.Series(dtype = float)
+    if not a_strip.index.equals(b_strip.index):
+        print("WARNING. Indices do not match perfectly.")
+    
+    for df_index in a_strip.index.intersection(b_strip.index):
+        row_a = a_strip.loc[df_index]
+        row_b = b_strip.loc[df_index]
+        cor, n_nan = correl(row_a, row_b, method=method)
+        cors.loc[df_index] = cor
+    
+    return cors
 
 def corresp_paths(regions, MICs, PNI, output_dir, values_dir):
     """
@@ -377,6 +387,1088 @@ def group_hist(df_pths, labels, bounds=[-10,10], save_path=None):
     else:
         plt.show()
 
+
+# Side by side plots
+
+
+def plotMatrices(dl, df_keys, cor = True, 
+                 name_append=False, sessions = None, save_pth=None, min_stat = -4, max_stat = 4, test=False):
+    """
+    Plot matrix visualizations for map values from corresponding study
+
+    dl: 
+        dictionary list with paired items from different studies
+    df_keys: lst
+        keys in the dictionary items to plot (e.g., 'map_smth')
+    
+    cor: bool
+        if true, computes and displays correlation between the same patients at the different studies.
+    name_append: bool
+        if true, adds key name to save file
+    sessions: (list of ints)
+        if provided, will plot different sessions next to eachother rather than different studies
+    save_pth:
+        if provided, save the plots to this path instead of showing them interactively
+    min_stat, max_stat: int, int
+        applied only if the key contains either '_z_' or '_w_': min and max values for color scale
+    test: bool
+        if true, runs in test mode, applying parcellations to 3 random items and appends 'TEST' to outputs
+    """
+    import os
+    import datetime
+    import numpy as np
+    import tTsTGrpUtils as tsutil
+    import matplotlib.pyplot as plot
+    from matplotlib import gridspec
+    
+    skip_idx = []
+    counter = 0
+    
+    if type(df_keys) == str:
+        df_keys = [df_keys] 
+
+    print(f"Plotting matrices for {list(df_keys)}...")
+    
+    if test:
+        idx_len = 3
+        rdm_indices = tsutil.get_rdmPairedIndices(dl, idx_len, mtch = ['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'])
+        
+        print(f"TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {rdm_indices}.")
+        dl = [dl[i] for i in rdm_indices]
+
+    # If dl is a single dictionary (not a list), wrap it in a list
+    if isinstance(dl, dict):
+        print("[plotMatrices] WARNING: dl is a single dictionary, wrapping in a list.")
+        dl = [dl]
+
+    counter = 0
+    for idx, item in enumerate(dl):
+        counter += 1
+        if counter % 10 == 0:
+            print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processed {counter} of {len(dl)}... ")
+        
+        if idx in skip_idx:
+            continue
+
+        if item.get('downsampledRes', None) != 'native':
+            difdsRes = True
+            skip_idx.append(idx) # Assume that others should not be matching to this non-native index
+        else: # res of pair must match
+            difdsRes = False
+            pass
+
+        if sessions:
+            if item.get('sesNum', None) not in sessions or item.get('sesNum', None) not in sessions:
+                continue
+    
+        idx_other = tsutil.get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], difdsRes = difdsRes, skip_idx=skip_idx)
+        
+        if test:
+            index = rdm_indices[idx]
+            index_other = rdm_indices[idx_other]
+        else:
+            index = idx
+            index_other = idx_other
+        
+        if type(index_other) == list:
+            # get the indices whose session number is in 'sessions'. Add also the index 'idx'. 
+            # If not in 'sessions' then, add to skip idx
+            matches = []
+            
+            for indices in [idx, *idx_other]:
+                itm = dl[indices]
+                sesNum = itm.get('sesNum', None)
+                if sesNum in sessions:
+                    matches.append(indices)
+            if len(matches) == 2:
+                # sort matches by the ses num of that index
+                matches = sorted(matches, key=lambda x: dl[x].get('sesNum', float('inf')))
+                idx = matches[0]
+                idx_other = matches[1]
+                
+                item = dl[idx]
+                item_other = dl[idx_other]
+            else:
+                print(f"[plotMatrices] WARNING: More than 2 matches found for index {index} with keys ['region', 'surf', 'label', 'feature', 'smth'] and sessions {sessions}. Skipping.")
+                continue
+
+        if idx_other is None:
+            item_txt = tsutil.printItemMetadata(item, return_txt=True)
+            print(f"\tWARNING. No matching index found for: {item_txt} (idx: {index}).\nSkipping.")
+            continue
+
+        item_other = dl[idx_other]
+        if item_other is None:
+            item_txt = tsutil.printItemMetadata(item, return_txt=True)
+            print(f"\tWARNING. Item other is None: {item_txt} (idx: {index}).\nSkipping.")
+            continue
+        
+        if sessions is None:
+            if item['study'] == 'MICs':
+                idx_one = idx
+                idx_two = idx_other
+
+                item_one = item
+                item_two = item_other
+            else:
+                idx_one = idx_other
+                idx_two = idx
+
+                item_one = item_other
+                item_two = item
+        else:
+            
+            idx_one = idx
+            idx_two = idx_other
+
+            item_one = item
+            item_two = item_other
+
+            ses_one = item_one.get('sesNum', None)
+            ses_two = item_two.get('sesNum', None)
+
+        if item_one is None and item_two is None:
+            item_one_txt = tsutil.printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            item_two_txt = tsutil.printItemMetadata(item_two, idx=idx_two, return_txt=True)
+            print(f"\tWARNING. Both items are None (item one: {item_one_txt}, item two: {item_two_txt}).\nSkipping.")
+            continue
+        elif item_one is None:
+            item_one_txt = tsutil.printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            print(f"\tWARNING. Item_one is None: {item_one_txt}.\nSkipping.")
+            continue
+        elif item_two is None:
+            item_two_txt = tsutil.printItemMetadata(item_one, idx=idx_one, return_txt=True)
+            print(f"\tWARNING. Item_two is None: {item_two_txt}.\nSkipping.")
+            continue
+        
+        if sessions is None:
+            print(f"\t[idx 3T, 7T: {idx_one}, {idx_two}] {tsutil.printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
+        else:
+            print(f"\t[ses 1, 2: {idx_one} ({ses_one}), {idx_two} ({ses_two})] {tsutil.printItemMetadata(item_one, return_txt = True, clean = True, printStudy = False)}")
+        
+        for key in df_keys:
+
+            if item_one.get('study', None) and item_two.get('study', None):
+                
+                if test:
+                    title_one = f"{key} {item_one['study']} [idx: {rdm_indices[idx_one]}]"
+                    title_two = f"{key} {item_two['study']} [idx: {rdm_indices[idx_two]}]"
+                else:
+                    title_one = f"{key} {item_one['study']} [idx: {idx_one}]"
+                    title_two = f"{key} {item_two['study']} [idx: {idx_two}]"
+
+            else:
+                if test:
+                    title_one = f"{key} SES num: {ses_one} [idx: {rdm_indices[idx_one]}]"
+                    title_two = f"{key} SES num: {ses_two} [idx: {rdm_indices[idx_two]}]"
+                else:
+                    title_one = f"{key} SES num: {ses_one} [idx: {idx_one}]"
+                    title_two = f"{key} SES num: {ses_two} [idx: {idx_two}]"
+            
+            if item_one.get('downsampledRes', None) != 'native' or item_two.get('downsampledRes', None) != 'native':
+                title_one = title_one + f" (res: {item_one.get('downsampledRes', None)})"
+                title_two = title_two + f" (res: {item_two.get('downsampledRes', None)})"
+                res_svAppend = f"res-{item_one.get('downsampledRes', None)}_{item_two.get('downsampledRes', None)}"
+            else:
+                res_svAppend = "native"
+
+            feature_one = item_one['feature']
+            feature_two = item_two['feature']
+            
+            try:
+                df_one = item_one[key]
+                if type(df_one) is str:
+                    pth = df_one 
+                    df_one = tsutil.loadPickle(pth, verbose = False) 
+            except KeyError:
+                print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_one}. Skipping.")
+                #print_dict(dl, idx = [idx_one])
+                print(f"\t\t{'-'*50}")
+                continue
+            except Exception as e:
+                print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
+                #print_dict(dl, idx=[idx_one])
+                print(f"\t\t{'-'*50}")
+                continue
+            
+            try:
+                df_two = item_two[key]
+                if type(df_two) is str:
+                    pth = df_two
+                    df_two = tsutil.loadPickle(pth, verbose = False) 
+            except KeyError:
+                print(f"\t\tWARNING: Could not access key '{key}' for item at index {idx_two}. Skipping.")
+                #print_dict(dl, idx = [idx_two])
+                print(f"\t\t{'-'*50}")
+                continue
+            except Exception as e:
+                print(f"\t\tERROR: Unexpected error while accessing key '{key}' for item at index {idx_one}: {e}")
+                #print_dict(dl, idx=[idx_one])
+                print(f"\t\t{'-'*50}")
+                continue
+            
+            if df_one is None and df_two is None:
+                item_one_txt = tsutil.printItemMetadata(item_one, idx=idx_one, return_txt=False)
+                item_two_txt = tsutil.printItemMetadata(item_two, idx=idx_two, return_txt=False)
+                print(f"\t\tWARNING. Missing key '{key}'. Skipping {item_one_txt} and {item_two_txt}\n")
+                print('-'*50)
+                continue
+            elif df_one is None:
+                item_one_txt = tsutil.printItemMetadata(item_one, idx=idx_one, return_txt=True)
+                print(f"\t\tWARNING. Missing key '{key}' for {item_one_txt}. Skipping.\n")
+                print('-'*50)
+                continue
+            elif df_two is None:
+                item_two_txt = tsutil.printItemMetadata(item_two, idx=idx_two, return_txt=True)
+                print(f"\t\tWARNING. Missing key '{key}' for {item_two_txt}. Skipping.\n")
+                print('-'*50)
+                continue
+            else:
+                print(f"\t\tPlotting key: {key}...")
+            
+            
+                
+            # determine min and max values across both matrices for consistent color scaling
+            assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
+            assert item_one['region'] == item_two['region'], f"Regions do not match: {item_one['region']}, {item_two['region']}"
+            assert item_one['surf'] == item_two['surf'], f"Surfaces do not match: {item_one['surf']}, {item_two['surf']}"
+            assert item_one['label'] == item_two['label'], f"Labels do not match: {item_one['label']}, {item_two['label']}"
+            assert item_one['smth'] == item_two['smth'], f"Smoothing kernels do not match: {item_one['smth']}, {item_two['smth']}"
+        
+            if "_z" in key or "_w" in key:
+                cmap = "seismic"
+                min_val = min_stat
+                max_val = max_stat
+            else:
+                cmap = 'inferno'
+                if feature_one.lower() == "thickness":
+                    min_val = 0
+                    max_val = 4
+                    cmap = 'Blues'
+                elif feature_one.lower() == "flair":
+                    min_val = -500
+                    max_val = 500
+                    cmap = "seismic"
+                elif feature_one.lower() == "t1map":
+                    min_val = 1000
+                    max_val = 2800
+                    cmap = "inferno"
+                elif feature_one.lower() == "fa":
+                    min_val = 0
+                    max_val = 1
+                    cmap="Blues"
+                elif feature_one.lower() == "adc": # units: mm2/s
+                    min_val = 0
+                    max_val = 0.0025
+                    cmap = "Blues"
+                else:
+                    min_val = min(np.percentile(df_two.values, 95), np.percentile(df_one.values, 95))
+                    max_val = max(np.percentile(df_two.values, 5), np.percentile(df_one.values, 5))
+
+            # Create a grid layout with space for the colorbar
+            fig = plot.figure(figsize=(30, 25))
+            spec = gridspec.GridSpec(1, 3, width_ratios=[1, 0.05, 1], wspace=0.43)
+
+            # Create subplots
+            ax1 = fig.add_subplot(spec[0])
+            ax2 = fig.add_subplot(spec[2])
+
+            # Define x-axis label
+            if item_one.get('parcellation', None) is not None and 'parc' in key:
+                x_axisLbl = item_one.get('parcellation', None).upper()
+            else:
+                x_axisLbl = 'Vertex'
+
+            # Plot the matrices
+            visMatrix(df_one, feature=feature_one, title=title_one, 
+                    show_index=True, ax=ax1, x_axisLbl = x_axisLbl,
+                    min_val=min_val, max_val=max_val, cmap=cmap, nan_side="left")
+            visMatrix(df_two, feature=feature_two, title=title_two, 
+                    show_index=True, ax=ax2, x_axisLbl = x_axisLbl,
+                    min_val=min_val, max_val=max_val, cmap=cmap, nan_side="right")
+
+            # Add a colorbar between the plots
+            cmap_title = feature_one
+
+            if "_z_" in df_keys:
+                cmap_title = f"Z-score [{cmap_title}]"
+            elif "_w_" in df_keys:
+                cmap_title = f"W-score [{cmap_title}]"
+            else:
+                if feature_one.upper() == "ADC":
+                    cmap_title = "ADC (mm²/s)"
+                elif feature_one.upper() == "T1MAP":
+                    cmap_title = "T1 (ms)"
+            
+            cbar_ax = fig.add_subplot(spec[1])
+            norm = plot.Normalize(vmin=min_val, vmax=max_val)
+            cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
+            cbar.set_label(cmap_title, fontsize=20, labelpad=0)
+            cbar.ax.yaxis.set_label_position("left")
+            cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
+
+            if cor: # calculate correlation if requested
+                cors = correl_df(df_one, df_two, method = "Pearson")
+                # add these correlation values to the left of cbar. The index of the series is assumed to be aligned with df_one and df_two
+                # Place a separate correlation column left of the colorbar (keep the cbar in the middle)
+                # Reuse the existing cbar_ax position to carve out two sub-areas: a narrow left area for correlations
+                # and a (smaller) right area for the actual colorbar. The colorbar object `cbar` already exists
+                # on `cbar_ax`, moving `cbar_ax` will move the drawn colorbar.
+                pos = cbar_ax.get_position()
+                cor_frac = 0.65  # fraction of the central slot reserved for correlation texts
+                small_pad = pos.width * 0.03
+
+                # new positions in figure coordinates: [x0, y0, width, height]
+                new_cor_pos = [pos.x0, pos.y0, pos.width * cor_frac - small_pad, pos.height]
+                new_cbar_pos = [pos.x0 + pos.width * cor_frac, pos.y0, pos.width * (1.0 - cor_frac) + small_pad, pos.height]
+
+                # create an (invisible) axis for correlation labels and move the colorbar axis
+                cor_ax = fig.add_axes(new_cor_pos)
+                cor_ax.axis('off')
+                cbar_ax.set_position(new_cbar_pos)
+
+                # Draw correlation values aligned to the image rows (use ax1 data->figure coordinate transform)
+                # cors is a pandas.Series where index should match the df_one index (if available)
+                for i_row, idx_label in enumerate(df_one.index):
+                    cor_val = cors.get(idx_label, np.nan) if hasattr(cors, "get") else (cors.loc[idx_label] if idx_label in cors.index else np.nan)
+                    txt = f"{cor_val:0.2f}" if (not np.isnan(cor_val)) else "--"
+
+                    # transform the y position of row i to figure coordinates
+                    y_disp = ax1.transData.transform((0.0, float(i_row)))[1]
+                    y_fig = fig.transFigure.inverted().transform((0.0, y_disp))[1]
+
+                    # x position just inside the right edge of the correlation axis (figure coords)
+                    x_fig = new_cor_pos[0] + new_cor_pos[2] * 0.98
+
+                    # place text in figure coords so it sits between the two main axes
+                    fig.text(x_fig, y_fig, txt, ha='right', va='center', fontsize=10, color='black')
+
+            # Add a common title
+            region = item_one['region']
+            surface = item_one['surf']
+            label = item_one['label']
+            smth = item_one['smth']
+            if sessions:
+                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm (SES: {ses_one}, {ses_two})", fontsize=25, y=0.9)
+            else:
+                fig.suptitle(f"{region}: {feature_one}, {surface}, {label}, {smth}mm", fontsize=30, y=0.9)
+
+            if save_pth is not None:
+                if name_append:
+                    if sessions is not None:
+                        save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{res_svAppend}_key-{key}_ses-{ses_one}{ses_two}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                    else:
+                        save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{res_svAppend}_key-{key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                elif sessions is not None:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{res_svAppend}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                else:
+                    save_name = f"{region}_{feature_one}_{surface}_{label}_smth-{smth}mm_{res_svAppend}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                
+                if test:
+                    save_name = f"TEST_{save_name}"
+
+                fig_pth = f"{save_pth}/{save_name}.png"
+                fig.savefig(fig_pth, dpi=300, bbox_inches='tight')
+                file_size = os.path.getsize(fig_pth) / (1024 * 1024)  # size in MB
+                print(f"\tSaved ({file_size:0.1f} MB): {fig_pth}")
+                plot.close(fig)
+
+
+def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, x_axisLbl = None,
+              cmap='seismic', show_index=False, ax=None, nan_color='green', nan_side="right"):
+    """
+    Visualizes a matrix from a pandas DataFrame using matplotlib's imshow, with options for colormap, value range, and axis customization.
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The data to visualize, where rows are indices and columns are vertices.
+    
+    feature : str, optional
+        Label for the colorbar (default is "Map Value").
+    title : str, optional
+        Title for the plot.
+    
+    x_axisLbl: str, optional
+        Label for the x-axis. If None, use default: 'Vertex'
+    min_val : float, optional
+        Minimum value for colormap scaling. If None, uses the minimum of the data.
+    max_val : float, optional
+        Maximum value for colormap scaling. If None, uses the maximum of the data.
+    cmap : str or matplotlib.colors.Colormap, optional
+        Colormap to use for visualization (default is 'seismic').
+    show_index : bool, optional
+        If True, displays DataFrame index labels on the y-axis.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on. If None, creates a new figure and axes.
+    
+    Returns
+    -------
+    matplotlib.figure.Figure or matplotlib.axes.Axes
+        The figure or axes containing the visualization, depending on `return_fig`.
+    """
+    
+    import numpy as np
+    from matplotlib import use
+    import matplotlib.pyplot as plt
+    use('Agg')
+
+    if df is None or df.shape[0] == 0 or df.shape[1] == 0:
+        print("[visMatrix] WARNING: DataFrame is empty or None. Skipping visualization.")
+        return None
+    
+    # Convert DataFrame to numpy array, mask NaNs
+    data = df.values
+    mask = np.isnan(data)
+
+    # Use provided cmap parameter
+    if isinstance(cmap, str):
+        cmap_obj = plt.get_cmap(cmap)
+    else:
+        cmap_obj = cmap
+    
+    cmap_obj.set_bad(color=nan_color) # Color for NaN values
+
+    if min_val is None:
+        min_val = np.nanmin(data)
+    if max_val is None:
+        max_val = np.nanmax(data)
+    
+    # Use provided axes or create new figure
+    anyNaN = np.isnan(data).any()
+    if ax is None:
+        fig_length = max(6, min(0.1, 0.1 * data.shape[0]))
+        fig_width = 10
+        if anyNaN:  # Increase width if NaN annotations are present
+            fig_width += 2
+        fig, ax = plt.subplots(figsize=(fig_width, fig_length))
+        create_colorbar = True
+    else:
+        fig = ax.get_figure()
+        create_colorbar = False  # Let caller handle colorbar
+    
+    im = ax.imshow(data, aspect='auto', cmap=cmap_obj, vmin=min_val, vmax=max_val, interpolation='none')
+    im.set_array(np.ma.masked_where(mask, data))
+
+    if anyNaN:
+        print(f"\tNaN values present [{title}: {feature}]")
+        for i, row in enumerate(data):
+            nan_count = np.isnan(row).sum()
+            if nan_count > 0:  # Annotate next to the row
+                if nan_side == "right":
+                    ax.annotate(f"NAN: {nan_count}", 
+                                xy=(data.shape[1], i), 
+                                xytext=(data.shape[1] + 1, i),  # Place outside the plot
+                                va='center', ha='left', fontsize=9, color='black')
+                elif nan_side == "left":
+                    ax.annotate(f"NAN: {nan_count}", 
+                                xy=(-1, i), 
+                                xytext=(-2, i),  # Place outside the plot
+                                va='center', ha='right', fontsize=9, color='black')
+            
+    if title:
+        ax.set_title(title, fontsize=23)
+
+    if x_axisLbl is None:
+        ax.set_xlabel("Vertex", fontsize=15)
+    else:
+        ax.set_xlabel(x_axisLbl, fontsize=15)
+    
+    ax.tick_params(axis='x', labelsize=10)
+    
+    if create_colorbar:
+        if feature.upper == "ADC":
+            feature = "ADC (mm²/s)"
+        elif feature.upper == "T1MAP":
+            feature = "T1 (ms)"
+        cbar = plt.colorbar(im, ax=ax, label=feature, shrink=0.25)
+        cbar.ax.tick_params(axis='y', direction='in', length=5)  # Place ticks inside the color bar)
+
+    if show_index:
+        if nan_side == "left":# nan_side and index side should be different
+            ax.yaxis.set_label_position("right") 
+            ax.yaxis.tick_right()
+        else:
+            ax.yaxis.set_label_position("left")
+            ax.yaxis.tick_left()
+        ax.set_yticks(np.arange(len(df.index)))
+        ax.set_yticklabels(df.index.astype(str), fontsize=8)
+        ax.tick_params(axis='y', pad=5, labelsize=14)
+
+
+    plt.close(fig)
+    return ax
+
+
+def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, 
+                   parc = None, stat=None, hline = None, marks = False, 
+                   hline_idx = None, pad_top_rows=2,
+                   offset = 3, spacing=None, alpha = 0.3):
+    """
+    Create ridgeplot-like graph plotting two distributions over common vertices for each participant.
+
+    Input:
+        df_a, df_b:         DataFrames with identical columns and identical row indices.
+                                NOTE. Numerical indeces should be sorted 
+        lbl_a, lbl_b:       Labels for the two groups
+        title:              Title for the plot
+        
+        <optionals>
+        parc:               Indicate how the surface has been parcellated. If None, assumes vertex names have suffix '_L', '_R' 
+            Options: 'glasser', None
+        stat:  str             If parcellation is provided, this  provided, this variable is added to the x-axis label 
+            (made for when multiple vertices are summarised with a statistic for a single value per parcel)
+        hline: <int or None> if provided, draw a horizontal line at this y-value. 
+        marks:              Whether to use marks instead of lines
+        pad_top_rows: int   Adds empty top rows to increase spacing between title and plot    
+        offset:             Vertical distance between plots
+        spacing: <int or None>  If provided, use this list to set the y-tick positions.
+    
+    Output:
+        axis object
+    """
+
+    import numpy as np
+    import pandas as pd
+    from matplotlib import use
+    import matplotlib.pyplot as plt
+    import tTsTGrpUtils as tsutil
+
+    use('Agg')  # Use a non-interactive backend, prevents memory build up.
+    # see if ipsiContra. If not, assume L/R
+    
+    n = df_a.shape[0]
+    
+    # sort columns
+    df_a_sort = tsutil.sortCols(df_a)
+    df_b_sort = tsutil.sortCols(df_b)
+
+    # choose a random column, check if ends with '_ipsi' or '_contra'
+    rdm_col = df_a_sort.columns[np.random.randint(0, df_a_sort.shape[1])].lower()
+    if rdm_col.endswith('_ipsi') or rdm_col.endswith('_contra'):
+        ipsi_contra = True
+    else:
+        ipsi_contra = True
+
+    # Reverse the order of rows so the top row of the plot corresponds to the top row of the DataFrame
+    df_a_sort = df_a_sort.iloc[::-1]
+    df_b_sort = df_b_sort.iloc[::-1]
+    
+    # Optionally prepend a few blank rows at the top to increase space between title and first real row.
+    # These rows will not be plotted; they simply create extra vertical gap.
+    original_n = df_a_sort.shape[0]
+    if pad_top_rows and pad_top_rows > 0:
+        pad_idx = [f"_pad_{i}" for i in range(pad_top_rows)]
+        pad_df = pd.DataFrame(np.nan, index=pad_idx, columns=df_a_sort.columns, dtype="float64")
+        df_a_sort = pd.concat([pad_df, df_a_sort], axis=0)
+        df_b_sort = pd.concat([pad_df, df_b_sort], axis=0)
+
+    vertices = df_a_sort.columns
+    n_rows = df_a_sort.shape[0]
+
+    fig_length = min(50, 0.75 * n_rows) # max height of 50
+    fig_width = 55
+    fig, ax = plt.subplots(figsize=(fig_width, fig_length))
+    
+    # relative font sizes
+    scale = fig_width / 100
+    sizes = {
+        'linewdth': 2,
+        'mrkrsize': 4,
+        'title': 100,
+        'legend': 70,
+        'y_tick': 50,
+        'x_tick': 65,
+        'x_lbl': 90,
+        'annot': 80,
+    }
+
+    if spacing is None:
+        # compute typical amplitude per participant and choose spacing > max amplitude
+        per_row_amp = (df_a_sort.max(axis=1) - df_a_sort.min(axis=1)).abs().tolist() + \
+                      (df_b_sort.max(axis=1) - df_b_sort.min(axis=1)).abs().tolist()
+        max_amp = max(per_row_amp) if len(per_row_amp) > 0 else float(offset)
+        spacing_val = max(float(offset), float(max_amp) * 1.2 + 1.0)  # margin
+    else:
+        spacing_val = float(spacing)
+
+    x = np.arange(len(vertices))
+    # iterate through rows but skip pad rows (they are just for spacing)
+    for i in range(n_rows):
+        idx_label = df_a_sort.index[i]
+        if str(idx_label).startswith("_pad_"):  # don't plot pad rows
+            continue
+        baseline = i * spacing_val
+
+        y_a = df_a_sort.iloc[i].values + baseline
+        y_b = df_b_sort.iloc[i].values + baseline
+        
+        if marks:
+            ax.scatter(x, y_a, color='red', alpha=alpha, s=sizes['mrkrsize'], label=lbl_a if i == 0 else "")
+            ax.scatter(x, y_b, color='blue', alpha=alpha, s=sizes['mrkrsize'], label=lbl_b if i == 0 else "")
+        else:
+            ax.plot(x, y_a, color='red', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_a if i == 0 else "")
+            ax.plot(x, y_b, color='blue', alpha=alpha, linewidth = sizes['linewdth'], label=lbl_b if i == 0 else "")
+        
+        if hline is not None:
+            ax.axhline(y=baseline + hline, color='black', linestyle='--', linewidth=1, alpha=1)
+
+    if parc is None:
+        split_idx = next((k for k, col in enumerate(vertices) if '_R' in col), None)
+        if split_idx is None: # assume ipsi contra labels instead
+            split_idx = next((k for k, col in enumerate(vertices) if '_ipsi' in col), None)
+            if split_idx is not None:
+                ipsi_contra = True
+            else:
+                # assume split idx is half way through
+                split_idx = len(vertices) // 2
+                print("[plot_ridgeLine] WARNING: Could not determine hemisphere split from column names. Assuming halfway split.")
+                
+    elif parc.lower() == "glasser" or parc.lower() == "glsr":
+        split_idx = 181
+    elif parc.lower() == "dk25" or parc.lower() == "dk":
+        split_idx = 25
+    else:
+        ValueError("[plot_ridgeLine] Invalid parc value. Choose 'glasser', 'DK25' or None.")
+    
+    # Set title
+    fig.suptitle(title, fontsize=int(sizes['title'] * scale), y=0.995)
+
+    # Legend (lay entries out horizontally next to title)
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ncol = max(1, len(labels))  # typically 2 (lbl_a, lbl_b); adjust if more labels appear
+        legend_x = 0.85  # tune to move legend horizontally; closer to 1.0 moves it to the right edge
+        legend_y = 0.995  # just under the top of the figure (near title)
+        fig.legend(handles, labels,
+                   loc='upper right',
+                   bbox_to_anchor=(legend_x, legend_y),
+                   ncol=ncol,
+                   frameon=False,
+                   fontsize=int(sizes['legend'] * scale),
+                   markerscale=max(1, sizes['mrkrsize'] * scale))
+        
+    """ place legend just outside the right side with the same visual spacing
+    ax.legend(fontsize=sizes['legend']*scale,
+              markerscale=max(1, sizes['mrkrsize']*2),
+              loc='upper left',
+              bbox_to_anchor=(1.0 + pad_frac, 1.0),
+              borderaxespad=0)
+    """
+
+    # y ticks
+    # y ticks: place at participant baselines only (exclude pad rows)
+    participant_idx = [i for i, lbl in enumerate(df_a_sort.index) if not str(lbl).startswith("_pad_")]
+    ytick_positions = [i * spacing_val for i in participant_idx]
+    ax.set_yticks(ytick_positions)
+    labels = ax.set_yticklabels(df_a_sort.index[participant_idx].astype(str), fontsize=int(sizes['y_tick'] * scale))
+    
+    for lbl in labels: # ensure vertical alignment is centered for all tick label Text objects
+        lbl.set_va('center')
+    
+    ax.tick_params(axis='y', which='major', pad=max(2, int(4 * scale))) # horizontal padding so labels don't touch axis
+
+    approx_char_width_px = (sizes['x_tick'] * scale) * 0.6
+    pad_px = approx_char_width_px * 5  # 5 characters worth of space
+
+    # figure physical width in pixels
+    fig_w_in, _ = fig.get_size_inches()
+    dpi = fig.dpi if hasattr(fig, "dpi") else plt.rcParams.get("figure.dpi", 100)
+    fig_w_px = fig_w_in * dpi
+
+    # fraction of figure width to reserve on each side
+    pad_frac = pad_px / fig_w_px
+
+    # convert fraction -> data units (x-axis runs from 0 .. len(vertices)-1)
+    x_min = 0
+    x_max = max(0, len(vertices) - 1)
+    data_span = x_max - x_min if x_max > x_min else 1.0
+    pad_data = pad_frac * data_span
+    
+    ax.set_xlim(x_min - pad_data, x_max + pad_data) # set x-limits so data starts/ends with the requested padding
+    ax.margins(x=0)
+
+    # xtick placement/labels (keep using vertex labels at three positions)
+    xticks = np.linspace(0, len(vertices) - 1, 3)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([vertices[int(j)] for j in xticks], fontsize=sizes['x_tick']*scale, rotation=45, ha='right')
+    ax.tick_params(axis='x', labelsize=sizes['x_tick']*scale)
+    
+    if parc is not None:
+        if stat is not None:
+            ax.set_xlabel(f"{parc.upper()} ({stat})", fontsize=sizes['x_lbl']*scale)
+        else:
+            ax.set_xlabel(parc, fontsize=sizes['x_lbl']*scale)
+    else:
+        ax.set_xlabel("Vertex", fontsize=sizes['x_lbl']*scale)
+
+    # Hemisphere labels
+    x0, x1 = ax.get_xlim()
+    data_span_eff = x1 - x0 if (x1 - x0) != 0 else 1.0
+    left_data = (split_idx / 2.0)
+    right_data = ((split_idx + len(vertices)) / 2.0)
+    left_frac = (left_data - x0) / data_span_eff
+    right_frac = (right_data - x0) / data_span_eff
+    
+    # clamp to avoid text going off-figure
+    left_frac = min(1.0, max(0.0, left_frac))
+    right_frac = min(1.0, max(0.0, right_frac))
+    
+    # axes fraction for vertical placement (negative = below axis)
+    y_ax_frac = -0.03  # move labels away from y-axis
+    label_fs = int(sizes['annot'] * scale)
+    va_setting = 'top'  # anchor the top of the text at the y coordinate so it sits below the axis
+    if not ipsi_contra:
+        ax.text(left_frac, y_ax_frac, "Left",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+        ax.text(right_frac, y_ax_frac, "Right",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+    else:
+        ax.text(left_frac, y_ax_frac, "Contralateral",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+        ax.text(right_frac, y_ax_frac, "Ipsilateral",
+                fontsize=label_fs, ha='center', va=va_setting, transform=ax.transAxes)
+
+    # add vertical lines
+    row_offsets = (np.arange(n_rows) * spacing_val)[:, None]  # shape (n,1)
+    
+    y_a_all = (np.nan_to_num(df_a_sort.values.astype(float), nan=np.nan) + row_offsets).reshape(-1)
+    y_b_all = (np.nan_to_num(df_b_sort.values.astype(float), nan=np.nan) + row_offsets).reshape(-1)
+    y_all = np.hstack([y_a_all, y_b_all])
+    y_min = float(np.nanmin(y_all))
+    y_max = float(np.nanmax(y_all))
+    pad = max(0.5, 0.1 * spacing_val)  # small padding so lines don't touch markers
+    ax.set_ylim(y_min - pad, y_max + pad)
+
+    ax.axvline(x=split_idx, color='black', linestyle='--', linewidth=max(1, sizes['mrkrsize'] * 0.75), alpha=0.4)
+    
+    if hline_idx is not None: # plot hlines at each provided index
+         for hx in hline_idx:
+            ax.axvline(x=hx, color='gray', linestyle='--', linewidth=max(0.5, sizes['mrkrsize'] * 0.75), alpha=0.3)
+    
+    # remove y-axis line
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.yaxis.set_ticks_position('none')
+
+    ax.margins(x=fig_width*0.01, y=fig_width*0.01)
+    fig.tight_layout(rect=[0, 0, 1, 1]) # add padding
+    fig.subplots_adjust(top=0.97) # lower values move title up more
+
+    return fig
+
+def plotLine(dl, df_keys = ['df_maps'], marks=True, 
+            parc=[None], stat =[None],
+            alpha = 0.02, spacing = 1, mtch_ds = True,
+            hlines = None, name_append=None, save_pth=None, 
+            verbose = False, test = False):
+    
+    """
+    Plot ridgeline graphs to compare maps between corrsponding dfs (eg., 3T vs 7T).
+    Note. All values are rescaled participant-wise: (x - mdn(x)) / IQR(x) 
+
+    Input:
+        dl:           list of dict items with dataframes to plot
+        df_key: lst        keys in dict items for dataframe to plot
+        marks:          whether to use marks instead of lines
+        parc: lst          indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
+        stat: lst       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
+        alpha: int         transparency of lines/marks
+        offset: int        vertical distance between each individual's plot
+        
+        mtch_ds: bool or any of int, flot, str    
+            if True, then corresponding pair is that whose value in the key 'downsampledRes' is identical.
+            if not `True` then should be a value of 'downsampledRes' to match to (should be int or float)
+
+        hlines: lst  list of list of indices to draw horitzontal lines at
+        name_append:    string to append to saved file names
+        save_pth:       path to save figures. If None, will not save.
+        verbose:        whether to print item metadata  
+        test:           whether to run in test mode (only first 2 items in dl)
+    
+    Output:
+        saves plot to path    
+    """
+
+    import os
+    import datetime
+    import matplotlib.pyplot as plt
+    import tTsTGrpUtils as tsutil
+
+    skip_idx = []
+    counter = 0
+    start_time = datetime.datetime.now()
+    print(f"[{start_time}] Plotting ridgeline plots for {list(df_keys)}...")
+    
+    if type(df_keys) is str:
+        df_keys = [df_keys]
+    if type(parc) is str:
+        parc = [parc]
+    if type(stat) is str:
+        stat = [stat]
+
+    if test:
+        idx_len = 3
+        rdm_indices = tsutil.get_rdmPairedIndices(dl, idx_len, mtch = ['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'])
+        
+        print(f"\tTEST MODE. Plotting {idx_len} random items and their pairs: {rdm_indices}")
+        dl = [dl[i] for i in rdm_indices]
+    
+    for idx in range(len(dl)):
+
+        if idx in skip_idx:
+            continue
+        counter += 1
+
+        difdsRes = False        
+        if dl[idx].get('downsampledRes', None) == str(0.8):
+            difdsRes = True
+            skip_idx.append(idx) # Assume that others shouldnt be matching to this non-native data
+
+        idx_other = tsutil.get_pair(dl, idx, mtch = ['region', 'feature', 'label', 'surf', 'smth', 'downsampledRes'], difdsRes = difdsRes, skip_idx=skip_idx)
+        
+        if idx_other is None:
+            print(f"\tNo matching index found. Skipping.")
+            continue
+        
+        # determine which study is tT and which is sT
+        idx_tT, idx_sT = tsutil.determineStudy(dl, idx = idx, idx_other = idx_other, study_key = 'study')
+        item_tT = dl[idx_tT]
+        item_sT = dl[idx_sT]
+        
+        print(f"\t[idx 3T, 7T: {idx_tT}, {idx_sT}] {tsutil.printItemMetadata(item_tT, return_txt = True, clean = True, printStudy = False)}")
+       
+        # extract df
+        for df_key, p, s, hlines_idx in zip(df_keys, parc, stat, hlines if hlines is not None else [None]*len(df_keys)):
+            df_tT = item_tT.get(df_key, None)
+            df_sT = item_sT.get(df_key, None)
+
+            if type(df_tT) is str:
+                pth = df_tT 
+                df_tT = tsutil.loadPickle(pth, verbose = False)
+            if type(df_sT) is str:
+                pth = df_sT 
+                df_sT = tsutil.loadPickle(pth, verbose = False)
+
+            if df_tT is None or df_sT is None:
+                if verbose:
+                    print(f"\t{df_key} is None. Skipping.")
+                continue
+            elif df_tT.shape[0] == 0 or df_sT.shape[0] == 0:
+                if verbose:
+                    print(f"\t{df_key} is empty. Skipping.")
+                continue
+            else:
+                print(f"\tPlotting {df_key}")
+            
+            # ensure that all columns overlap
+            cols_tT = set(df_tT.columns) # use as x-axis
+            cols_sT = set(df_sT.columns)
+            cols_common = list(cols_tT.intersection(cols_sT))
+            assert len(cols_common) == len(cols_tT) and len(cols_common) == len(cols_sT), f"Columns do not match between studies: {cols_tT} vs {cols_sT}"
+            
+            # rename indices to match. Use UID only
+            uid_tT = df_tT.index.str.split('_').str[0]
+            uid_sT = df_sT.index.str.split('_').str[0]
+            
+            # ensure that all indices overlap
+            idxs_common = list(set(uid_tT).intersection(set(uid_sT)))
+            idxs_common = sorted(idxs_common) # sort by UID
+
+            assert len(idxs_common) == len(uid_tT) and len(idxs_common) == len(uid_sT), f"Indices do not match between studies: {set(uid_tT)} vs {set(uid_sT)}"
+            
+            # set index to UID
+            df_tT.index = uid_tT
+            df_sT.index = uid_sT
+            
+            # take only overlapping indices
+            df_tT = df_tT.loc[idxs_common, cols_common]
+            df_sT = df_sT.loc[idxs_common, cols_common]
+
+            # create title
+            region = item_tT.get('region', None)
+            feature = item_tT.get('feature', None)
+            surface = item_tT.get('surf', None)
+            label = item_tT.get('label', None)
+            smth = item_tT.get('smth', None)
+            title = f"{region}: {feature}, {surface}, {label}, smth-{smth}mm ({df_key})"
+            if 'TLE' in df_key:
+                title = title + f" [TLE only]"  # TODO CHANGE SO THAT NOT HARD CODED 
+            
+            hline = None
+            if '_z' in df_key.lower():
+                title = title + " [Z-score]"
+                hline = 0 # value at which to plot a horizontal line for each subject
+            elif '_w' in df_key.lower():
+                title = title + " [W-score]"
+                hline = 0 # value at which to plot a horizontal line for each subject
+            elif feature.lower() in ['t1map', 'flair']: # rescale values (participant wise)
+                # Robust rescaling: subtract median and divide by IQR (interquartile range)
+                df_tT = (df_tT - df_tT.median(axis=1).values[:, None]) / (df_tT.quantile(0.75, axis=1).values - df_tT.quantile(0.25, axis=1).values)[:, None]
+                df_sT = (df_sT - df_sT.median(axis=1).values[:, None]) / (df_sT.quantile(0.75, axis=1).values - df_sT.quantile(0.25, axis=1).values)[:, None]
+                title = title + " [standardized]"
+
+            # ridge line plot
+            fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
+                                hline=hline, marks=marks, title=title, 
+                                parc=p, stat=s, alpha=alpha, 
+                                hline_idx = hlines_idx, spacing = spacing)
+
+            if save_pth is not None:
+                if name_append is not None:
+                    save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{name_append}_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                else:
+                    save_name = f"{region}_{feature}_{surface}_{label}_smth-{smth}mm_{df_key}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                if test:
+                    save_name = f"TEST_{save_name}"
+
+                fig.savefig(f"{save_pth}/{save_name}.png", dpi=300, bbox_inches='tight', pad_inches = 0.08)
+                file_size = os.path.getsize(f"{save_pth}/{save_name}.png") / (1024 * 1024)  # size in MB
+                print(f"\t\tSaved ({file_size:0.1f} MB): {save_pth}/{save_name}.png")
+                plt.close(fig)
+
+    end_time = datetime.datetime.now()
+    print(f"[{end_time}] Complete. Duration: {end_time - start_time}")
+    
+
+# surface plotting
+def showBrain(lh, rh, region = "ctx",
+               surface='fsLR-5k', feature_lbl=None, 
+               ipsiTo=None, title=None, 
+               min=-2.5, max=2.5, inflated=True, 
+               save_name=None, save_pth=None, cmap="seismic"
+               ):
+    """
+    Returns brain figures
+
+    inputs:
+        lh: column with values for left hemisphere surface (each row represents a vertex and is properly indexed) 
+        rh: column right hemisphere surface (each row represents a vertex and is properly indexed) 
+        surface: surface type (default is 'fsLR-5k')
+        inflated: whether to use inflated surfaces (default is False)
+        title: title for the plot (default is None)
+        save_name: name to save the figure (default is None)
+        save_pth: path to save the figure (default is None)
+
+    """    
+    
+    import os
+    import glob
+    import numpy as np
+    import nibabel as nib
+    import seaborn as sns
+    from brainspace.plotting import plot_hemispheres
+    from brainspace.mesh.mesh_io import read_surface
+    from brainspace.datasets import load_conte69
+    import datetime
+
+    if region == 'ctx' or region == 'cortex':
+        micapipe=os.popen("echo $MICAPIPE").read()[:-1]
+        if micapipe == "":
+            micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
+            print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
+    elif region == 'hipp' or region == 'hippocampus':
+        hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
+
+    # set wd to save_pth
+    if save_pth is not None:
+        if not os.path.exists(save_pth):
+            os.makedirs(save_pth)
+        os.chdir(save_pth)
+
+    if region == "ctx" or region == "cortex":
+        if surface == 'fsLR-5k':
+            if inflated == True:
+                # Load fsLR 5k inflated
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.inflated.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.inflated.surf.gii', itype='gii')
+            else:
+                # Load fsLR 5k
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.surf.gii', itype='gii')
+        elif surface == 'fsLR-32k':
+            if inflated == True:
+                # Load fsLR 32k inflated
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.inflated.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.inflated.surf.gii', itype='gii')
+            else:
+                # Load fsLR 32k
+                surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.surf.gii', itype='gii')
+                surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.surf.gii', itype='gii')
+        else:
+            raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
+        
+    elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
+        if surface == '0p5mm': # use hippunfold toolbox
+            
+            surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_L.surf.gii', itype='gii')
+            surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_R.surf.gii', itype='gii')
+
+            # unfolded
+            surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
+            surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
+        
+        elif surface == '2mm':
+        
+            surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+            surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+
+            # unfolded
+            surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+            surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
+        
+        else:
+            raise ValueError(f"Surface {surface} not recognized. Use '0p5mm' or '2mm'.")
+    else:
+        raise ValueError(f"Region {region} not recognized. Use 'ctx' or 'hipp'.")
+
+    #print(f"L: {lh.shape}, R: {rh.shape}")
+    data = np.hstack(np.concatenate([lh, rh], axis=0))
+    #print(data.shape)
+
+    #lbl_text = {'top': [title if title else '', '','',''], 'bottom': [feature_lbl if feature_lbl else '', '','','']}
+    lbl_text = {}
+    if ipsiTo is not None and ipsiTo == "L":
+        lbl_text.update({
+            'left': 'ipsi',
+            'right': 'contra'
+        })    
+    elif ipsiTo is not None and ipsiTo == "R":
+        lbl_text.update({
+            'left': 'contra',
+            'right': 'ipsi'
+        })
+    else:
+        lbl_text.update({
+            'left': 'L',
+            'right': 'R'
+        })
+
+    # Ensure all values are strings (robust against accidental lists/arrays)
+    lbl_text = {k: str(v) for k, v in lbl_text.items()}
+
+    date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
+    filename = f"{save_name}_{surface}_{date}.png" if save_name and save_pth else None
+    
+    # Plot the surface with a title
+    if filename:
+        print(f"[showBrain] Plot saved to {filename}")
+        return plot_hemispheres(
+                surf_lh, surf_rh, array_name=data, 
+                size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
+                nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+                screenshot=True, filename=filename,
+                #, label_text = lbl_text
+            )
+    else:
+        fig = plot_hemispheres(
+            surf_lh, surf_rh, array_name=data, 
+            size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
+            nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+            label_text = lbl_text
+        )
+
+    return fig
 
 ### Plot raw data to z-score distributions
 def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
@@ -771,7 +1863,7 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     stats_text = "\n".join([f"{labels[i]}:{stats[i]}" for i in range(len(stats))])
     
     # Compute Pearson correlation
-    d_cor, n_nan = dCor(df_d[0], df_d[1])
+    d_cor, n_nan = correl(df_d[0], df_d[1])
     cor_text = f"r = {d_cor:.2f} (n_nan:{n_nan})" if n_nan > 0 else f"r = {d_cor:.2f}"
 
     stats_text = f"D-scores statistics ({cor_text}):\n" + stats_text
