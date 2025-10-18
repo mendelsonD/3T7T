@@ -430,7 +430,7 @@ def plotMatrices(dl, df_keys, cor = True,
     print(f"Plotting matrices for {list(df_keys)}...")
     
     if test:
-        idx_len = 3
+        idx_len = 1
         rdm_indices = tsutil.get_rdmPairedIndices(dl, idx_len, mtch = ['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'])
         
         print(f"TEST MODE. Applying parcellations to {idx_len} random items in dl: indices {rdm_indices}.")
@@ -460,7 +460,10 @@ def plotMatrices(dl, df_keys, cor = True,
         if sessions:
             if item.get('sesNum', None) not in sessions or item.get('sesNum', None) not in sessions:
                 continue
-    
+        
+        if test and counter > idx_len:
+            break
+        counter += 1
         idx_other = tsutil.get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], difdsRes = difdsRes, skip_idx=skip_idx)
         
         if test:
@@ -625,8 +628,6 @@ def plotMatrices(dl, df_keys, cor = True,
                 continue
             else:
                 print(f"\t\tPlotting key: {key}...")
-            
-            
                 
             # determine min and max values across both matrices for consistent color scaling
             assert feature_one == feature_two, f"Features do not match: {feature_one}, {feature_two}"
@@ -703,45 +704,77 @@ def plotMatrices(dl, df_keys, cor = True,
             cbar_ax = fig.add_subplot(spec[1])
             norm = plot.Normalize(vmin=min_val, vmax=max_val)
             cbar = plot.colorbar(plot.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax)
-            cbar.set_label(cmap_title, fontsize=20, labelpad=0)
+            #cbar.set_label(cmap_title, fontsize=20, labelpad=0)
             cbar.ax.yaxis.set_label_position("left")
             cbar.ax.tick_params(axis='x', direction='in', labelsize=20)
 
             if cor: # calculate correlation if requested
                 cors = correl_df(df_one, df_two, method = "Pearson")
-                # add these correlation values to the left of cbar. The index of the series is assumed to be aligned with df_one and df_two
-                # Place a separate correlation column left of the colorbar (keep the cbar in the middle)
-                # Reuse the existing cbar_ax position to carve out two sub-areas: a narrow left area for correlations
-                # and a (smaller) right area for the actual colorbar. The colorbar object `cbar` already exists
-                # on `cbar_ax`, moving `cbar_ax` will move the drawn colorbar.
+
+                # carve out space left of the colorbar for correlations and move the colorbar right
                 pos = cbar_ax.get_position()
-                cor_frac = 0.65  # fraction of the central slot reserved for correlation texts
-                small_pad = pos.width * 0.03
+                cor_frac = 0.35  # fraction of the central slot reserved for correlation texts (make small to avoid overlap)
+                small_pad = pos.width * 0.02
 
-                # new positions in figure coordinates: [x0, y0, width, height]
-                new_cor_pos = [pos.x0, pos.y0, pos.width * cor_frac - small_pad, pos.height]
-                new_cbar_pos = [pos.x0 + pos.width * cor_frac, pos.y0, pos.width * (1.0 - cor_frac) + small_pad, pos.height]
+                new_cor_pos = [pos.x0 - pos.width * (cor_frac + small_pad), pos.y0, pos.width * cor_frac, pos.height]
+                new_cbar_pos = [pos.x0, pos.y0, pos.width * (1.0 - cor_frac) + small_pad, pos.height]
 
-                # create an (invisible) axis for correlation labels and move the colorbar axis
+                # create axis for correlation labels and move the colorbar axis
                 cor_ax = fig.add_axes(new_cor_pos)
                 cor_ax.axis('off')
                 cbar_ax.set_position(new_cbar_pos)
 
-                # Draw correlation values aligned to the image rows (use ax1 data->figure coordinate transform)
-                # cors is a pandas.Series where index should match the df_one index (if available)
-                for i_row, idx_label in enumerate(df_one.index):
-                    cor_val = cors.get(idx_label, np.nan) if hasattr(cors, "get") else (cors.loc[idx_label] if idx_label in cors.index else np.nan)
-                    txt = f"{cor_val:0.2f}" if (not np.isnan(cor_val)) else "--"
+                # Find imshow origin and number of rows to align text properly
+                n_rows = df_one.shape[0]
+                im = None
+                if hasattr(ax1, 'images') and len(ax1.images) > 0:
+                    im = ax1.images[0]
+                origin = getattr(im, "origin", "upper") if im is not None else "upper"
 
-                    # transform the y position of row i to figure coordinates
-                    y_disp = ax1.transData.transform((0.0, float(i_row)))[1]
-                    y_fig = fig.transFigure.inverted().transform((0.0, y_disp))[1]
+                # Build aligned correlation values corresponding to each row in df_one (match by UID before first '_')
+                def lookup_cor(idx_label):
+                    base = str(idx_label).split('_')[0]
+                    try:
+                        return float(cors.loc[base])
+                    except Exception:
+                        try:
+                            return float(cors.get(base, np.nan))
+                        except Exception:
+                            return np.nan
 
-                    # x position just inside the right edge of the correlation axis (figure coords)
-                    x_fig = new_cor_pos[0] + new_cor_pos[2] * 0.98
+                vals = np.array([lookup_cor(idx) for idx in df_one.index], dtype=float)
+                # Text format for values
+                def txt_fmt(v):
+                    if np.isnan(v):
+                        return "--"
+                    s = f"{v:.2f}"
+                    # remove leading zero for numbers between -1 and 1 (e.g. 0.75 -> .75, -0.75 -> -.75)
+                    if s.startswith("-0"):
+                        s = "-" + s[2:]
+                    elif s.startswith("0"):
+                        s = s[1:]
+                    return s
+                r_mn = f"{np.nanmean(vals):.2f}"
+                r_std = f" ± {np.nanstd(vals):.2f}"
+                # For each row compute relative y in cor_ax (0..1) and place text there.
+                y_rel_list = []
+                for i_row in range(n_rows):
+                    if origin.lower() == 'upper':
+                        y_rel = 1.0 - (i_row + 0.5) / float(n_rows)
+                    else:
+                        y_rel = (i_row + 0.5) / float(n_rows)
+                    y_rel_list.append(y_rel)
+                    cor_val = vals[i_row]
+                    cor_txt = txt_fmt(cor_val)
+                    # place right-aligned so it sits near the cbar but within correlation axis
+                    cor_ax.text(1, y_rel, cor_txt, ha='right', va='center', fontsize=9, color='black', transform=cor_ax.transAxes)
 
-                    # place text in figure coords so it sits between the two main axes
-                    fig.text(x_fig, y_fig, txt, ha='right', va='center', fontsize=10, color='black')
+                    # Above the first r value, add annotation 'r:'
+                    if i_row == 0:
+                        # small vertical offset in axis-fraction coordinates
+                        offset = 0.04
+                        y_label = min(1.0, y_rel + offset)
+                        cor_ax.text(0.01, y_label, f"r: ({r_mn}{r_std})", ha='left', va='bottom', fontsize=12, color='black', transform=cor_ax.transAxes)
 
             # Add a common title
             region = item_one['region']
@@ -900,7 +933,7 @@ def visMatrix(df, feature="Map Value", title=None, min_val=None, max_val=None, x
 
 
 def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title, 
-                   parc = None, stat=None, hline = None, marks = False, 
+                   parc = None, stat=None, hline = None, marks = False, cor = True,
                    hline_idx = None, pad_top_rows=2,
                    offset = 3, spacing=None, alpha = 0.3):
     """
@@ -992,6 +1025,12 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
         spacing_val = float(spacing)
 
     x = np.arange(len(vertices))
+
+    if cor:
+        cors = correl_df(df_a, df_b, method = "Pearson")
+        cors_mn = np.nanmean(cors)
+        cors_std = np.nanstd(cors)
+
     # iterate through rows but skip pad rows (they are just for spacing)
     for i in range(n_rows):
         idx_label = df_a_sort.index[i]
@@ -1060,7 +1099,49 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     participant_idx = [i for i, lbl in enumerate(df_a_sort.index) if not str(lbl).startswith("_pad_")]
     ytick_positions = [i * spacing_val for i in participant_idx]
     ax.set_yticks(ytick_positions)
-    labels = ax.set_yticklabels(df_a_sort.index[participant_idx].astype(str), fontsize=int(sizes['y_tick'] * scale))
+    
+    # format cor value
+
+    # Build y-tick labels, optionally appending per-participant correlation aligned to the participant UID
+    if cor and 'cors' in locals():
+        def txt_fmt(v):
+            if v is None or (isinstance(v, float) and np.isnan(v)):
+                return "--"
+            s = f"{v:.2f}"
+            if s.startswith("-0"):
+                s = "-" + s[2:]
+            elif s.startswith("0"):
+                s = s[1:]
+            return s
+
+        cor_vals = []
+        for lbl in df_a_sort.index[participant_idx]:
+            base = str(lbl).split('_')[0]
+            try:
+                v = float(cors.loc[base])
+            except Exception:
+                try:
+                    v = float(cors.get(base, np.nan))
+                except Exception:
+                    v = np.nan
+            cor_vals.append(v)
+
+        y_labels = [f"{str(lbl)} ({txt_fmt(v)})" for lbl, v in zip(df_a_sort.index[participant_idx].astype(str), cor_vals)]
+    else:
+        y_labels = df_a_sort.index[participant_idx].astype(str).tolist()
+
+    # Ensure number of labels matches number of y-tick positions
+    if len(y_labels) != len(ytick_positions):
+        if len(y_labels) > len(ytick_positions):
+            # Trim labels if there are more labels than ticks
+            y_labels = y_labels[:len(ytick_positions)]
+        else:
+            # Pad with empty labels if fewer labels than ticks
+            y_labels = y_labels + [''] * (len(ytick_positions) - len(y_labels))
+
+    # Set tick labels once and then retrieve Text objects for further formatting
+    ax.set_yticklabels(y_labels, fontsize=int(sizes['y_tick'] * scale))
+    labels = ax.get_yticklabels()
     
     for lbl in labels: # ensure vertical alignment is centered for all tick label Text objects
         lbl.set_va('center')
@@ -1069,6 +1150,12 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
 
     approx_char_width_px = (sizes['x_tick'] * scale) * 0.6
     pad_px = approx_char_width_px * 5  # 5 characters worth of space
+
+    # above first ID, report mean and std of correlations
+    if cor:
+        cor_txt = f"Mean r: {cors_mn:.2f} ± {cors_std:.2f}"
+        ax.text(0.01, 0.99, cor_txt, ha='left', va='top', fontsize=int(sizes['annot'] * scale),
+                transform=ax.transAxes)
 
     # figure physical width in pixels
     fig_w_in, _ = fig.get_size_inches()
@@ -1158,7 +1245,7 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     return fig
 
 def plotLine(dl, df_keys = ['df_maps'], marks=True, 
-            parc=[None], stat =[None],
+            parc=[None], stat =[None], cor = True,
             alpha = 0.02, spacing = 1, mtch_ds = True,
             hlines = None, name_append=None, save_pth=None, 
             verbose = False, test = False):
@@ -1173,6 +1260,7 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
         marks:          whether to use marks instead of lines
         parc: lst          indicate if and how the surface has been parcellated. If None, assumes vertex with suffixes '_L', '_R' or '_ipsi', '_contra'.
         stat: lst       if parcellation is provided, this variable is added to the x-axis label (made for when vertices are summarised with a statistic for a single value per parcel) 
+        cor: bool         whether to calculate and display row-wise correlation between the same individuals at both studies.
         alpha: int         transparency of lines/marks
         offset: int        vertical distance between each individual's plot
         
@@ -1310,7 +1398,7 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
 
             # ridge line plot
             fig = plot_ridgeLine(df_tT, df_sT, lbl_a="3T", lbl_b="7T", 
-                                hline=hline, marks=marks, title=title, 
+                                hline=hline, marks=marks, title=title, cor = cor,
                                 parc=p, stat=s, alpha=alpha, 
                                 hline_idx = hlines_idx, spacing = spacing)
 
