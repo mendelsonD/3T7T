@@ -87,6 +87,76 @@ def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
 
     return output_pdf
 
+def get_maxVals(data, df_name, feature, metric):
+    """
+    Determine min and max values and colormap for plotting based on feature type.
+
+    Input:
+        data: pd.DataFrame, dataframe containing the data to plot (both hemispheres)
+        feature: str, name of the feature (e.g., 'thickness', 'flair', etc.)
+        df_name: str, name of the dataframe (used to check for '_z' or '_w' suffix)
+        metric: str, metric type (e.g., 'std', etc.)
+    
+    Output:
+        min_val: float, minimum value for color scale
+        max_val: float, maximum value for color scale
+        cmap: str, name of colormap to use
+    """
+    import numpy as np
+
+    if "_z" in df_name or "_w" in df_name:
+        cmap = "seismic"
+        min_val = -4
+        max_val = 4
+    else:
+        cmap = 'inferno'
+        
+        if feature.lower() == "thickness":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 0.5
+            else:   
+                min_val = 0
+                max_val = 4
+            cmap = 'Blues'
+        elif feature.lower() == "flair":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 30 # TODO. Calibrate properly
+            else:
+                min_val = -500
+                max_val = 500
+            cmap = "seismic"
+        elif feature.lower() == "t1map":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 180 # TODO. Calibrate properly
+            else:
+                min_val = 1000
+                max_val = 2800
+            cmap = "inferno"
+        elif feature.lower() == "fa":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 0.05 # TODO. Calibrate properly
+            else:
+                min_val = 0
+                max_val = 1
+            cmap="Blues"
+        elif feature.lower() == "adc": # units: mm2/s
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 0.0005 # TODO. Calibrate properly
+            else:
+                min_val = 0
+                max_val = 0.0025
+            cmap = "Blues"
+        else:
+            cmap = "inferno"
+            min_val = min(np.percentile(df.values, 95), np.percentile(df.values, 95))
+            max_val = max(np.percentile(df.values, 5), np.percentile(df.values, 5))
+
+        return min_val, max_val, cmap
 
 def correl(row_a, row_b, method = "Pearson", verbose = False):
     """
@@ -1425,12 +1495,456 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
     print(f"[{end_time}] Complete. Duration: {end_time - start_time}")
     
 
-# surface plotting
+########### SURFACE PLOTS #########
+def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, 
+            ipsiTo="L", title=None, save_name=None, save_path=None):
+    """
+    Create brain figures from a list of dictionary items with vertex-wise dataframes.
+    Input:
+        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', 'region' {df_name}
+        df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
+        indices: list of indices to visualize. If None, visualize all items in the list.
+        ipsiTo: hemisphere to use for ipsilateral visualization ('L' or 'R').
+    """
+    import pandas as pd
+    from IPython.display import display
+
+    for i, item in enumerate(dl):
+        region = item.get('region', 'ERROR')
+        feature = item.get('feature', 'ERROR')
+        label = item.get('label', 'ERROR')
+        surface = item.get('surf', 'ERROR')
+        smth = item.get('smth', 'ERROR')
+        
+        print(f"[visMean] [{i}] ([{item.get('studies','NA')}] {region} {feature} {label} {surface} {smth}mm)")
+        
+        if dl_indices is not None and i not in dl_indices:
+            continue
+        if df_name not in item:
+            print(f"[visMean] WARNING: {df_name} not found in item {i}. Skipping.")
+            continue
+        
+        df = item[df_name]
+        if df_metric is not None:
+            df = df.loc[[df_metric]]
+
+        #print(f"\tdf of interest: {df.shape}")
+
+        # remove SES or ID columns if they exist
+        if isinstance(df, pd.Series):
+            df = df.to_frame().T  # Convert Series to single-row DataFrame
+        df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
+        #print(f"\tdf after removing ID/SES: {df.shape}")
+        
+        # surface from size of df
+        if ipsiTo is not None:
+            if ipsiTo == "L":
+                lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+                rh_cols = [col for col in df.columns if col.endswith('_contra')]
+            else:
+                # if ipsiTo is not L, then assume it is R
+                lh_cols = [col for col in df.columns if col.endswith('_contra')]
+                rh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+        else:
+            #print(df.columns)
+            lh_cols = [col for col in df.columns if col.endswith('_L')]
+            rh_cols = [col for col in df.columns if col.endswith('_R')]
+        #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
+        assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
+
+        lh = df[lh_cols]
+        rh = df[rh_cols]
+        #print(f"\tL: {lh.shape}, R: {rh.shape}")
+        fig = showBrain(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
+
+        return fig
+
+def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth = None, save_name = None, font_family='sans-serif', cbar_label_size=10, suptitle_size=16, tmpdir = "/host/verges/tank/data/daniel/3T7T/z/tmp/"):
+            """
+            Plot multiple surfaces in one figure. (eg., grp mean, ctrl mean, ctrl std, cohen's D map)
+
+            Input: NOTE. All lists must be of same length
+                items: dict or list of dicts 
+                    Item holding df with data to visualize. If all data is in the same item, provide a single dict.
+                    Must have keys listed in 'df_names'
+                df_names: list of str
+                    names of keys in items holding dataframes with data to visualize 
+                    (e.g., ['df_z_mean', 'df_z_std', 'df_cohen_d'])
+                metrics: list of str
+                    name of indices in df_name with data to plot
+                    (e.g., ['d_df_z_TLE_ic_ipsiTo-L_Δd', 'd_df_z_TLE_ic_ipsiTo-L_Δd', 'd_df_cohen_d_TLE_ic_ipsiTo-L_Δd'])
+                lbls: list of str
+                    text to place under each cbar
+                title: str
+                    title for all figures
+
+                ipsiTo: str
+                    If vertices are ipsi/contra flipped, indicate which hemisphere to plot ipsilateral to.
+                save_pth: str
+                    path to save figure. If None, will not save.
+                save_name: str
+                    name to save figure. If None, will not save.
+
+                font_family: str
+                    matplotlib font family to use for text in the produced figure (default 'sans-serif')
+                cbar_label_size: int
+                    font size to apply to colorbar/tick labels (default 10)
+                suptitle_size: int
+                    font size for the overall suptitle (default 16)
+
+            Output:
+                fig: figure object with multiple surface plots
+            """
+            import tTsTGrpUtils as tsutil
+            import matplotlib.pyplot as plt
+            import matplotlib as mpl
+            import datetime
+            import numpy as np
+            import pandas as pd
+            import tempfile
+            import shutil
+            import glob
+            from PIL import Image as PILImage
+            import os
+
+            # apply local rcParams changes and restore later
+            rc_backup = {
+                'font.family': mpl.rcParams.get('font.family'),
+                'font.size': mpl.rcParams.get('font.size'),
+                'axes.labelsize': mpl.rcParams.get('axes.labelsize'),
+                'xtick.labelsize': mpl.rcParams.get('xtick.labelsize'),
+                'ytick.labelsize': mpl.rcParams.get('ytick.labelsize'),
+                'legend.fontsize': mpl.rcParams.get('legend.fontsize'),
+            }
+            try:
+                mpl.rcParams['font.family'] = font_family
+                # set sizes for colorbar labels / ticks etc.
+                mpl.rcParams['axes.labelsize'] = cbar_label_size
+                mpl.rcParams['xtick.labelsize'] = cbar_label_size
+                mpl.rcParams['ytick.labelsize'] = cbar_label_size
+                mpl.rcParams['legend.fontsize'] = cbar_label_size
+                # keep overall font.size modest (don't override too much)
+                mpl.rcParams['font.size'] = max(cbar_label_size - 1, 8)
+            except Exception:
+                pass
+
+            if isinstance(items, dict):
+                items = [items] * len(df_names)  # replicate the same item for all df_names
+            assert len(items) == len(df_names) == len(metrics), "[plotNsurfaces] ERROR: Lengths of items, df_names, and metrics must be the same."
+            n_figs = len(metrics)
+            if isinstance(lbls, str):
+                lbls = [lbls] * n_figs
+
+            # reduce total vertical extent per subplot to make stacked plots denser
+            total_height_per_plot = 2.8  # smaller per-row height than previously 6
+            fig_height = max(3, total_height_per_plot * n_figs)
+            fig, axes = plt.subplots(n_figs, 1, figsize=(6, fig_height))
+            # normalize axes to a list for uniform indexing
+            if n_figs == 1:
+                axes = [axes]
+            figs = []
+
+            # make overall figure background transparent
+            fig.patch.set_alpha(0.0)
+            fig.patch.set_facecolor('none')
+
+            for i, (itm, df, met, lbl) in enumerate(zip(items, df_names, metrics, lbls)):
+                ax = axes[i]
+                ft = itm.get('feature', 'unknownFeature')
+                region = itm.get('region', None)
+                surface = itm.get('surf', 'fsLR-5k')
+                region = itm.get('region', 'ctx') # asign default value to 'ctx'
+
+                data = itm.get(df, None)
+                if data is None:
+                    print(f"[plotNsurfaces] WARNING: {df} not found in item. Skipping.")
+                    continue
+                if isinstance(data, str):
+                    pth = data 
+                    data = tsutil.loadPickle(pth, verbose = False)
+
+                try:
+                    data = data.loc[[met]]
+                except KeyError:
+                    print(f"[plotNsurfaces] WARNING: {met} not found in dataframe. Skipping.")
+                    continue
+
+                L_cols, R_cols = tsutil.splitHemis(data) # NOTE L/R in variable names refers to ipsiTo mapping if ipsi/contra flipped
+                L_names = L_cols.columns
+                R_names = R_cols.columns
+                #print(f"\tLH_cols {type(L_names)} {L_names.shape}\n\tRH_cols {type(R_names)} {R_names.shape}")
+                assert len(L_cols) == len(R_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
+
+                lh = data[L_names]
+                rh = data[R_names]
+                lh = lh.apply(pd.to_numeric, errors='coerce')
+                rh = rh.apply(pd.to_numeric, errors='coerce')
+                #print(f"[plotNsurfaces] Plotting {ft} {region} {surface} for metric {met}: L: {lh.shape}, R: {rh.shape}")
+
+                # ensure vmin/vmax are integer-valued for nicer cbar tick formatting in the underlying showBrain call
+                # Determine vmin/vmax and colormap for this subplot in a robust way
+                try:
+                    res = get_maxVals(data, df, ft, met)
+                except Exception:
+                    res = (None, None, None)
+
+                # Normalize returned shape (some callers historically returned in different ordering)
+                v_min_local = v_max_local = None
+                cmap_local = None
+                try:
+                    if isinstance(res, (list, tuple)) and len(res) == 3:
+                        a, b, c = res
+                        # prefer (min, max, cmap). If numbers look reversed, swap.
+                        try:
+                            a_num = None if a is None else float(a)
+                            b_num = None if b is None else float(b)
+                            if a_num is not None and b_num is not None and a_num > b_num:
+                                v_min_local, v_max_local = b_num, a_num
+                            else:
+                                v_min_local, v_max_local = a_num, b_num
+                        except Exception:
+                            v_min_local, v_max_local = a, b
+                        cmap_local = c
+                    else:
+                        # unexpected return - fall back to defaults
+                        v_min_local, v_max_local, cmap_local = None, None, None
+                except Exception:
+                    v_min_local, v_max_local, cmap_local = None, None, None
+
+                # If either min or max are missing, compute from the actual LH/RH arrays
+                try:
+                    combined_vals = np.hstack([np.ravel(lh.values.astype(float)), np.ravel(rh.values.astype(float))])
+                    combined_vals = combined_vals[~np.isnan(combined_vals)]
+                except Exception:
+                    combined_vals = np.array([])
+
+                if (v_min_local is None or np.isnan(v_min_local)) and combined_vals.size > 0:
+                    v_min_local = float(np.nanmin(combined_vals))
+                if (v_max_local is None or np.isnan(v_max_local)) and combined_vals.size > 0:
+                    v_max_local = float(np.nanmax(combined_vals))
+
+                # Final fallbacks
+                if v_min_local is None or np.isnan(v_min_local):
+                    v_min_local = -1.0
+                if v_max_local is None or np.isnan(v_max_local):
+                    v_max_local = 1.0
+                if cmap_local is None:
+                    cmap_local = "seismic"
+
+                # Tighten subplot spacing so resulting PNGs align across rows and use available width
+                try:
+                    # apply modest tight adjustments to the parent figure so subplots occupy most of the canvas
+                    fig.subplots_adjust(hspace=0.02, wspace=0.02, left=0.02, right=0.98, top=0.98, bottom=0.02)
+                    try:
+                        fig.tight_layout(pad=0.01)
+                    except Exception:
+                        pass
+                    # ensure this axis uses the full available area (no internal margins)
+                    try:
+                        ax.margins(0)
+                        ax.set_anchor('W')
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+                
+                try:
+                    # use a predictable base name
+                    base_save_name = f"tmp_plot_{i}"
+                    # showBrain will create a PNG file in tmpdir; call it with save_name/save_pth
+                    _ = showBrain(lh, rh, region,
+                            surface, feature_lbl = ft,
+                            ipsiTo=ipsiTo, inflated=True,
+                            min = v_min_local, max = v_max_local, cmap = cmap_local,
+                            save_name = base_save_name, save_pth = tmpdir, verbose = False)
+
+                    # find the most recent png written in tmpdir
+                    pngs = sorted(glob.glob(os.path.join(tmpdir, "*.png")), key=os.path.getmtime, reverse=True)
+                    if not pngs:
+                        print(f"[plotNsurfaces] WARNING: showBrain did not produce a PNG for item {i}.")
+                        continue
+                    png_path = pngs[0]
+
+                    # open PNG and convert white-ish background to transparent to compose into our transparent figure
+                    im = PILImage.open(png_path).convert("RGBA")
+                    arr = np.array(im)
+                    # Make near-white pixels transparent (tolerance)
+                    r, g, b, a = np.rollaxis(arr, axis=-1)
+                    white_mask = (r >= 250) & (g >= 250) & (b >= 250) & (a >= 250)
+                    arr[white_mask, 3] = 0
+                    im = PILImage.fromarray(arr)
+
+                    ax.imshow(im)
+                    ax.axis("off")
+                    # place descriptive text under the colorbar (below the image)
+                    label_text = lbl if lbl else met
+                    label_text = str(label_text)
+                    # set font family and size explicitly for the label
+                    ax.text(0.5, 0.03, label_text, transform=ax.transAxes, ha='center', va='top',
+                            fontsize=cbar_label_size, family=font_family)
+                    figs.append(png_path)
+                finally:
+                    # cleanup temporary directory and files
+                    try:
+                        shutil.rmtree(tmpdir)
+                    except Exception:
+                        pass
+
+            # Reduce vertical spacing by manually re-positioning axes to eliminate gaps
+            try:
+                left = 0.02
+                right = 0.98
+                bottom = 0.02
+                top = 0.98
+                total_height = top - bottom
+                # small gap between subplots (in figure fraction)
+                gap = 0.005
+                if n_figs > 1:
+                    height_each = (total_height - gap * (n_figs - 1)) / n_figs
+                else:
+                    height_each = total_height
+                for idx_ax, ax in enumerate(axes):
+                    # stack from top to bottom
+                    y0 = bottom + (n_figs - 1 - idx_ax) * (height_each + gap)
+                    ax.set_position([left, y0, right - left, height_each])
+            except Exception:
+                pass
+
+            # add title with requested font size and family
+            fig.suptitle(title, fontsize=suptitle_size, y=0.995, family=font_family)
+
+            # set all axes backgrounds transparent
+            for ax in axes:
+                try:
+                    ax.set_facecolor('none')
+                except Exception:
+                    pass
+
+            if save_pth:
+                if save_name is None:
+                    save_name = f"multiSurface_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                out_file = f"{save_pth}/{save_name}.png"
+                # ensure directory exists
+                os.makedirs(save_pth, exist_ok=True)
+                # save with transparent background
+                fig.savefig(out_file, dpi=300, bbox_inches='tight', pad_inches = 0.04, transparent=True)
+                print(f"[plotNsurfaces] Saved: {out_file}")
+                plt.close(fig)
+
+            # restore rcParams
+            try:
+                for k, v in rc_backup.items():
+                    if v is not None:
+                        mpl.rcParams[k] = v
+            except Exception:
+                pass
+
+            return fig
+
+def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_Δd',
+                region = None, feature = None, 
+                ipsiTo=None, 
+                save_name=None, save_pth=None, title=None, 
+                min_val = None, max_val=None):
+    """
+    Convert a dictionary item to format to visualize.
+    
+    Input:
+        dict: dictionary item with keys 'study', 'grp', 'label', 'feature', 'df_z_mean'
+        df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
+        ipsiTo: only define if TLE_ic: hemisphere to use for ipsilateral visualization ('L' or 'R').
+        save_name: name to save the figure (default is None)
+        save_pth: path to save the figure (default is None)
+        title: title for the plot (default is None)
+        max_val: maximum value for the color scale (default is 2)
+    Output:
+        fig: figure object for visualization
+    """
+    import pandas as pd
+    import tTsTGrpUtils as tsutil
+    import numpy as np
+
+    region = item.get('region', region)
+    surface = item.get('surf', 'fsLR-5k')
+    feature = item.get('feature', None)
+
+    try:
+        # If metric is numeric (int or float or string of digits), convert to int
+        if isinstance(metric, (int, float)) or (isinstance(metric, str) and metric.isdigit()):
+            df = item[df_name]
+        else:
+            df = item[df_name]
+        print(df)
+
+        if isinstance(df, str):
+            pth = df 
+            df = tsutil.loadPickle(pth, verbose = False)
+        df = df.loc[[metric]]
+    except KeyError:
+        print(f"[itmToVisual] WARNING: {metric} not found in item. Skipping.")
+        return None
+
+    #print(f"\tdf of interest: {df.shape}")
+
+    # remove SES or ID columns if they exist
+    if isinstance(df, pd.Series):
+        df = df.to_frame().T  # Convert Series to single-row DataFrame
+    df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
+    #print(f"\tdf after removing ID/SES: {df.shape}")
+    
+    if ipsiTo is not None:
+        if ipsiTo == "L":
+            lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+            rh_cols = [col for col in df.columns if col.endswith('_contra')]
+        else:
+            # if ipsiTo is not L, then assume it is R
+            lh_cols = [col for col in df.columns if col.endswith('_contra')]
+            rh_cols = [col for col in df.columns if col.endswith('_ipsi')]
+    else:
+        #print(df.columns)
+        lh_cols = [col for col in df.columns if col.endswith('_L')]
+        rh_cols = [col for col in df.columns if col.endswith('_R')]
+
+    print(f"\tLH_cols, RH_cols: {len(lh_cols)}, {len(rh_cols)}")
+    assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
+
+    lh = df[lh_cols]
+    rh = df[rh_cols]
+    print(f"\tL: {lh.shape}, R: {rh.shape}")
+    # ensure all numeric data
+    lh = lh.apply(pd.to_numeric, errors='coerce')
+    rh = rh.apply(pd.to_numeric, errors='coerce')
+    
+    title = title or f"{item.get('study', '3T-7T comp')} {item['label']}"
+    
+    v_max, v_min, cmap = get_maxVals(df, df_name, feature, metric)
+
+    if v_max is None:
+        # Calculate min and max from both lh and rh maps
+        max_val = max(lh.max().max(), rh.max().max())
+    
+    if v_min is None:
+        min_val = min(lh.min().min(), rh.min().min())
+
+    if feature is None:
+        feature = item.get('feature', '')
+    if region is None:
+        region = item.get('region', 'ctx') # asign default value to 'ctx'
+
+    fig = showBrain(lh, rh, region,
+                    surface, feature_lbl = feature,
+                    ipsiTo=ipsiTo, title=title, inflated=True,
+                    save_name=save_name, save_pth=save_pth,
+                    min = v_min, max = v_max, cmap = cmap
+                    )
+
+    return fig
+
 def showBrain(lh, rh, region = "ctx",
                surface='fsLR-5k', feature_lbl=None, 
                ipsiTo=None, title=None, 
                min=-2.5, max=2.5, inflated=True, 
-               save_name=None, save_pth=None, cmap="seismic"
+               save_name=None, save_pth=None, cmap="seismic", verbose= False
                ):
     """
     Returns brain figures
@@ -1460,7 +1974,8 @@ def showBrain(lh, rh, region = "ctx",
         micapipe=os.popen("echo $MICAPIPE").read()[:-1]
         if micapipe == "":
             micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
-            print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
+            if verbose:
+                print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
     elif region == 'hipp' or region == 'hippocampus':
         hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
 
@@ -1493,7 +2008,7 @@ def showBrain(lh, rh, region = "ctx",
             raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
         
     elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
-        if surface == '0p5mm': # use hippunfold toolbox
+        if surface == '0p5mm' or surface == 'den-0p5mm': # use hippunfold toolbox
             
             surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_L.surf.gii', itype='gii')
             surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_R.surf.gii', itype='gii')
@@ -1502,8 +2017,8 @@ def showBrain(lh, rh, region = "ctx",
             surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
             surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
         
-        elif surface == '2mm':
-        
+        elif surface == '2mm' or surface == 'den-0p5mm':
+            raise NotImplementedError("2mm hippocampal surfaces not implemented yet. Missing templates.")
             surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
             surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
 
@@ -1545,26 +2060,122 @@ def showBrain(lh, rh, region = "ctx",
     filename = f"{save_name}_{surface}_{date}.png" if save_name and save_pth else None
     
     # Plot the surface with a title
-    if filename:
-        print(f"[showBrain] Plot saved to {filename}")
-        return plot_hemispheres(
+    if region == "ctx" or region == "cortex":
+        if filename : 
+            if verbose:
+                print(f"[showBrain] Plot saved to {filename}")
+            return plot_hemispheres(
+                    surf_lh, surf_rh, array_name=data, 
+                    size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
+                    nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+                    screenshot=True, filename=filename,
+                    #, label_text = lbl_text
+                )
+        else:
+            return plot_hemispheres(
                 surf_lh, surf_rh, array_name=data, 
                 size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
                 nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
-                screenshot=True, filename=filename,
-                #, label_text = lbl_text
+                label_text = lbl_text
             )
+
+    elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
+        print("[showBrain] Hippocampus plotting not implemented yet.")
+        return None
+
+
+def vis_item(item, metric, ipsiTo=None, save_pth=None):
+    """ 
+    Visualize outputs of an item.
+        [1] hippocampal map - folded and unfolded < TO COME >
+        [2] mean z-score (or z-score difference if item is 3T-7T comparison)
+        [3] bar graph: mean z-score by lobe
+
+    Input:
+        item: dictionary item with keys 'study', 'label', and relevant dataframes
+        metric: name of metric to visualize (this metric name should correspond to index name of dfs) 
+        ipsiTo: if ipsi/contra data, default is None
+        save_pth: path to save the figure, if None, will not save
+    Output:
+        figure object with all three figures
+    """
+    import datetime
+    from IPython.display import Image
+    from PIL import Image as PILImage
+    import io
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    if metric == 'dD':
+        metric_lbl = 'ΔD (7T - 3T)'
+    elif metric == 'dD_by3T':
+        metric_lbl = 'ΔD [(7T - 3T) / 3T]'
+    elif metric == 'dD_by7T':
+        metric_lbl = 'ΔD [(7T - 3T) / 7T]'
     else:
-        fig = plot_hemispheres(
-            surf_lh, surf_rh, array_name=data, 
-            size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
-            nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
-            label_text = lbl_text
-        )
+        metric_lbl = metric
+
+    if item.get('study', 'comp') == "comp":
+        title = f"7T-3T comparison: ({item['label']})\n{metric_lbl}"
+        df_crtx_plt = "comps_crtx"
+        df_barplot = "comps_crtx_glsr_Lobe_hemi"
+        df_hipp = "comps_hipp"
+        if ipsiTo is not None:
+            title += f"\n(ipsi to {ipsiTo} hemi)"
+
+        if save_pth is not None: 
+            save_name = f"{save_pth}/crtxParc_3T7T_{item['grp']}_{item['label']}_zDif"
+    else:
+        title = f"{item['study']} ({item['label']})\n{metric_lbl}"
+        df_crtx_plt = "df_d_crtx_ic"
+        df_barplot = "df_d_crtx_ic_glsr_Lobe_hemi"
+        df_hipp = "df_d_hipp_ic"
+        if ipsiTo is not None:
+            title += f"\n(ipsi to {ipsiTo} hemi)"
+        if save_pth is not None: 
+            save_name = f"{save_pth}/crtxParc_{item['study']}_{item['label']}"
+
+    # hippocampus visual -- TO COME
+    # 
+
+    # Cortex visual
+    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric=metric, feature = metric_lbl, ipsiTo=ipsiTo)
+    #print(type(crtx_img))
+    img_bytes = crtx_img.data  # This is the raw PNG bytes
+    img = PILImage.open(io.BytesIO(img_bytes))
+    img_arr = np.array(img)
+
+    # --- Barplot as image ---
+    barplot_fig = h_bar(item, df_name=df_barplot, metric=metric, ipsiTo=ipsiTo)
+    buf = io.BytesIO()
+    barplot_fig.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    bar_img = PILImage.open(buf)
+    bar_img_arr = np.array(bar_img)
+
+    # Now, create a new matplotlib figure and add both the image and your other figure
+    fig, axs = plt.subplots(2, 1, figsize=(8, 10))
+
+    # Show the image in the first subplot
+    axs[0].imshow(img_arr)
+    axs[0].axis('off')
+
+    # Show the matplotlib Figure as an image in the second subplot
+    axs[1].imshow(bar_img_arr)
+    axs[1].axis('off')
+
+    fig.suptitle(title, fontsize=16)
+
+    plt.tight_layout()
+
+    if save_pth is not None:
+        date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
+        fig.savefig(f"{save_name}_{date}.png", dpi=200, bbox_inches='tight')
+        print(f"Saved visualization to {save_name}_{date}.png")
 
     return fig
 
-### Plot raw data to z-score distributions
+########### RAW TO Z-SCORE PLOTS #########
 def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
     """
     Create figure object with control mean and std shaded area
@@ -2333,6 +2944,8 @@ def raw2Z_vis(dl, save_path,
                     matches = [matches]
                 elif isinstance(matches, list):
                     pass
+                else:
+                    continue
                 print(matches)
                 ctrl_fig_axes = [ctrl_fig_ax]
                 names = [tsutil.printItemMetadata(item, return_txt = True)]
@@ -2378,15 +2991,8 @@ def raw2Z_vis(dl, save_path,
                                                       item_sv_name=item_sv_name,
                                                       now=now,
                                                       verbose=verbose)
-                    return combo_pth
-                    # save and return
-                    if combo_pth is not None:
-                        figs.append(combo_pth)
-                    pngs2pdf(fig_dir = f"{save_path}/raw", 
-                        ptrn = item_sv_name,
-                        output = save_path, verbose= True)
-                    # keep using the original ctrl_fig_ax (first in the list) for downstream plotting
-                    ctrl_fig_ax = ctrl_fig_axes[0]
+                    print(combo_pth)
+                    continue
                 else:
                     print(f"\t[ctrl_only] No paired item found. Skipping.")
                     continue
@@ -3257,6 +3863,7 @@ def btwD_vis(dl, save_path,
     import datetime
     import tTsTGrpUtils as tsutil
     import numpy as np
+
 
     counter = 0
     now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")

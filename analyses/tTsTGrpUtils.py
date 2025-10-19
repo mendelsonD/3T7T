@@ -257,6 +257,173 @@ def sortCols(df):
     df_sorted = df[sorted_cols]
     return df_sorted
 
+def splitHemis(obj, ipsiTo = 'L'):
+    """
+    From a pd.DataFrame or pd.Series with column/index names with hemisphere indicated by values after last '_' in index/col name string,
+    split into left and right hemisphere. Return one df/series per hemisphere. Supports L/R and ipsi/contra (provided an ipsiTo mapping).
+
+    Input:
+        cols: list or pd.DataFrame or pd.Series
+            column/index names
+        ipsiTo: str
+            'L' or 'R', indicating which hemisphere is ipsilateral
+    
+    Returns:
+        L: list of str (of len cols/2)
+        R: list of str (of len cols/2)
+    """
+    import pandas as pd
+
+    assert type(obj) in [list, pd.DataFrame, pd.Series], f"[splitHemis] ERROR. Cols must be a list, pd.DataFrame or pd.Series not `{type(obj)}`"
+    assert ipsiTo in ['L', 'R', None], "[splitHemis] ERROR. ipsiTo must be 'L' or 'R'"
+    cols = []
+    if isinstance(obj, pd.DataFrame):
+        cols = obj.columns.tolist()
+    elif isinstance(obj, pd.Series):
+        cols = obj.index.tolist()
+
+    L = []
+    R = []
+
+    for col in cols:
+        #print(col)
+        hemi = col.split('_')[-1]
+        if hemi == 'L':
+            L.append(col)
+        elif hemi == 'R':
+            R.append(col)
+        elif hemi == 'ipsi':
+            if ipsiTo == 'L':
+                L.append(col)
+            else:
+                R.append(col)
+        elif hemi == 'contra':
+            if ipsiTo == 'L':
+                R.append(col)
+            else:
+                L.append(col)
+        else:
+            raise ValueError(f"Column '{col}' does not have a recognized hemisphere suffix ('_L', '_R', '_ipsi', '_contra').")
+    
+    # isolate respecitve columns/index per hemi
+    obj_L = obj[L]
+    obj_R = obj[R]
+
+    return obj_L, obj_R
+
+def mkArray(obj, rows="sub", ipsiTo=None):
+    """
+    Transform input to numpy array with shape (V, 2, F)
+
+    - V: vertices per hemisphere (total columns / 2)
+    - 2: hemispheres (L, R)
+    - F: features / items (e.g., number of rows in a features dataframe, or number of subjects)
+
+    Accepts:
+      - pd.DataFrame: columns are vertex columns named with suffixes (_L/_R or _ipsi/_contra).
+            rows="sub": each row is a subject -> returns (V,2,n_subjects)
+            rows="feature": each row is a feature -> returns (V,2,n_features)
+      - pd.Series: length = 2*V -> returns (V,2,1)
+      - np.ndarray:
+           * if shape == (V,2) -> returns (V,2,1)
+           * if shape == (V,2,F) -> returned as is
+           * if shape == (n_sub, V, 2) -> transpose to (V,2,n_sub)
+           * if 1D length == 2*V -> split to (V,2,1)
+    """
+    import pandas as pd
+    import numpy as np
+
+    # Helper: convert two pandas Series -> stacked (V,2) numpy array
+    def _stack_LR(series_L, series_R):
+        aL = np.asarray(series_L).astype(float)
+        aR = np.asarray(series_R).astype(float)
+        if aL.shape[0] != aR.shape[0]:
+            raise ValueError("[mkArray] Left and Right hemisphere lengths differ.")
+        return np.stack([aL, aR], axis=1)  # shape (V,2)
+
+    # If numpy array provided, coerce to (V,2,F)
+    if isinstance(obj, np.ndarray):
+        a = obj
+        if a.ndim == 3:
+            # possible shapes: (V,2,F) or (n_sub, V, 2)
+            if a.shape[1] == 2:
+                # assume (V,2,F)
+                return a.astype(float)
+            elif a.shape[2] == 2:
+                # assume (n_sub, V, 2) -> transpose to (V,2,n_sub)
+                return np.transpose(a, (1,2,0)).astype(float)
+            else:
+                raise ValueError(f"[mkArray] Unexpected ndarray shape {a.shape}.")
+        elif a.ndim == 2:
+            if a.shape[1] == 2:
+                return a[:, :, np.newaxis].astype(float)  # (V,2,1)
+            elif a.shape[0] == 2:
+                return a.T[:, :, np.newaxis].astype(float)  # (V,2,1)
+            else:
+                # maybe flattened [2*V,] shaped 2D (1,2V) or (2V,1)
+                if a.size % 2 == 0:
+                    V = a.size // 2
+                    flat = a.ravel()
+                    L = flat[:V]
+                    R = flat[V:]
+                    return np.stack([L, R], axis=1)[:,:,np.newaxis].astype(float)
+                raise ValueError(f"[mkArray] Cannot interpret ndarray shape {a.shape}.")
+        elif a.ndim == 1:
+            if a.size % 2 == 0:
+                V = a.size // 2
+                L = a[:V]
+                R = a[V:]
+                return np.stack([L, R], axis=1)[:,:,np.newaxis].astype(float)
+            else:
+                raise ValueError(f"[mkArray] 1D array length must be even (2*V). Got {a.size}.")
+        else:
+            raise ValueError(f"[mkArray] Unsupported ndarray with ndim={a.ndim}")
+
+    # Pandas DataFrame
+    if isinstance(obj, pd.DataFrame):
+        if rows not in ['sub', 'feature']:
+            print("WARNING. key passed in 'rows' argument not in ['sub', 'feature']. Using default 'sub'.")
+            rows = 'sub'
+        print(f"[mkArray] Transforming DataFrame ({obj.shape[0]} x {obj.shape[1]}) to np.array")
+
+        # number of vertices per hemisphere
+        n_cols = obj.shape[1]
+        if n_cols % 2 != 0:
+            raise ValueError(f"[mkArray] Number of columns ({n_cols}) is not even (expect L+R columns).")
+        V = n_cols // 2
+
+        if rows == 'sub':
+            n_sub = obj.shape[0]
+            out = np.zeros((V, 2, n_sub), dtype=float)
+            for n in range(n_sub):
+                row = obj.iloc[n, :]
+                row_L, row_R = splitHemis(row, ipsiTo=ipsiTo)
+                out[:, 0, n] = np.asarray(row_L).astype(float)
+                out[:, 1, n] = np.asarray(row_R).astype(float)
+            return out
+        else:  # rows == 'feature'
+            n_feat = obj.shape[0]
+            out = np.zeros((V, 2, n_feat), dtype=float)
+            for n in range(n_feat):
+                row = obj.iloc[n, :]
+                row_L, row_R = splitHemis(row, ipsiTo=ipsiTo)
+                out[:, 0, n] = np.asarray(row_L).astype(float)
+                out[:, 1, n] = np.asarray(row_R).astype(float)
+            return out
+
+    # Pandas Series
+    if isinstance(obj, pd.Series):
+        n = obj.shape[0]
+        if n % 2 != 0:
+            raise ValueError(f"[mkArray] Series length ({n}) is not even (expect L+R entries).")
+        V = n // 2
+        row_L, row_R = splitHemis(obj, ipsiTo=ipsiTo)
+        out2d = _stack_LR(row_L.values, row_R.values)  # (V,2)
+        return out2d[:, :, np.newaxis].astype(float)
+
+    raise ValueError(f"[mkArray] ERROR. obj must be np.ndarray, pd.DataFrame or pd.Series, not `{type(obj)}`")
+
+
 def get_rdmPairedIndices(dl, idx_len, mtch = ['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes']):
     """
     Return list of indices paired on 
@@ -6241,382 +6408,6 @@ def h_bar(item, df_name, metric, ipsiTo=None, title=False):
     # Do not show the plot, just return the figure object
     return fig
 
-def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, ipsiTo="L", title=None, save_name=None, save_path=None):
-    """
-    Create brain figures from a list of dictionary items with vertex-wise dataframes.
-    Input:
-        dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', 'region' {df_name}
-        df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
-        indices: list of indices to visualize. If None, visualize all items in the list.
-        ipsiTo: hemisphere to use for ipsilateral visualization ('L' or 'R').
-    """
-    import pandas as pd
-    from IPython.display import display
-
-    for i, item in enumerate(dl):
-        region = item.get('region', 'ERROR')
-        feature = item.get('feature', 'ERROR')
-        label = item.get('label', 'ERROR')
-        surface = item.get('surf', 'ERROR')
-        smth = item.get('smth', 'ERROR')
-        
-        print(f"[visMean] [{i}] ([{item.get('studies','NA')}] {region} {feature} {label} {surface} {smth}mm)")
-        
-        if dl_indices is not None and i not in dl_indices:
-            continue
-        if df_name not in item:
-            print(f"[visMean] WARNING: {df_name} not found in item {i}. Skipping.")
-            continue
-        
-        df = item[df_name]
-        if df_metric is not None:
-            df = df.loc[[df_metric]]
-
-        #print(f"\tdf of interest: {df.shape}")
-
-        # remove SES or ID columns if they exist
-        if isinstance(df, pd.Series):
-            df = df.to_frame().T  # Convert Series to single-row DataFrame
-        df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
-        #print(f"\tdf after removing ID/SES: {df.shape}")
-        
-        # surface from size of df
-        if ipsiTo is not None:
-            if ipsiTo == "L":
-                lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
-                rh_cols = [col for col in df.columns if col.endswith('_contra')]
-            else:
-                # if ipsiTo is not L, then assume it is R
-                lh_cols = [col for col in df.columns if col.endswith('_contra')]
-                rh_cols = [col for col in df.columns if col.endswith('_ipsi')]
-        else:
-            #print(df.columns)
-            lh_cols = [col for col in df.columns if col.endswith('_L')]
-            rh_cols = [col for col in df.columns if col.endswith('_R')]
-        #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
-        assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
-
-        lh = df[lh_cols]
-        rh = df[rh_cols]
-        #print(f"\tL: {lh.shape}, R: {rh.shape}")
-        fig = showBrain(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
-
-        return fig
-
-def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_Δd',
-                region = None, feature = None, 
-                ipsiTo="L", 
-                save_name=None, save_pth=None, title=None, 
-                min_val = None, max_val=None):
-    """
-    Convert a dictionary item to format to visualize.
-    
-    Input:
-        dict: dictionary item with keys 'study', 'grp', 'label', 'feature', 'df_z_mean'
-        df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
-        ipsiTo: only define if TLE_ic: hemisphere to use for ipsilateral visualization ('L' or 'R').
-        save_name: name to save the figure (default is None)
-        save_pth: path to save the figure (default is None)
-        title: title for the plot (default is None)
-        max_val: maximum value for the color scale (default is 2)
-    Output:
-        fig: figure object for visualization
-    """
-    import pandas as pd
-
-    region = item.get('region', region)
-    surface = item.get('surf', 'fsLR-5k')
-    try:
-        # If metric is numeric (int or float or string of digits), convert to int
-        if isinstance(metric, (int, float)) or (isinstance(metric, str) and metric.isdigit()):
-            df = item[df_name].loc[[int(metric)]]
-        else:
-            df = item[df_name].loc[[metric]]
-    except KeyError:
-        print(f"[itmToVisual] WARNING: {metric} not found in item. Skipping.")
-        return None
-    #print(f"\tdf of interest: {df.shape}")
-
-    # remove SES or ID columns if they exist
-    if isinstance(df, pd.Series):
-        df = df.to_frame().T  # Convert Series to single-row DataFrame
-    df = df.drop(columns=[col for col in df.columns if col in ['SES', 'ID', 'MICS_ID', 'PNI_ID']], errors='ignore')
-    #print(f"\tdf after removing ID/SES: {df.shape}")
-    
-    if ipsiTo is not None:
-        if ipsiTo == "L":
-            lh_cols = [col for col in df.columns if col.endswith('_ipsi')]
-            rh_cols = [col for col in df.columns if col.endswith('_contra')]
-        else:
-            # if ipsiTo is not L, then assume it is R
-            lh_cols = [col for col in df.columns if col.endswith('_contra')]
-            rh_cols = [col for col in df.columns if col.endswith('_ipsi')]
-    else:
-        #print(df.columns)
-        lh_cols = [col for col in df.columns if col.endswith('_L')]
-        rh_cols = [col for col in df.columns if col.endswith('_R')]
-    
-    #print(f"\tNumber of relevant columns: L={len(lh_cols)}, R={len(rh_cols)}")
-    assert len(lh_cols) == len(rh_cols), f"[visMean] WARNING: Left and right hemisphere columns do not match in length for item {i}. Skipping."
-
-    lh = df[lh_cols]
-    rh = df[rh_cols]
-    #print(f"\tL: {lh.shape}, R: {rh.shape}")
-    # ensure all numeric data
-    lh = lh.apply(pd.to_numeric, errors='coerce')
-    rh = rh.apply(pd.to_numeric, errors='coerce')
-    
-    title = title or f"{item.get('study', '3T-7T comp')} {item['label']}"
-    
-    if max_val is None:
-        # Calculate min and max from both lh and rh maps
-        max_val = max(lh.max().max(), rh.max().max())
-    
-    if min_val is None:
-        min_val = min(lh.min().min(), rh.min().min())
-
-    if feature is None:
-        feature = item.get('feature', '')
-    if region is None:
-        region = item.get('region', 'ctx') # asign default value to 'ctx'
-
-    fig = showBrain(lh, rh, region,
-                    surface, feature_lbl = feature,
-                    ipsiTo=ipsiTo, title=title, inflated=True,
-                    save_name=save_name, save_pth=save_pth,
-                    min = min_val, max = max_val
-                    )
-
-    return fig
-
-def showBrain(lh, rh, region = "ctx",
-               surface='fsLR-5k', feature_lbl=None, 
-               ipsiTo=None, title=None, 
-               min=-2.5, max=2.5, inflated=True, 
-               save_name=None, save_pth=None, cmap="seismic"
-               ):
-    """
-    Returns brain figures
-
-    inputs:
-        lh: column with values for left hemisphere surface (each row represents a vertex and is properly indexed) 
-        rh: column right hemisphere surface (each row represents a vertex and is properly indexed) 
-        surface: surface type (default is 'fsLR-5k')
-        inflated: whether to use inflated surfaces (default is False)
-        title: title for the plot (default is None)
-        save_name: name to save the figure (default is None)
-        save_pth: path to save the figure (default is None)
-
-    """    
-    
-    import os
-    import glob
-    import numpy as np
-    import nibabel as nib
-    import seaborn as sns
-    from brainspace.plotting import plot_hemispheres
-    from brainspace.mesh.mesh_io import read_surface
-    from brainspace.datasets import load_conte69
-    import datetime
-
-    if region == 'ctx' or region == 'cortex':
-        micapipe=os.popen("echo $MICAPIPE").read()[:-1]
-        if micapipe == "":
-            micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
-            print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
-    elif region == 'hipp' or region == 'hippocampus':
-        hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
-
-    # set wd to save_pth
-    if save_pth is not None:
-        if not os.path.exists(save_pth):
-            os.makedirs(save_pth)
-        os.chdir(save_pth)
-
-    if region == "ctx" or region == "cortex":
-        if surface == 'fsLR-5k':
-            if inflated == True:
-                # Load fsLR 5k inflated
-                surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.inflated.surf.gii', itype='gii')
-                surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.inflated.surf.gii', itype='gii')
-            else:
-                # Load fsLR 5k
-                surf_lh = read_surface(micapipe + '/surfaces/fsLR-5k.L.surf.gii', itype='gii')
-                surf_rh = read_surface(micapipe + '/surfaces/fsLR-5k.R.surf.gii', itype='gii')
-        elif surface == 'fsLR-32k':
-            if inflated == True:
-                # Load fsLR 32k inflated
-                surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.inflated.surf.gii', itype='gii')
-                surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.inflated.surf.gii', itype='gii')
-            else:
-                # Load fsLR 32k
-                surf_lh = read_surface(micapipe + '/surfaces/fsLR-32k.L.surf.gii', itype='gii')
-                surf_rh = read_surface(micapipe + '/surfaces/fsLR-32k.R.surf.gii', itype='gii')
-        else:
-            raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
-        
-    elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
-        if surface == '0p5mm': # use hippunfold toolbox
-            
-            surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_L.surf.gii', itype='gii')
-            surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_R.surf.gii', itype='gii')
-
-            # unfolded
-            surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
-            surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
-        
-        elif surface == '2mm':
-            raise NotImplementedError("2mm hippocampal surfaces not implemented yet. Missing templates.")
-            surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
-            surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
-
-            # unfolded
-            surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
-            surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
-        
-        else:
-            raise ValueError(f"Surface {surface} not recognized. Use '0p5mm' or '2mm'.")
-    else:
-        raise ValueError(f"Region {region} not recognized. Use 'ctx' or 'hipp'.")
-
-    #print(f"L: {lh.shape}, R: {rh.shape}")
-    data = np.hstack(np.concatenate([lh, rh], axis=0))
-    #print(data.shape)
-
-    #lbl_text = {'top': [title if title else '', '','',''], 'bottom': [feature_lbl if feature_lbl else '', '','','']}
-    lbl_text = {}
-    if ipsiTo is not None and ipsiTo == "L":
-        lbl_text.update({
-            'left': 'ipsi',
-            'right': 'contra'
-        })    
-    elif ipsiTo is not None and ipsiTo == "R":
-        lbl_text.update({
-            'left': 'contra',
-            'right': 'ipsi'
-        })
-    else:
-        lbl_text.update({
-            'left': 'L',
-            'right': 'R'
-        })
-
-    # Ensure all values are strings (robust against accidental lists/arrays)
-    lbl_text = {k: str(v) for k, v in lbl_text.items()}
-
-    date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
-    filename = f"{save_name}_{surface}_{date}.png" if save_name and save_pth else None
-    
-    # Plot the surface with a title
-    if filename : 
-        print(f"[showBrain] Plot saved to {filename}")
-        return plot_hemispheres(
-                surf_lh, surf_rh, array_name=data, 
-                size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
-                nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
-                screenshot=True, filename=filename,
-                #, label_text = lbl_text
-            )
-    else:
-        fig = plot_hemispheres(
-            surf_lh, surf_rh, array_name=data, 
-            size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
-            nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
-            label_text = lbl_text
-        )
-
-    return fig
-
-def vis_item(item, metric, ipsiTo=None, save_pth=None):
-    """ 
-    Visualize outputs of an item.
-        [1] hippocampal map - folded and unfolded < TO COME >
-        [2] mean z-score (or z-score difference if item is 3T-7T comparison)
-        [3] bar graph: mean z-score by lobe
-
-    Input:
-        item: dictionary item with keys 'study', 'label', and relevant dataframes
-        metric: name of metric to visualize (this metric name should correspond to index name of dfs) 
-        ipsiTo: if ipsi/contra data, default is None
-        save_pth: path to save the figure, if None, will not save
-    Output:
-        figure object with all three figures
-    """
-    import datetime
-    from IPython.display import Image
-    from PIL import Image as PILImage
-    import io
-    import matplotlib.pyplot as plt
-    import numpy as np
-
-    if metric == 'dD':
-        metric_lbl = 'ΔD (7T - 3T)'
-    elif metric == 'dD_by3T':
-        metric_lbl = 'ΔD [(7T - 3T) / 3T]'
-    elif metric == 'dD_by7T':
-        metric_lbl = 'ΔD [(7T - 3T) / 7T]'
-    else:
-        metric_lbl = metric
-
-    if item.get('study', 'comp') == "comp":
-        title = f"7T-3T comparison: ({item['label']})\n{metric_lbl}"
-        df_crtx_plt = "comps_crtx"
-        df_barplot = "comps_crtx_glsr_Lobe_hemi"
-        df_hipp = "comps_hipp"
-        if ipsiTo is not None:
-            title += f"\n(ipsi to {ipsiTo} hemi)"
-
-        if save_pth is not None: 
-            save_name = f"{save_pth}/crtxParc_3T7T_{item['grp']}_{item['label']}_zDif"
-    else:
-        title = f"{item['study']} ({item['label']})\n{metric_lbl}"
-        df_crtx_plt = "df_d_crtx_ic"
-        df_barplot = "df_d_crtx_ic_glsr_Lobe_hemi"
-        df_hipp = "df_d_hipp_ic"
-        if ipsiTo is not None:
-            title += f"\n(ipsi to {ipsiTo} hemi)"
-        if save_pth is not None: 
-            save_name = f"{save_pth}/crtxParc_{item['study']}_{item['label']}"
-
-    # hippocampus visual -- TO COME
-    # 
-
-    # Cortex visual
-    crtx_img = itmToVisual(item, df_name=df_crtx_plt, metric=metric, feature = metric_lbl, ipsiTo=ipsiTo)
-    #print(type(crtx_img))
-    img_bytes = crtx_img.data  # This is the raw PNG bytes
-    img = PILImage.open(io.BytesIO(img_bytes))
-    img_arr = np.array(img)
-
-    # --- Barplot as image ---
-    barplot_fig = h_bar(item, df_name=df_barplot, metric=metric, ipsiTo=ipsiTo)
-    buf = io.BytesIO()
-    barplot_fig.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    bar_img = PILImage.open(buf)
-    bar_img_arr = np.array(bar_img)
-
-    # Now, create a new matplotlib figure and add both the image and your other figure
-    fig, axs = plt.subplots(2, 1, figsize=(8, 10))
-
-    # Show the image in the first subplot
-    axs[0].imshow(img_arr)
-    axs[0].axis('off')
-
-    # Show the matplotlib Figure as an image in the second subplot
-    axs[1].imshow(bar_img_arr)
-    axs[1].axis('off')
-
-    fig.suptitle(title, fontsize=16)
-
-    plt.tight_layout()
-
-    if save_pth is not None:
-        date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
-        fig.savefig(f"{save_name}_{date}.png", dpi=200, bbox_inches='tight')
-        print(f"Saved visualization to {save_name}_{date}.png")
-
-    return fig
 
 
 
