@@ -389,8 +389,6 @@ def group_hist(df_pths, labels, bounds=[-10,10], save_path=None):
 
 
 # Side by side plots
-
-
 def plotMatrices(dl, df_keys, cor = True, 
                  name_append=False, sessions = None, save_pth=None, min_stat = -4, max_stat = 4, test=False):
     """
@@ -442,6 +440,7 @@ def plotMatrices(dl, df_keys, cor = True,
         dl = [dl]
 
     counter = 0
+    skip_idx_Natives = []
     for idx, item in enumerate(dl):
         counter += 1
         if counter % 10 == 0:
@@ -452,10 +451,14 @@ def plotMatrices(dl, df_keys, cor = True,
 
         if item.get('downsampledRes', None) != 'native':
             difdsRes = True
+            skip_toUse = [idx]
             skip_idx.append(idx) # Assume that others should not be matching to this non-native index
         else: # res of pair must match
+            skip_idx_Natives.append(idx)
+            skip_toUse = skip_idx_Natives.copy()
             difdsRes = False
             pass
+        #print(f"difdsRes: {difdsRes}")
 
         if sessions:
             if item.get('sesNum', None) not in sessions or item.get('sesNum', None) not in sessions:
@@ -464,8 +467,11 @@ def plotMatrices(dl, df_keys, cor = True,
         if test and counter > idx_len:
             break
         counter += 1
-        idx_other = tsutil.get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], difdsRes = difdsRes, skip_idx=skip_idx)
+        idx_other = tsutil.get_pair(dl, idx = idx, 
+                                    mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], 
+                                    difdsRes = difdsRes, skip_idx=skip_toUse)
         
+        print(f"Other: {idx_other}")
         if test:
             index = rdm_indices[idx]
             index_other = rdm_indices[idx_other]
@@ -497,13 +503,13 @@ def plotMatrices(dl, df_keys, cor = True,
 
         if idx_other is None:
             item_txt = tsutil.printItemMetadata(item, return_txt=True)
-            print(f"\tWARNING. No matching index found for: {item_txt} (idx: {index}).\nSkipping.")
+            print(f"\tWARNING. No matching index found for: {item_txt} (idx: {index}). Skipping.")
             continue
 
         item_other = dl[idx_other]
         if item_other is None:
             item_txt = tsutil.printItemMetadata(item, return_txt=True)
-            print(f"\tWARNING. Item other is None: {item_txt} (idx: {index}).\nSkipping.")
+            print(f"\tWARNING. Item other is None: {item_txt} (idx: {index}). Skipping.")
             continue
         
         if sessions is None:
@@ -1610,7 +1616,7 @@ def get_ctrl_ax(df_ctrl, ylbl, xlbl = "Vertex/Parcel", marks = False):
     return fig, ax, x, cols, df_ctrl
 
 def plot_rawToZ(
-    ctrl_fig_ax, df_grp, df_grp_z, id, save_pth, save_name, min_val, max_value, title=None,
+    ctrl_fig_ax, df_grp, df_grp_z, id, save_pth, save_name, min_val, max_value, title=None, res=None,
     marks=False, verbose=False, test=True, color_by_z=False
 ):
     """
@@ -1717,6 +1723,11 @@ def plot_rawToZ(
     # Titles
     if title is None:
         title = f"{id} - {ylbl}" if ylbl else f"{id}"
+        if res:
+            if isinstance(res, (int, float)):
+                title += f" ({res}mm)"
+            elif isinstance(res, str):
+                title += f" ({res})"
     ax_top.set_title(title)
     # Labels and legends
     ax_top.set_ylabel(ylbl if ylbl else "Raw Values")
@@ -2001,9 +2012,173 @@ def plot_zToD(df_grp, df_ctrl, df_d,
     
     return pth
 
+def combine_ctrl_fig_axes(ctrl_fig_axes, names, save_path, item_sv_name, now, verbose=False):
+    """
+    Combine multiple control fig/ax tuples into a single comparison figure.
+    Expects ctrl_fig_axes as a list of tuples: (fig, ax, x, cols, df_ctrl[, meta])
+      - df_ctrl: DataFrame with rows 'mean' and 'std' (or first two rows are mean/std)
+      - optional 6th element in each tuple may be the original item dict (used to build metadata label)
+    names: same length as ctrl_fig_axes; list of names for each control group
+    Saves combined figure to save_path/raw and returns the saved path or None.
+    """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    import tTsTGrpUtils as tsutil
+
+    if not ctrl_fig_axes:
+        if verbose:
+            print("[combine_ctrl_fig_axes] No control axes provided.")
+        return None
+
+    # attempt to get cols from first entry
+    first_entry = ctrl_fig_axes[0]
+    try:
+        cols = first_entry[3]
+    except Exception:
+        cols = None
+
+    n_ctrl = len(ctrl_fig_axes)
+    combo_pth = None
+
+    try:
+        # figure width based on number of parcels/vertices (fallbacks)
+        n_cols = len(cols) if cols is not None else 100
+        width = max(8, min(200, n_cols * 0.02))  # keep width reasonable
+        height = max(4, 3 + 0.2 * n_ctrl)        # taller if many control groups
+
+        fig_comb, ax = plt.subplots(1, 1, figsize=(width, height), squeeze=True)
+
+        colors = plt.cm.tab10(np.linspace(0, 1, max(10, n_ctrl)))
+        legend_handles = []
+
+        for ii, entry in enumerate(ctrl_fig_axes):
+            # unpack entry robustly
+            try:
+                fig_i, ax_i_old, x_i, cols_i, df_ctrl_i = entry[:5]
+            except Exception:
+                # skip malformed entries
+                if verbose:
+                    print(f"[combine_ctrl_fig_axes] Skipping malformed entry #{ii}")
+                continue
+
+            # extract mean / std robustly
+            try:
+                mean_i = np.asarray(df_ctrl_i.loc['mean'].values, dtype=float)
+                std_i = np.asarray(df_ctrl_i.loc['std'].values, dtype=float)
+            except Exception:
+                # fallback to first two rows
+                try:
+                    mean_i = np.asarray(df_ctrl_i.iloc[0].values, dtype=float)
+                except Exception:
+                    mean_i = np.zeros(len(cols_i) if cols_i is not None else 0)
+                try:
+                    std_i = np.asarray(df_ctrl_i.iloc[1].values, dtype=float)
+                except Exception:
+                    std_i = np.zeros_like(mean_i)
+
+            # x positions for this control set
+            x_plot = np.arange(len(cols_i)) if cols_i is not None else np.arange(len(mean_i))
+
+            col = colors[ii % len(colors)]
+
+            # Build label: prefer optional metadata (6th element) -> axis title -> fallback to index
+            meta_txt = None
+            # Prefer provided names list for legend labels; fall back to entry metadata if not available
+            meta_txt = None
+            try:
+                if names and ii < len(names) and names[ii]:
+                    meta_txt = str(names[ii])
+                elif len(entry) >= 6:
+                    meta = entry[5]
+                    try:
+                        meta_txt = tsutil.printItemMetadata(meta, return_txt=True)
+                    except Exception:
+                        try:
+                            meta_txt = str(meta)
+                        except Exception:
+                            meta_txt = None
+            except Exception:
+                meta_txt = None
+            if meta_txt is None:
+                # try axis title from original axis if present
+                try:
+                    t = ax_i_old.get_title()
+                    if t:
+                        meta_txt = t
+                except Exception:
+                    meta_txt = None
+            if meta_txt is None:
+                meta_txt = f"ctrl {ii+1}"
+
+            label = f"{ii}: {meta_txt}"
+
+            # Plot horizontal mean markers with vertical error bars (1 std)
+            # fmt='_' draws a horizontal short line at the mean; yerr draws vertical lines
+            ax.errorbar(x_plot, mean_i, yerr=std_i, fmt='_', color=col,
+                        ecolor=col, elinewidth=1, capsize=2, markersize=6, alpha=0.9)
+
+            # For legend, create a custom handle that matches the marker style
+            handle = Line2D([0], [0], color=col, marker='_', markersize=10, markeredgewidth=2, linewidth=0)
+            legend_handles.append((handle, label))
+
+        # Axis labels and aesthetics
+        ax.set_xlabel("Vertex/Parcel")
+        # try to use ylabel from first original axis
+        try:
+            ylbl = first_entry[1].get_ylabel()
+            if ylbl:
+                ax.set_ylabel(ylbl)
+        except Exception:
+            pass
+
+        ax.grid(False)
+        ax.set_facecolor('white')
+
+        # Build legend: add in provided order
+        if legend_handles:
+            handles, labels = zip(*legend_handles)
+            fig_comb.legend(handles, labels,
+                            loc='upper center',
+                            bbox_to_anchor=(0.5, 1.02),
+                            ncol=max(1, len(labels)),
+                            fontsize='small',
+                            frameon=False)
+            # give room for the legend
+            fig_comb.subplots_adjust(right=0.78)
+
+        plt.suptitle(f"{item_sv_name} - Control comparisons", fontsize=12)
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+        # ensure save directory exists
+        out_dir = os.path.join(save_path, "raw")
+        os.makedirs(out_dir, exist_ok=True)
+        combo_name = f"{item_sv_name}_ctrl_comparison_{now}.png"
+        combo_pth = os.path.join(out_dir, combo_name)
+        fig_comb.savefig(combo_pth, dpi=300, bbox_inches='tight')
+        plt.close(fig_comb)
+        if verbose:
+            print(f"[combine_ctrl_fig_axes] Saved combined control figure: {combo_pth}")
+
+    except Exception as e:
+        if verbose:
+            print(f"[combine_ctrl_fig_axes] Failed to create combined figure: {e}")
+        combo_pth = None
+
+    # close any temporary per-source figures to free resources
+    for entry in ctrl_fig_axes:
+        try:
+            fig_i = entry[0]
+            plt.close(fig_i)
+        except Exception:
+            pass
+
+    return combo_pth
+
 def raw2Z_vis(dl, save_path,
             key_dfs_raw = ['df_maps_parc_glsr_mean', 'df_maps_parc_dk25_mean'],
-            marks = True,
+            marks = True, ctrl_only = False,
             verbose = False, test = False):
     """
     Visualize within study Z-scoring to Cohen's D computations.
@@ -2020,7 +2195,9 @@ def raw2Z_vis(dl, save_path,
         List of keys in each item of dl that contain raw data DataFrames.
     marks: bools
         If True, use scatterplot. If false, use line plots.
-    
+    ctrl_only: bool
+        If True, only plot control data from paired dict items.
+
     verbose: bool
         If True, print progress messages.
     test: bool
@@ -2032,7 +2209,7 @@ def raw2Z_vis(dl, save_path,
     import os
     import numpy as np
 
-    print(f"[z2D] Saving figures to {save_path}/raw")
+    print(f"[raw2Z_vis] Saving figures to {save_path}/raw")
 
     counter = 0
 
@@ -2043,17 +2220,27 @@ def raw2Z_vis(dl, save_path,
         ft = item.get('feature', None)
         surf_lbl = item.get('label', None)
         commonName = f"{item.get('study',None)}_{item.get('region', None)}_{item.get('feature', None)}_{item.get('label', None)}_{item.get('smth', None)}"
-        
+        res = item.get('downsampledRes', None)
+        if res is not None:
+            commonName += f"_res-{res}"
+            resolution = res
+        else:
+            resolution = None
+
+        # get IDs 
         ids_ctrl = item['ctrl_IDs']
         ids_tle_r = item['TLE_R_IDs']
         ids_tle_l = item['TLE_L_IDs']
         ids_tle = ids_tle_r + ids_tle_l
-        
+
         print(f"\t{len(ids_ctrl)} CTRL | {len(ids_tle)} TLE [{len(ids_tle_r)} R, {len(ids_tle_l)} L]")
 
         for raw_key in key_dfs_raw:
             
-            item_sv_name = f"{commonName}_{raw_key}"
+            if ctrl_only:
+                item_sv_name = f"{commonName}_{raw_key}_ctrls"
+            else:
+                item_sv_name = f"{commonName}_{raw_key}"
 
             now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
             
@@ -2095,7 +2282,13 @@ def raw2Z_vis(dl, save_path,
             df_z_grp_srt = tsutil.sortCols(df_z_grp)
 
             # create the ctrl axis object since it is the same for all patients that follow. Pass this axis and add to it for each patient
-            ctrl_fig_ax = get_ctrl_ax(df_raw_ctrl_stats_srt, ylbl = f"Raw {item.get('feature', None)} values", marks = marks)
+            ylbl = f"Raw {item.get('feature', None)} values"
+            if res is not None and isinstance(res, (int, float)):
+                ylbl += f" ({res}mm)"
+            elif res is not None and isinstance(res, str):
+                ylbl += f" ({res})"
+            
+            ctrl_fig_ax = get_ctrl_ax(df_raw_ctrl_stats_srt, ylbl = ylbl, marks = marks)
             
             # show ctrl_fig
             figs = []
@@ -2133,6 +2326,70 @@ def raw2Z_vis(dl, save_path,
                 if np.isnan(max_value):
                     max_value = 1.0
 
+            if ctrl_only:
+                matches = tsutil.get_pair(dl = dl, idx = index, 
+                                        mtch = ['region', 'surf', 'feature', 'label', 'smth', 'downsampledRes'], skip_idx = [index])
+                if isinstance(matches, int):
+                    matches = [matches]
+                elif isinstance(matches, list):
+                    pass
+                print(matches)
+                ctrl_fig_axes = [ctrl_fig_ax]
+                names = [tsutil.printItemMetadata(item, return_txt = True)]
+                if len(matches) > 0:
+                    for m in matches:
+                        item_pair = dl[m]
+                        item_pair_txt = tsutil.printItemMetadata(item_pair, return_txt = True)
+                        print(f"\t[ctrl_only] Found paired item at index {m}:\n{item_pair_txt}")
+                        # get ctrl IDs from paired item
+                        ids_ctrl_other = item_pair['ctrl_IDs']
+                        res_i = item_pair.get('downsampledRes', None)
+                        
+                        ylbl_i = f"Raw {item_pair.get('feature', None)} values"
+                        if res_i is not None and isinstance(res_i, (int, float)):
+                            ylbl_i += f" ({res_i}mm)"
+                            resolution_i = res_i
+                        elif res_i is not None and isinstance(res_i, str):
+                            ylbl_i += f" ({res_i})"
+                            resolution_i = res_i
+                        
+                        df_raw_i  = item_pair.get(raw_key, None)
+                        if df_raw_i is None:
+                            print(f"\t\tKey not found. Skipping.")
+                            continue
+                        df_raw_i = tsutil.loadPickle(df_raw_i, verbose = False)
+
+                        df_raw_i_crtl = df_raw_i[df_raw_i.index.isin(ids_ctrl_other)]
+                        df_raw_i_ctrl_mn = df_raw_i_crtl.mean()
+                        df_raw_i_ctrl_std = df_raw_i_crtl.std()
+                        df_raw_i_ctrl_stats = pd.concat([df_raw_i_ctrl_mn, df_raw_i_ctrl_std], axis=1).T
+                        df_raw_i_ctrl_stats.index = ['mean', 'std']
+
+                        df_raw_i_ctrl_stats_srt = tsutil.sortCols(df_raw_i_ctrl_stats)
+
+                        ctrl_fig_ax_i = get_ctrl_ax(df_raw_i_ctrl_stats_srt, ylbl = ylbl_i, marks = marks)
+                        ctrl_fig_axes.append(ctrl_fig_ax_i)
+                        names.append(tsutil.printItemMetadata(item_pair, return_txt = True))
+                    
+                    # combine all ctrl_fig_axes into one figure
+                    combo_pth = combine_ctrl_fig_axes(ctrl_fig_axes=ctrl_fig_axes,
+                                                    names= names,
+                                                      save_path=save_path,
+                                                      item_sv_name=item_sv_name,
+                                                      now=now,
+                                                      verbose=verbose)
+                    return combo_pth
+                    # save and return
+                    if combo_pth is not None:
+                        figs.append(combo_pth)
+                    pngs2pdf(fig_dir = f"{save_path}/raw", 
+                        ptrn = item_sv_name,
+                        output = save_path, verbose= True)
+                    # keep using the original ctrl_fig_ax (first in the list) for downstream plotting
+                    ctrl_fig_ax = ctrl_fig_axes[0]
+                else:
+                    print(f"\t[ctrl_only] No paired item found. Skipping.")
+                    continue
 
             for i, pid in enumerate(df_raw_grp_srt.index):
                 save_name = f"{item_sv_name}_{index}_{i}_{now}"
@@ -2141,6 +2398,7 @@ def raw2Z_vis(dl, save_path,
                 fig_pth = plot_rawToZ(ctrl_fig_ax = ctrl_fig_ax,
                     df_grp = df_raw_grp_srt.loc[pid].values,
                     df_grp_z = df_z_grp_srt.loc[pid].values,
+                    res = resolution,
                     id = pid, min_val = min_val, max_value = max_val,
                     save_pth = f"{save_path}/raw",
                     save_name = save_name,

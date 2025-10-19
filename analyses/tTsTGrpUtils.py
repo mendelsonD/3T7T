@@ -3115,7 +3115,8 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
                 df_demo = df_demo[df_demo['UID'].isin(valid_ids)]  
                 logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")             
-            else: # should not compare repeated studies
+            else: 
+                # TODO. should remove cases that have missing data in the native space for the other study with the same feature-label-surface...
                 pass
             
             n_before = df_mapPaths_qc['UID'].nunique()
@@ -5039,7 +5040,9 @@ def get_pair(dl, idx, mtch=['region', 'feature'], difStudy = True, difdsRes = Fa
         idx: index of the item to find the pair for
         mtch: list of keys to match on.
         skip_idx: index to skip (e.g. if you want to avoid matching to a specific item or if previously processed others)
-    
+        difStudy: if True, require that matched item is from different study than item at idx
+        difdsRes: if True, require that matched item has different downsampledRes than item at idx
+
     Output:
         index of the matching item in the list, or None if not found
     """
@@ -5061,15 +5064,17 @@ def get_pair(dl, idx, mtch=['region', 'feature'], difStudy = True, difdsRes = Fa
                     continue
             
             for key in mtch:
-                if key == 'downsampledRes' and difdsRes:
+                itm_k = item.get(key, False)
+                oth_k = other.get(key, False)
+                #print(f"\t\t{key}: item[{idx}] = {itm_k} | other[{j}] = {oth_k}")
+                
+                if key == 'downsampledRes' and difdsRes:    
                     if other.get('downsampledRes', None) == item.get('downsampledRes', None):
                         match = False
                         break
                     else: # next key
                         continue    
-                itm_k = item.get(key, False)
-                oth_k = other.get(key, False)
-                #print(f"\t\t{key}: item[{idx}] = {itm_k} | other[{j}] = {oth_k}")
+               
                 if itm_k != oth_k and itm_k is not False and oth_k is not False:
                     match = False
                     break
