@@ -1555,7 +1555,7 @@ def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None,
         lh = df[lh_cols]
         rh = df[rh_cols]
         #print(f"\tL: {lh.shape}, R: {rh.shape}")
-        fig = showBrain(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min=-2, max=2, inflated=True)
+        fig = showBrain(lh, rh, surface, ipsiTo=ipsiTo, save_name=save_name, save_pth=save_path, title=title, min_val=-2, max_val=2, inflated=True)
 
         return fig
 
@@ -1628,13 +1628,26 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
             except Exception:
                 pass
 
-            if isinstance(items, dict):
-                items = [items] * len(df_names)  # replicate the same item for all df_names
-            assert len(items) == len(df_names) == len(metrics), "[plotNsurfaces] ERROR: Lengths of items, df_names, and metrics must be the same."
+                       
             n_figs = len(metrics)
+            print(f"[plotNsurfaces] Preparing to plot {n_figs} surfaces...")
+            print(items)
+            if isinstance(items, list) and len(items) == 1 and n_figs > 1:
+                items = items[0]  # unpack single item list
+            if isinstance(items, dict):
+                items = [items] * n_figs  # replicate the same item for all df_names
+            
+            if isinstance(df_names, list) and len(df_names) == 1 and n_figs > 1:
+                df_names = df_names[0]
+            if isinstance(df_names, str):
+                df_names = [df_names] * n_figs
+            
             if isinstance(lbls, str):
                 lbls = [lbls] * n_figs
-
+            
+            print(f"[plotNsurfaces] Lengths of items ({len(items)}), df_names ({len(df_names)}), and metrics ({len(metrics)})")
+            assert len(items) == len(df_names) == len(metrics), f"[plotNsurfaces] ERROR: Lengths of items ({len(items)}), df_names ({len(df_names)}), and metrics ({len(metrics)}) must be the same."
+            
             # reduce total vertical extent per subplot to make stacked plots denser
             total_height_per_plot = 2.8  # smaller per-row height than previously 6
             fig_height = max(3, total_height_per_plot * n_figs)
@@ -1656,19 +1669,26 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                 region = itm.get('region', 'ctx') # asign default value to 'ctx'
 
                 data = itm.get(df, None)
+                
                 if data is None:
                     print(f"[plotNsurfaces] WARNING: {df} not found in item. Skipping.")
                     continue
                 if isinstance(data, str):
                     pth = data 
                     data = tsutil.loadPickle(pth, verbose = False)
-
+                elif not isinstance(data, pd.DataFrame):
+                    print(f"[plotNsurfaces] WARNING: {df} in item is not a dataframe. Skipping.")
+                    continue
+                
+                print(f"data type, shape: {type(data)}, {None if data is None else data.shape}")
+                
                 try:
                     data = data.loc[[met]]
                 except KeyError:
                     print(f"[plotNsurfaces] WARNING: {met} not found in dataframe. Skipping.")
                     continue
 
+                print(f"data type: {type(data)}, index: {data.index}, columns: {data.columns.tolist}")
                 L_cols, R_cols = tsutil.splitHemis(data) # NOTE L/R in variable names refers to ipsiTo mapping if ipsi/contra flipped
                 L_names = L_cols.columns
                 R_names = R_cols.columns
@@ -1755,7 +1775,7 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                     _ = showBrain(lh, rh, region,
                             surface, feature_lbl = ft,
                             ipsiTo=ipsiTo, inflated=True,
-                            min = v_min_local, max = v_max_local, cmap = cmap_local,
+                            min_val = v_min_local, max_val = v_max_local, cmap = cmap_local,
                             save_name = base_save_name, save_pth = tmpdir, verbose = False)
 
                     # find the most recent png written in tmpdir
@@ -1935,7 +1955,7 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
                     surface, feature_lbl = feature,
                     ipsiTo=ipsiTo, title=title, inflated=True,
                     save_name=save_name, save_pth=save_pth,
-                    min = v_min, max = v_max, cmap = cmap
+                    min_val = v_min, max_val = v_max, cmap = cmap
                     )
 
     return fig
@@ -1943,8 +1963,8 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
 def showBrain(lh, rh, region = "ctx",
                surface='fsLR-5k', feature_lbl=None, 
                ipsiTo=None, title=None, 
-               min=-2.5, max=2.5, inflated=True, 
-               save_name=None, save_pth=None, cmap="seismic", verbose= False
+               min_val=-2.5, max_val=2.5, inflated=True, 
+               save_name=None, save_pth=None, cmap="seismic", cbar_pos='bottom',verbose= False
                ):
     """
     Returns brain figures
@@ -1968,15 +1988,16 @@ def showBrain(lh, rh, region = "ctx",
     from brainspace.plotting import plot_hemispheres
     from brainspace.mesh.mesh_io import read_surface
     from brainspace.datasets import load_conte69
+    from hippunfold_toolbox import plotting as plot_hu
     import datetime
 
-    if region == 'ctx' or region == 'cortex':
+    if region in ['ctx', 'cortex']:
         micapipe=os.popen("echo $MICAPIPE").read()[:-1]
         if micapipe == "":
             micapipe = "/data_/mica1/01_programs/micapipe-v0.2.0"
             if verbose:
                 print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
-    elif region == 'hipp' or region == 'hippocampus':
+    elif region in ['hipp', 'hippocampus']:
         hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
 
     # set wd to save_pth
@@ -1985,7 +2006,7 @@ def showBrain(lh, rh, region = "ctx",
             os.makedirs(save_pth)
         os.chdir(save_pth)
 
-    if region == "ctx" or region == "cortex":
+    if region in ["ctx", "cortex"]:
         if surface == 'fsLR-5k':
             if inflated == True:
                 # Load fsLR 5k inflated
@@ -2007,9 +2028,8 @@ def showBrain(lh, rh, region = "ctx",
         else:
             raise ValueError(f"Surface {surface} not recognized. Use 'fsLR-5k' or 'fsLR-32k'.")
         
-    elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
-        if surface == '0p5mm' or surface == 'den-0p5mm': # use hippunfold toolbox
-            
+    elif region in ["hip", "hipp", "hippocampus"]: # only have templates for midthickness
+        if surface in ['0p5mm','den-0p5mm']: # use hippunfold toolbox
             surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_L.surf.gii', itype='gii')
             surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-0p5mm_label-hipp_midthickness_R.surf.gii', itype='gii')
 
@@ -2017,7 +2037,7 @@ def showBrain(lh, rh, region = "ctx",
             surf_lh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
             surf_rh_unf = read_surface(hipp_surfaces + 'tpl-avg_space-unfold_den-0p5mm_label-hipp_midthickness.surf.gii', itype='gii')
         
-        elif surface == '2mm' or surface == 'den-0p5mm':
+        elif surface == '2mm':
             raise NotImplementedError("2mm hippocampal surfaces not implemented yet. Missing templates.")
             surf_lh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
             surf_rh = read_surface(hipp_surfaces + 'tpl-avg_space-canonical_den-2mm_label-hipp_midthickness.surf.gii', itype='gii')
@@ -2032,7 +2052,7 @@ def showBrain(lh, rh, region = "ctx",
         raise ValueError(f"Region {region} not recognized. Use 'ctx' or 'hipp'.")
 
     #print(f"L: {lh.shape}, R: {rh.shape}")
-    data = np.hstack(np.concatenate([lh, rh], axis=0))
+    
     #print(data.shape)
 
     #lbl_text = {'top': [title if title else '', '','',''], 'bottom': [feature_lbl if feature_lbl else '', '','','']}
@@ -2056,30 +2076,46 @@ def showBrain(lh, rh, region = "ctx",
     # Ensure all values are strings (robust against accidental lists/arrays)
     lbl_text = {k: str(v) for k, v in lbl_text.items()}
 
-    date = datetime.datetime.now().strftime("%d%b%Y-%H%M")
+    date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
     filename = f"{save_name}_{surface}_{date}.png" if save_name and save_pth else None
     
     # Plot the surface with a title
     if region == "ctx" or region == "cortex":
+        data = np.hstack(np.concatenate([lh, rh], axis=0))
         if filename : 
             if verbose:
-                print(f"[showBrain] Plot saved to {filename}")
+                print(f"[showBrain] Cortical plot saved to {filename}")
             return plot_hemispheres(
                     surf_lh, surf_rh, array_name=data, 
-                    size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
-                    nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+                    size=(900, 250), color_bar=cbar_pos, zoom=1.25, embed_nb=True, interactive=False, share='both',
+                    nan_color=(0, 0, 0, 1), color_range=(min_val,max_val), cmap=cmap, transparent_bg=True, 
                     screenshot=True, filename=filename,
                     #, label_text = lbl_text
                 )
         else:
             return plot_hemispheres(
                 surf_lh, surf_rh, array_name=data, 
-                size=(900, 250), color_bar='bottom', zoom=1.25, embed_nb=True, interactive=False, share='both',
-                nan_color=(0, 0, 0, 1), color_range=(min,max), cmap=cmap, transparent_bg=False, 
+                size=(900, 250), color_bar=cbar_pos, zoom=1.25, embed_nb=True, interactive=False, share='both',
+                nan_color=(0, 0, 0, 1), color_range=(min_val,max_val), cmap=cmap, transparent_bg=True, 
                 label_text = lbl_text
             )
 
     elif region == "hipp" or region == "hippocampus": # only have templates for midthickness
+        lh_np = lh.to_numpy().flatten()
+        rh_np = rh.to_numpy().flatten()
+        data = np.column_stack((lh_np, rh_np))
+        if filename :
+            if verbose:
+                print(f"[showBrain] Hippocampal plot saved to {filename}")
+            return plot_hu.surfplot_canonical_foldunfold(data, tighten_cwindow=True, 
+                                                  labels='hipp', color_bar=cbar_pos, 
+                                                  color_range = (min_val,max_val), cmap=cmap, share = True,
+                                                 screenshot=True, filename = filename)
+        else:
+            return plot_hu.surfplot_canonical_foldunfold(data, tighten_cwindow=True, 
+                                                  labels='hipp', color_bar=cbar_pos, 
+                                                  color_range = (min_val,max_val), cmap=cmap, share = True,
+                                                  screenshot=True)
         print("[showBrain] Hippocampus plotting not implemented yet.")
         return None
 

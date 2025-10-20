@@ -311,6 +311,21 @@ def splitHemis(obj, ipsiTo = 'L'):
 
     return obj_L, obj_R
 
+def get_correspCol(coi, allCols):
+                    """
+                    Find corresponding column for this col of interest (coi).
+                    """
+                    mtches = []
+                    for c in allCols:
+                        match = False
+                        if coi.replace('_res-0p8', '') == c:
+                            match = True
+                        elif coi.replace('_res-0p8', '_res-native') == c:
+                            match = True
+                        if match:
+                            mtches.append(str(c))
+                    return mtches
+
 def mkArray(obj, rows="sub", ipsiTo=None):
     """
     Transform input to numpy array with shape (V, 2, F)
@@ -3092,9 +3107,9 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                append_name = None, region=None, verbose=False, test = False):
     """
     Extract map paths from a dataframe based on specified columns and optional subset string in col name.
-    NOTE. Assumes 'UID' is present -- uses this column to create index for demographics df.
+    Applies cleaning to ensure all dfs have complete data and that all cases are consistent between analogous dfs at both studies
 
-    TODO. Add number of surfaces with no data, print at end of extractMap
+    NOTE. Assumes 'UID' is present -- uses this column to create index for demographics df.
     
     Input:
         df_mapPaths: pd.DataFrame 
@@ -3146,6 +3161,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
     
     import datetime
     import os
+    import numpy as np
 
     # Prepare log file path
     if log_save_pth is None:
@@ -3178,12 +3194,16 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
     
     try:
         
+        # Set appropriate index to df_mapPaths. this index should be propogated into daughter data frames
+        df_mapPaths['UID_study_ses'] = df_mapPaths.apply(lambda row: f"{row['UID']}_{row['study']}_{row['SES']}", axis=1)
+        df_mapPaths = df_mapPaths.set_index('UID_study_ses')
+
         if region is not None:
             if region == "cortex" or region == "ctx":
-                region == "cortex"
+                region = "cortex"
                 reg = "ctx"
             elif region == "hippocampus" or region == "hip":
-                region == "hippocampus"
+                region = "hippocampus"
                 reg = "hip"
             else:
                 raise ValueError(f"[extractMap] Unknown region: {region}. Should be 'cortex' or 'hippocampus'.")
@@ -3207,10 +3227,6 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
             logger.info(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {reg}).")
         else:
             logger.info(f"\n{len(cols_L) + len(cols_R)} map columns found.")
-        
-        # Add index to df_mapPaths
-        df_mapPaths['UID_study_ses'] = df_mapPaths.apply(lambda row: f"{row['UID']}_{row['study']}_{row['SES']}", axis=1)
-        df_mapPaths = df_mapPaths.set_index('UID_study_ses')
 
         counter = 0
         for col_L, col_R in zip(cols_L, cols_R):
@@ -3223,14 +3239,26 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
             # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
             hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
             commonName = col_L[hemi_L_idx:]
-            if "_res-" in commonName:
+            
+            if "_res-" in commonName: # Note assumes that columns that are not downsampled do not have this substring in their col name
+                ds = True
                 downsampledRes = commonName.split('_res-')[1].split('_')[0].replace("p", ".")
+                
+                # find corresponding cols (same region, feature, label, surface, smoothing)
+                correspL = get_correspCol(col_L, cols_L)[0] # assumes a single match
+                correspR = get_correspCol(col_R, cols_R)[0]
+
+
             else:
+                ds = False
                 downsampledRes = "native"
-
-            logger.info(f"\n\tProcessing {commonName}...\t\t[{col_L} {col_R}]")                
+                
+            
+            logger.info(f"\n\tProcessing {commonName}...\t\t[{col_L} {col_R}]")
+            if ds:
+                logger.info(f"\t\t\tDownsampled resolution: {downsampledRes} mm\t\tcorresponding cols: {correspL} {correspR}")
             logger.info(f"\t\t\t{len(df_mapPaths['UID'].unique())} unique IDs in input data with {df_mapPaths.shape[0]} rows")
-
+            
             logger.info(f"\t\t\tEnsuring QC values >= {qc_thresh}") # set maps with QC values less than qc_thresh to NA
             
             # add to dict list
@@ -3247,8 +3275,8 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 smth = col_L.split('_smth-')[1].split('mm')[0]
             
             # Clean and select final sessions 
-            ## 1. QC criteria
-            ### determine QC column
+            
+            ## Setup QC column
             if ft == 'T1map':
                 vol = 'T1map'
             elif ft == 'thickness':
@@ -3261,30 +3289,60 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 raise ValueError(
                     "[extractMap] WARNING. Feature not recognized, thus unable to link to name of raw MRI volume."
                 )
-                
+            
             col_QC = f"QC_{reg}Surf_{vol}" # 'QC_{ctx/hip}Surf_{vol for feature}
-            df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
             
-            logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
-            #logger.info(f"Number of NA col L + col R:\n\t before QC: \n\t\t{df_mapPaths[[col_L, col_R]].isna().sum()}\n\tafter: \n\t\t{df_mapPaths_qc[[col_L, col_R]].isna().sum()}")
-            
-            logger.info(f"\t\t\tCleaning missing map paths...")
-            df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
-            logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
-            logger.info(f"\t\t\t\t\tRemoved: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()))}")
+            if not ds:    
+                # 1. Apply QC criteria
+                df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
+                
+                logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
+                #logger.info(f"Number of NA col L + col R:\n\t before QC: \n\t\t{df_mapPaths[[col_L, col_R]].isna().sum()}\n\tafter: \n\t\t{df_mapPaths_qc[[col_L, col_R]].isna().sum()}")
+                
+                ## 2. Remove missing data
+                logger.info(f"\t\t\tCleaning missing map paths...")
+                df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
+                logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
+                logger.info(f"\t\t\t\t\tRemoved: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()))}")
 
-            ## 2. Remove participants that do not have data for each study
-            if downsampledRes == "native":
+                ## 3. Remove participants that do not have data for each study
                 logger.info(f"\t\t\tCleaning missing study pairs... ")
                 required_studies = [s['study'] for s in studies]
                 participant_counts = df_demo.groupby('UID')['study'].nunique()
                 valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
                 df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
+                df_demo = df_demo[df_demo['UID'].isin(valid_ids)]
+                logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
+            else: # main column is downasmpled. Need to filter consistently with corresponding column that is not downsampled
+                df_copy = df_mapPaths.copy()
+                
+                ## 1. Apply QC citeria
+                df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
+                df_copy_qc, count_qc_corresp, count_qc_ids_corresp = apply_QCthresh(df_copy, col_qc = col_QC, cols_effect = [correspL, correspR], thresh = qc_thresh)
+                logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
+                
+                ## 2. Remove mising data
+                logger.info(f"\t\t\tCleaning missing map paths...")
+                
+                indx_NA_corresp = df_copy_qc[df_copy_qc[[correspL, correspR]].isna().any(axis=1)].index.tolist() # find indices with missing values in df_copy_qc
+                df_mapPaths_qc.loc[indx_NA_corresp, [col_L, col_R]] = np.nan # set corresponding rows in df_mapPaths_qc to NaN for col_L and col_R
+                
+                df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
+                df_demo_corresp = df_copy_qc.dropna(subset=[correspL, correspR]) # remove rows with missing values in corresponding cols
+                logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed ({df_copy_qc['UID'].nunique() - df_demo_corresp['UID'].nunique()} rows NA in corresponding col which may or may not overlap with missing values in the downsampled column) [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
+                logger.info(f"\t\t\t\t\tRemoved due to mising in corresponding col: {indx_NA_corresp}")
+                logger.info(f"\t\t\t\t\tThose removed due to missing in ds col: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()) - set(indx_NA_corresp))}")
+
+                ## 3. Remove participants that do not have data for each study
+                logger.info(f"\t\t\tCleaning missing study pairs... ")
+                required_studies = [s['study'] for s in studies]
+                participant_counts = df_demo_corresp.groupby('UID')['study'].nunique() # keep only participants that have data for both studies for corresponding column
+                
+                valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
+                
+                df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
                 df_demo = df_demo[df_demo['UID'].isin(valid_ids)]  
-                logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")             
-            else: 
-                # TODO. should remove cases that have missing data in the native space for the other study with the same feature-label-surface...
-                pass
+                logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
             
             n_before = df_mapPaths_qc['UID'].nunique()
             n_after = df_demo['UID'].nunique()
@@ -3738,7 +3796,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth, stats,
                         logger.info(f"\t\tApplying parcellation `{parc}` with statistics `{s}`")
 
                     if parc == 'glasser':
-                        df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = False, ipsiTo = None, verbose = verbose)
+                        df_parc = apply_glasser(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
                         item['parcellation'] = 'glasser'
                     elif parc == 'DK25': # for implementation of other parcellations
                         df_parc = apply_DK25(df=df, surf=itm_surf, labelType=parc_lbl, addHemiLbl = True, ipsiTo = None, verbose = verbose)
@@ -4425,9 +4483,9 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
                         dl_grp_ic[i][name] = pth
 
-                    dl_grp_ic[i][f'{key}_{grp_val}_R'] = df_stat_r
-                    dl_grp_ic[i][f'{key}_{grp_val}_L'] = df_stat_l
-                    dl_grp_ic[i][f'{key}_{grp_val}_ic'] = df_stat_ic
+                    #dl_grp_ic[i][f'{key}_{grp_val}_R'] = df_stat_r
+                    #dl_grp_ic[i][f'{key}_{grp_val}_L'] = df_stat_l
+                    #dl_grp_ic[i][f'{key}_{grp_val}_ic'] = df_stat_ic
 
                     if dl_grp_ic[i].get(f'{key}_ctrl', None) is None: # if ctrl df not yet created, create it
                         
@@ -4444,8 +4502,6 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                         logger.info(f"\t\t\tCTRL: {key} <{df_stat_ctrl.shape}> : {pth}")
                         
                         dl_grp_ic[i][name] = pth
-                        
-                        
 
         # Save dl to a pickle file
         if save:
@@ -4651,41 +4707,26 @@ def winD(dl, df_keys, save_pth_df,
                         d_df = pd.concat([d_df, out], axis=0) # append out to d_df
                         d_df.drop_duplicates(inplace=True)
 
-                d_dfs.append(d_df) # add to list of dfs
-                d_dfs_ic.append(d_df_ic)
+                # save D-score dfs to items
+                df_name = f"{key}_d"
+                df_ic_name = f"{key}_d_ic"
+
+                if test:
+                    df_sv_name = f"TEST_{index}_{df_name}"
+                    df_ic_sv_name = f"TEST_{index}_{df_ic_name}"
+                else:
+                    df_sv_name = f"{index}_{df_name}"
+                    df_ic_sv_name = f"{index}_{df_ic_name}"
+
+                pth_df_d, log_df_d = savePickle(obj = d_df, root = save_pth_df, name = df_sv_name,
+                                    timeStamp = False, append = start, rtn_txt = True, verbose = False)
+                dl_out[i][df_name] = pth_df_d
+                logger.info(f"\n\t{log_df_d}")
             
-            # concatenate all d_dfs into single df
-            if len(d_dfs) > 1:
-                d_df = pd.concat(d_dfs, axis=0)
-            elif len(d_dfs) == 1:
-                d_df = d_dfs[0]
-            else:
-                d_df = None
-
-            # concatenate all d_dfs_ic into single df
-            if len(d_dfs_ic) > 1:
-                d_df_ic = pd.concat(d_dfs_ic, axis=0)
-            elif len(d_dfs_ic) == 1:
-                d_df_ic = d_dfs_ic[0]
-            else:
-                d_df_ic = None
-
-            # save D-score dfs to items
-            df_name = f"{index}_d"
-            df_ic_name = f"{index}_d_ic"
-            if test:
-                df_name = f"TEST_{df_name}"
-                df_ic_name = f"TEST_{df_ic_name}"
-
-            pth_df_d, log_df_d = savePickle(obj = d_df, root = save_pth_df, name = df_name,
-                                timeStamp = False, append = start, rtn_txt = True, verbose = False)
-            dl_out[i]['df_d'] = pth_df_d
-            logger.info(f"\n\t{log_df_d}")
-            
-            pth_df_d_ic, log_df_d_ic = savePickle(obj = d_df_ic, root = save_pth_df, name = df_ic_name,
-                                timeStamp = False, append = start, rtn_txt = True, verbose = False)
-            dl_out[i]['df_d_ic'] = pth_df_d_ic          
-            logger.info(f"\t{log_df_d_ic}")
+                pth_df_d_ic, log_df_d_ic = savePickle(obj = d_df_ic, root = save_pth_df, name = df_ic_sv_name,
+                                    timeStamp = False, append = start, rtn_txt = True, verbose = False)
+                dl_out[i][df_ic_name] = pth_df_d_ic          
+                logger.info(f"\t{log_df_d_ic}")
 
         if save: # save dl
             out_pth, log_dl = savePickle(obj = dl_out, root = save_pth, name = save_name, 
@@ -4705,7 +4746,7 @@ def winD(dl, df_keys, save_pth_df,
 
     return dl
 
-def btwD(dl, save_pth_df,
+def btwD(dl, save_pth_df, koi = ['df_maps_z'],
          save=True, save_pth=None, save_name="05d_stats_btwD", 
          verbose=False, test=False, test_len=1):
     """
@@ -4722,6 +4763,7 @@ def btwD(dl, save_pth_df,
                                     Assumes key for dfs holding statistics to have structure: df_{stat} 
         save_pth_df: (str)      path to save dfs created in this function; keep path to these dfs in output dictionaries
 
+        koi: (str)              List of keys holding within study Cohen's D to compare to other study
         save: (bool)            Whether to save the output dictionary list.
         save_pth: (str)         Directory path to save the output dictionary list.
         save_name: (str)        Base name for the saved output file.
@@ -4828,11 +4870,7 @@ def btwD(dl, save_pth_df,
                 item_sT = item
             """
 
-            # if df_z and df_w are None, skip
-            if item.get('df_d', None) is None and item.get('df_d_ic', None) is None:
-                logger.warning(f"\tNo D-score dataframes in this dictionary item. Skipping.")
-                continue
-
+            
             # Initialize output item
             out_item = {
                     'studies': (item_tT['study'], item_sT['study']),
@@ -4843,44 +4881,54 @@ def btwD(dl, save_pth_df,
                     'smth': item_tT['smth'],
                     'parcellation': item_tT.get('parcellation', None)
                 }
+        
+            # if df_z and df_w are None, skip
             
             ID_keys = [key for key in item_tT.keys() if 'IDs' in key]
-            keys_to_copy = ID_keys + ['df_d', 'df_d_ic']
+            keys_to_copy = ID_keys + koi
+            
             if verbose:
                 logger.info(f"\tCopying keys: {keys_to_copy}")
+            
             for key in keys_to_copy: # add all ID_keys to corresponding dataframes to out_item
-                out_item[key] = [item_tT[key], item_sT[key]] # stores as list of items. In case of dfs, list of dataframes            
+                k_tT = item_tT.get(key, None)
+                k_sT = item_sT.get(key, None)
+                if k_tT is None and k_sT is None: # don't store
+                    continue    
+                out_item[key] = [k_tT, k_sT] # stores as list of items. In case of dfs, list of dataframes            
 
-            for df in ['df_d', 'df_d_ic']:
+            for key in koi:
+                
                 metrics_df = None
-                df_tT = item_tT.get(df, None)
-                df_sT = item_sT.get(df, None)
+
+                df_tT = item_tT.get(key, None)
+                df_sT = item_sT.get(key, None)
                 
                 if df_tT is None:
-                    logger.warning(f"\t Object stored in key `{df} of 3T item is None object. Skipping comparisons.")
+                    logger.info(f"\tWARNING. Object stored in key `{key} of 3T item is None object. Skipping comparisons.")
                     continue
                 elif type(df_tT) is str:
                     df_tT = loadPickle(df_tT, verbose=False)
                 elif type(df_tT) is not pd.DataFrame:
-                    logger.warning(f"\tObject stored in key '{df}' of 3T item is of type {type(df_tT)}, not str nor pd.DataFrame. Skipping comparison.")
+                    logger.info(f"\tWARNING. Object stored in key '{key}' of 3T item is of type {type(df_tT)}, not str nor pd.DataFrame. Skipping comparison.")
                     continue
                 elif df_tT.shape[0] == 0:
-                    logger.warning(f"\t3T {df} has no rows. Skipping {df} comparison.")
+                    logger.info(f"\tWARNING. 3T {key} has no rows. Skipping {key} comparison.")
                     continue
                 
                 if df_sT is None:
-                    logger.warning(f"\t Object stored in key `{df} of 7T item is None object. Skipping comparisons.")
+                    logger.info(f"\tWARNING. Object stored in key `{key} of 7T item is None object. Skipping comparisons.")
                     continue
                 elif type(df_sT) is str:
                     df_sT = loadPickle(df_sT, verbose=False)
                 elif type(df_sT) is not pd.DataFrame:
-                    logger.warning(f"\tObject stored in key '{df}' of 7T item is of type {type(df_sT)}, not str nor pd.DataFrame. Skipping comparison.")
+                    logger.info(f"\tWARNING. Object stored in key '{key}' of 7T item is of type {type(df_sT)}, not str nor pd.DataFrame. Skipping comparison.")
                     continue
                 elif df_sT.shape[0] == 0:
-                    logger.warning(f"\t7T {df} has no rows. Skipping {df} comparison.")
+                    logger.info(f"\tWARNING. 7T {key} has no rows. Skipping {key} comparison.")
                     continue
 
-                logger.info(f"\tComputing difference metrics for {df}...")
+                logger.info(f"\tComputing difference metrics for {key}...")
                 
                 # TODO. Implement better method for this
                 try: # catch persisting NoneTypes 
@@ -4899,7 +4947,7 @@ def btwD(dl, save_pth_df,
                 if verbose:
                     logger.info(f"\t\t3 T shape: {df_tT.shape}\n\t\t7 T shape: {df_sT.shape}.")
                 
-                if df == 'df_d_ic': # add ipsiTo key to output
+                if '_ic' in key: # add ipsiTo key to output
                     assert item_tT.get('ipsiTo', "Not found") == item_sT.get('ipsiTo', "Found not"), f"[btwD] ipsiTo values do not match between dictionary items. {item_tT.get('ipsiTo', 'Not found')} != {item_sT.get('ipsiTo', 'Found not')}"
                     out_item['ipsiTo'] = item_tT['ipsiTo']
 
@@ -4940,7 +4988,7 @@ def btwD(dl, save_pth_df,
                 d_dif_byMean_renamed = d_dif_byMean.copy()
                 d_dif_byMean_renamed.index = [idx + '_Δd_byMean' for idx in d_dif_byMean_renamed.index]
 
-                metrics_df = pd.concat([d_dif_renamed, d_dif_by3T_renamed, d_dif_by7T_renamed])
+                metrics_df = pd.concat([d_dif_renamed, d_dif_by3T_renamed, d_dif_by7T_renamed, d_dif_bySum_renamed, d_dif_byMean_renamed])
 
                 # Add original stats from both datasets to metrics_df
                 df_tT_renamed = df_tT.copy()
@@ -4952,10 +5000,10 @@ def btwD(dl, save_pth_df,
                 logger.info(f"\t\tIndices: {metrics_df.index}")        
 
                 # save dfs to csv, add path to out_item
-                out_pth, rtn_txt = savePickle(obj = metrics_df, root = save_pth_df, name = f"{index}_{df}_btwD",
+                out_pth, rtn_txt = savePickle(obj = metrics_df, root = save_pth_df, name = f"{index}_{key}_btwD",
                                  timeStamp = False, append = start, rtn_txt = True, verbose = False)
                 logger.info(f"\t{rtn_txt}\n")
-                out_item[f'comps_{df}'] = out_pth # add to output item
+                out_item[f'comps_{key}'] = out_pth # add to output item
 
             comps.append(out_item) # append to dict list
             out_item = None
@@ -5324,6 +5372,7 @@ def get_d(ctrl, test, varName="z", test_name="grp", saveN = False):
     """
     Accept 2 2D matrices of size [n_ctrl x n_vertices] and [n_test x n_vertices]. Note n_vertices must be equivalent but n_ctrl need not = n_test.
     Calculates d with test - ctrl (i.e. positive d means test > ctrl)
+            
     Return:
         Matrix of size 5 x n_vertices with the following rows:
             m_ctrl: mean of ctrl at this vertex
@@ -5358,10 +5407,10 @@ def get_d(ctrl, test, varName="z", test_name="grp", saveN = False):
         n_ctrl_arr = np.full(n_vertices, n_ctrl) # Extend all arrays to the length of test[1] (number of vertices)
         n_test_arr = np.full(n_vertices, n_test)
         out = np.vstack([n_ctrl_arr, m_ctrl, std_ctrl, n_test_arr, m_test, std_test, d])
-        row_names = [f'n_{varName}_ctrl',f'm_{varName}_ctrl', f'std_{varName}_ctrl', f'n_{varName}_{test_name}', f'm_{varName}_{test_name}', f'std_{varName}_{test_name}', f'd_{varName}_{test_name}']
+        row_names = [f'n_ctrl',f'm_ctrl', f'std_ctrl', f'n_{test_name}', f'm_{test_name}', f'std_{test_name}', f'd_{test_name}']
     else:
         out = np.vstack([m_ctrl, std_ctrl, m_test, std_test, d])
-        row_names = [f'm_{varName}_ctrl', f'std_{varName}_ctrl', f'm_{test_name}', f'std_{test_name}', f'd_{test_name}']
+        row_names = [f'm_ctrl', f'std_ctrl', f'm_{test_name}', f'std_{test_name}', f'd_{test_name}']
     
     out_df = pd.DataFrame(out, index=row_names, columns=test.columns)
     
