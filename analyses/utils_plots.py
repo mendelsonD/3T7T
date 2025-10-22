@@ -3,6 +3,7 @@
 def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
     """
     Combine PNGs in fig_dir whose filename contains `ptrn` into a single PDF.
+    TODO. Should be able to retain transparent background
 
     Input:
         fig_dir: Directory containing png files.
@@ -23,7 +24,8 @@ def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
     else:
         os.makedirs(output, exist_ok=True)
         if verbose:
-            print(f"[pngs2pdf] Created/using output directory: {output}")
+            pass
+            #print(f"[pngs2pdf] Created/using output directory: {output}")
 
     if not os.path.isdir(fig_dir):
         if verbose:
@@ -36,7 +38,8 @@ def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
 
     if not files:
         if verbose:
-            print(f"[pngs2pdf] No PNG files containing pattern '{ptrn}' found in {fig_dir}")
+            pass
+            #print(f"[pngs2pdf] No PNG files containing pattern '{ptrn}' found in {fig_dir}")
         return None
 
     # Sort files alphabetically (simple deterministic order)
@@ -46,33 +49,80 @@ def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
     safe_ptrn = ptrn.replace(os.sep, "_")
     time_stmp = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
     output_pdf = os.path.join(output, f"{safe_ptrn}_{time_stmp}.pdf")
+    # full paths
+    file_paths = [os.path.join(fig_dir, f) for f in files]
 
-    images = []
-    for fname in files:
-        p = os.path.join(fig_dir, fname)
-        try:
-            img = Image.open(p)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            images.append(img)
+    # Prefer img2pdf (preserves PNG alpha/transparency). Fallback to PIL (flattens alpha).
+    try:
+        import fitz  # PyMuPDF
+        if verbose:
+            print("[pngs2pdf] Using PyMuPDF (fitz) to embed PNGs as PDF pages (preserves transparency).")
+        doc = fitz.open()
+        for p in file_paths:
+            try:
+                img_doc = fitz.open(p)             # open image
+                pdf_bytes = img_doc.convertToPDF() # convert image -> PDF bytes (keeps alpha)
+                img_pdf = fitz.open("pdf", pdf_bytes)
+                rect = img_pdf[0].rect
+                page = doc.new_page(width=rect.width, height=rect.height)
+                page.show_pdf_page(rect, img_pdf, 0)
+            except Exception as e_img:
+                if verbose:
+                    print(f"[pngs2pdf] PyMuPDF: skipping {p}: {e_img}")
+        doc.save(output_pdf)
+        if verbose:
+            print(f"[pngs2pdf] PDF created (PyMuPDF): {output_pdf}")
+        if cleanup:
+            for fname in files:
+                try:
+                    os.remove(os.path.join(fig_dir, fname))
+                except Exception:
+                    pass
+        return output_pdf
+    except Exception as e_fitz:
+        if verbose:
+            print(f"[pngs2pdf] PyMuPDF unavailable or failed ({e_fitz}). Falling back to img2pdf/PIL.")
+
+            images = []
+            for p in file_paths:
+                try:
+                    img = Image.open(p)
+                    # If image has alpha, composite onto white background so PDF viewers show it consistently.
+                    if img.mode in ("RGBA", "LA") or (hasattr(img, "getchannel") and "A" in img.getbands()):
+                        bg = Image.new("RGB", img.size, (255,255,255))
+                        try:
+                            bg.paste(img, mask=img.split()[-1])  # use alpha channel as mask
+                            images.append(bg)
+                        except Exception:
+                            # final fallback: convert directly to RGB
+                            images.append(img.convert("RGB"))
+                    else:
+                        images.append(img.convert("RGB"))
+                except Exception as e:
+                    if verbose:
+                        print(f"[pngs2pdf] Skipping {p}: {e}")
+            if not images:
+                if verbose:
+                    print(f"[pngs2pdf] No images could be opened for pattern '{ptrn}' in {fig_dir}")
+                return None
+            try:
+                images[0].save(output_pdf, save_all=True, append_images=images[1:])
+                if verbose:
+                    print(f"[pngs2pdf] PDF created (PIL fallback): {output_pdf}")
+            except Exception as e:
+                if verbose:
+                    print(f"[pngs2pdf] Failed to save PDF {output_pdf}: {e}")
+                return None
+
+       
+        try: # Save combined PDF
+            images[0].save(output_pdf, save_all=True, append_images=images[1:])
+            if verbose:
+                print(f"[pngs2pdf] PDF created: {output_pdf}")
         except Exception as e:
             if verbose:
-                print(f"[pngs2pdf] Skipping {p}: {e}")
-
-    if not images:
-        if verbose:
-            print(f"[pngs2pdf] No images could be opened for pattern '{ptrn}' in {fig_dir}")
-        return None
-
-    # Save combined PDF
-    try:
-        images[0].save(output_pdf, save_all=True, append_images=images[1:])
-        if verbose:
-            print(f"[pngs2pdf] PDF created: {output_pdf}")
-    except Exception as e:
-        if verbose:
-            print(f"[pngs2pdf] Failed to save PDF {output_pdf}: {e}")
-        return None
+                print(f"[pngs2pdf] Failed to save PDF {output_pdf}: {e}")
+            return None
 
     if cleanup:
         for fname in files:
@@ -87,7 +137,7 @@ def pngs2pdf(fig_dir, ptrn, output=None, cleanup = True, verbose=False):
 
     return output_pdf
 
-def get_maxVals(data, df_name, feature, metric):
+def get_maxVals(data, feature, metric, region, verbose =False):
     """
     Determine min and max values and colormap for plotting based on feature type.
 
@@ -103,21 +153,26 @@ def get_maxVals(data, df_name, feature, metric):
         cmap: str, name of colormap to use
     """
     import numpy as np
-
-    if "_z" in df_name or "_w" in df_name:
-        cmap = "seismic"
-        min_val = -4
-        max_val = 4
-    else:
-        cmap = 'inferno'
-        
-        if feature.lower() == "thickness":
+    if verbose:
+        print(f"[get_maxVals] feature: {feature}, metric: {metric}")
+    
+    cmap = 'inferno'
+    if region in ["cortex", "ctx"]:
+        if "_z" in feature.lower() or "_w" in feature.lower():
+            cmap = "seismic"
+            min_val = -4
+            max_val = 4
+        elif "d_" in metric.lower(): # Cohen's D
+            min_val = -2
+            max_val = 2
+            cmap = 'seismic'
+        elif feature.lower() == "thickness":
             if 'std' in metric.lower():
                 min_val = 0
                 max_val = 0.5
             else:   
                 min_val = 0
-                max_val = 4
+                max_val = 5
             cmap = 'Blues'
         elif feature.lower() == "flair":
             if 'std' in metric.lower():
@@ -130,10 +185,95 @@ def get_maxVals(data, df_name, feature, metric):
         elif feature.lower() == "t1map":
             if 'std' in metric.lower():
                 min_val = 0
-                max_val = 180 # TODO. Calibrate properly
+                max_val = 150 # TODO. Calibrate properly
             else:
                 min_val = 1000
-                max_val = 2800
+                max_val = 2500
+            cmap = "inferno"
+        elif feature.lower() == "fa":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 0.03 # TODO. Calibrate properly
+            else:
+                min_val = 0
+                max_val = 1
+            cmap="Blues"
+        elif feature.lower() == "adc": # units: mm2/s
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 0.0005 # TODO. Calibrate properly
+            else:
+                min_val = 0
+                max_val = 0.0025
+            cmap = "Blues"
+        else:
+            print(f"[get_maxVals] WARNING: Unrecognized feature '{feature}'. Using robust percentile-based scaling.")
+            cmap = "inferno"
+            # Robust percentile-based vmin/vmax with NaN handling and sensible fallbacks
+            vals = np.asarray(data.values).ravel().astype(float)
+            valid = vals[np.isfinite(vals)]
+
+            if valid.size == 0:
+                # No finite data: fallback to a harmless default
+                min_val, max_val = 0.0, 1.0
+            else:
+                try:
+                    p5 = np.nanpercentile(valid, 5)
+                    p95 = np.nanpercentile(valid, 95)
+                except Exception:
+                    p5 = np.nanmin(valid)
+                    p95 = np.nanmax(valid)
+
+                # If percentiles collapse (e.g., nearly-constant data), fall back to min/max with padding
+                if not np.isfinite(p5) or not np.isfinite(p95) or p5 >= p95:
+                    dmin = float(np.nanmin(valid))
+                    dmax = float(np.nanmax(valid))
+                    if dmin == dmax:
+                        span = abs(dmin) if dmin != 0 else 1.0
+                        min_val = dmin - 0.5 * span
+                        max_val = dmax + 0.5 * span
+                    else:
+                        min_val, max_val = dmin, dmax
+                else:
+                    min_val, max_val = float(p5), float(p95)
+
+                # small padding to avoid clipped visuals
+                span = max(1e-6, max_val - min_val)
+                pad = span * 0.02
+                min_val -= pad
+                max_val += pad
+    elif region in ["hippocampus", "hipp", "hip"]:
+        if "_z" in feature.lower() or "_w" in feature.lower():
+            cmap = "seismic"
+            min_val = -4
+            max_val = 4
+        elif "d_" in metric.lower(): # Cohen's D
+            min_val = -2
+            max_val = 2
+            cmap = 'seismic'
+        elif feature.lower() == "thickness":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 0.3
+            else:   
+                min_val = 0
+                max_val = 2
+            cmap = 'Blues'
+        elif feature.lower() == "flair":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 30 # TODO. Calibrate properly
+            else:
+                min_val = -500
+                max_val = 500
+            cmap = "seismic"
+        elif feature.lower() == "t1map":
+            if 'std' in metric.lower():
+                min_val = 0
+                max_val = 150 # TODO. Calibrate properly
+            else:
+                min_val = 1000
+                max_val = 2500
             cmap = "inferno"
         elif feature.lower() == "fa":
             if 'std' in metric.lower():
@@ -152,11 +292,46 @@ def get_maxVals(data, df_name, feature, metric):
                 max_val = 0.0025
             cmap = "Blues"
         else:
+            print(f"[get_maxVals] WARNING: Unrecognized feature '{feature}'. Using robust percentile-based scaling.")
             cmap = "inferno"
-            min_val = min(np.percentile(df.values, 95), np.percentile(df.values, 95))
-            max_val = max(np.percentile(df.values, 5), np.percentile(df.values, 5))
+            # Robust percentile-based vmin/vmax with NaN handling and sensible fallbacks
+            vals = np.asarray(data.values).ravel().astype(float)
+            valid = vals[np.isfinite(vals)]
 
-        return min_val, max_val, cmap
+            if valid.size == 0:
+                # No finite data: fallback to a harmless default
+                min_val, max_val = 0.0, 1.0
+            else:
+                try:
+                    p5 = np.nanpercentile(valid, 5)
+                    p95 = np.nanpercentile(valid, 95)
+                except Exception:
+                    p5 = np.nanmin(valid)
+                    p95 = np.nanmax(valid)
+
+                # If percentiles collapse (e.g., nearly-constant data), fall back to min/max with padding
+                if not np.isfinite(p5) or not np.isfinite(p95) or p5 >= p95:
+                    dmin = float(np.nanmin(valid))
+                    dmax = float(np.nanmax(valid))
+                    if dmin == dmax:
+                        span = abs(dmin) if dmin != 0 else 1.0
+                        min_val = dmin - 0.5 * span
+                        max_val = dmax + 0.5 * span
+                    else:
+                        min_val, max_val = dmin, dmax
+                else:
+                    min_val, max_val = float(p5), float(p95)
+
+                # small padding to avoid clipped visuals
+                span = max(1e-6, max_val - min_val)
+                pad = span * 0.02
+                min_val -= pad
+                max_val += pad
+
+    if verbose:
+        print(f"[get_maxVals] determined min_val={min_val}, max_val={max_val}, cmap={cmap}")
+
+    return min_val, max_val, cmap
 
 def correl(row_a, row_b, method = "Pearson", verbose = False):
     """
@@ -1496,10 +1671,11 @@ def plotLine(dl, df_keys = ['df_maps'], marks=True,
     
 
 ########### SURFACE PLOTS #########
-def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, 
+def showBrains(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None, 
             ipsiTo="L", title=None, save_name=None, save_path=None):
     """
     Create brain figures from a list of dictionary items with vertex-wise dataframes.
+    
     Input:
         dl: list of dictionary items with keys 'study', 'grp', 'label', 'feature', 'region' {df_name}
         df_name: name of the dataframe key to use for visualization (default is 'df_z_mean')
@@ -1515,14 +1691,17 @@ def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None,
         label = item.get('label', 'ERROR')
         surface = item.get('surf', 'ERROR')
         smth = item.get('smth', 'ERROR')
-        
+
         print(f"[visMean] [{i}] ([{item.get('studies','NA')}] {region} {feature} {label} {surface} {smth}mm)")
         
         if dl_indices is not None and i not in dl_indices:
             continue
+
+        
         if df_name not in item:
             print(f"[visMean] WARNING: {df_name} not found in item {i}. Skipping.")
             continue
+        
         
         df = item[df_name]
         if df_metric is not None:
@@ -1559,7 +1738,9 @@ def visMean(dl, df_name='comps_df_d_ic', df_metric=None, dl_indices=None,
 
         return fig
 
-def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth = None, save_name = None, font_family='sans-serif', cbar_label_size=10, suptitle_size=16, tmpdir = "/host/verges/tank/data/daniel/3T7T/z/tmp/"):
+def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, study = None, 
+                  save_pth = None, save_name = None, font_family='sans-serif', cbar_label_size=10, suptitle_size=16, 
+                  tmpdir = "/host/verges/tank/data/daniel/3T7T/z/tmp/"):
             """
             Plot multiple surfaces in one figure. (eg., grp mean, ctrl mean, ctrl std, cohen's D map)
 
@@ -1575,6 +1756,8 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                     (e.g., ['d_df_z_TLE_ic_ipsiTo-L_Δd', 'd_df_z_TLE_ic_ipsiTo-L_Δd', 'd_df_cohen_d_TLE_ic_ipsiTo-L_Δd'])
                 lbls: list of str
                     text to place under each cbar
+                study: str
+                    to use if the key of is a list of dfs
                 title: str
                     title for all figures
 
@@ -1601,7 +1784,6 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
             import datetime
             import numpy as np
             import pandas as pd
-            import tempfile
             import shutil
             import glob
             from PIL import Image as PILImage
@@ -1627,11 +1809,11 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                 mpl.rcParams['font.size'] = max(cbar_label_size - 1, 8)
             except Exception:
                 pass
-
                        
             n_figs = len(metrics)
-            print(f"[plotNsurfaces] Preparing to plot {n_figs} surfaces...")
-            print(items)
+            print(f"[plotNsurfaces] Plot {n_figs} surfaces... (len of items ({len(items)}), df_names ({len(df_names)}), metrics ({len(metrics)}))")
+            print(f"\titems keys: {items.keys()}")
+            
             if isinstance(items, list) and len(items) == 1 and n_figs > 1:
                 items = items[0]  # unpack single item list
             if isinstance(items, dict):
@@ -1644,8 +1826,7 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
             
             if isinstance(lbls, str):
                 lbls = [lbls] * n_figs
-            
-            print(f"[plotNsurfaces] Lengths of items ({len(items)}), df_names ({len(df_names)}), and metrics ({len(metrics)})")
+
             assert len(items) == len(df_names) == len(metrics), f"[plotNsurfaces] ERROR: Lengths of items ({len(items)}), df_names ({len(df_names)}), and metrics ({len(metrics)}) must be the same."
             
             # reduce total vertical extent per subplot to make stacked plots denser
@@ -1661,34 +1842,42 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
             fig.patch.set_alpha(0.0)
             fig.patch.set_facecolor('none')
 
-            for i, (itm, df, met, lbl) in enumerate(zip(items, df_names, metrics, lbls)):
+            for i, (itm, df_name, met, lbl) in enumerate(zip(items, df_names, metrics, lbls)):
+               
                 ax = axes[i]
                 ft = itm.get('feature', 'unknownFeature')
                 region = itm.get('region', None)
                 surface = itm.get('surf', 'fsLR-5k')
                 region = itm.get('region', 'ctx') # asign default value to 'ctx'
 
-                data = itm.get(df, None)
+                data = itm.get(df_name, None)
+                print(f"\titem {i} - {region} {surface} {ft}\n\t\tmetric `{met}`")
                 
-                if data is None:
-                    print(f"[plotNsurfaces] WARNING: {df} not found in item. Skipping.")
-                    continue
+                if isinstance(data, list):
+                    if study == '3T':
+                        data = data[0]
+                    elif study == '7T':
+                        data = data[1]
                 if isinstance(data, str):
                     pth = data 
                     data = tsutil.loadPickle(pth, verbose = False)
                 elif not isinstance(data, pd.DataFrame):
-                    print(f"[plotNsurfaces] WARNING: {df} in item is not a dataframe. Skipping.")
+                    print(f"[plotNsurfaces] WARNING: {df_name} in item is not a dataframe. Skipping.")
                     continue
+                if data is None:
+                    print(f"[plotNsurfaces] WARNING: {df_name} not found in item. Skipping.")
+                    continue
+                print(type(data))
+                print(f"\tdf `{df_name}` <{data.shape}> - indices: {data.index.tolist()}")
                 
-                print(f"data type, shape: {type(data)}, {None if data is None else data.shape}")
-                
+
                 try:
                     data = data.loc[[met]]
                 except KeyError:
                     print(f"[plotNsurfaces] WARNING: {met} not found in dataframe. Skipping.")
                     continue
-
-                print(f"data type: {type(data)}, index: {data.index}, columns: {data.columns.tolist}")
+                
+                print(f"number of nan values: {data.isna().sum().sum()}")
                 L_cols, R_cols = tsutil.splitHemis(data) # NOTE L/R in variable names refers to ipsiTo mapping if ipsi/contra flipped
                 L_names = L_cols.columns
                 R_names = R_cols.columns
@@ -1703,54 +1892,9 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
 
                 # ensure vmin/vmax are integer-valued for nicer cbar tick formatting in the underlying showBrain call
                 # Determine vmin/vmax and colormap for this subplot in a robust way
-                try:
-                    res = get_maxVals(data, df, ft, met)
-                except Exception:
-                    res = (None, None, None)
-
-                # Normalize returned shape (some callers historically returned in different ordering)
-                v_min_local = v_max_local = None
-                cmap_local = None
-                try:
-                    if isinstance(res, (list, tuple)) and len(res) == 3:
-                        a, b, c = res
-                        # prefer (min, max, cmap). If numbers look reversed, swap.
-                        try:
-                            a_num = None if a is None else float(a)
-                            b_num = None if b is None else float(b)
-                            if a_num is not None and b_num is not None and a_num > b_num:
-                                v_min_local, v_max_local = b_num, a_num
-                            else:
-                                v_min_local, v_max_local = a_num, b_num
-                        except Exception:
-                            v_min_local, v_max_local = a, b
-                        cmap_local = c
-                    else:
-                        # unexpected return - fall back to defaults
-                        v_min_local, v_max_local, cmap_local = None, None, None
-                except Exception:
-                    v_min_local, v_max_local, cmap_local = None, None, None
-
-                # If either min or max are missing, compute from the actual LH/RH arrays
-                try:
-                    combined_vals = np.hstack([np.ravel(lh.values.astype(float)), np.ravel(rh.values.astype(float))])
-                    combined_vals = combined_vals[~np.isnan(combined_vals)]
-                except Exception:
-                    combined_vals = np.array([])
-
-                if (v_min_local is None or np.isnan(v_min_local)) and combined_vals.size > 0:
-                    v_min_local = float(np.nanmin(combined_vals))
-                if (v_max_local is None or np.isnan(v_max_local)) and combined_vals.size > 0:
-                    v_max_local = float(np.nanmax(combined_vals))
-
-                # Final fallbacks
-                if v_min_local is None or np.isnan(v_min_local):
-                    v_min_local = -1.0
-                if v_max_local is None or np.isnan(v_max_local):
-                    v_max_local = 1.0
-                if cmap_local is None:
-                    cmap_local = "seismic"
-
+                min_val, max_val, cmap = get_maxVals(data, ft, met)
+                print(f"\tUsing min_val={min_val}, max_val={max_val}, cmap={cmap}")
+                
                 # Tighten subplot spacing so resulting PNGs align across rows and use available width
                 try:
                     # apply modest tight adjustments to the parent figure so subplots occupy most of the canvas
@@ -1772,10 +1916,11 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                     # use a predictable base name
                     base_save_name = f"tmp_plot_{i}"
                     # showBrain will create a PNG file in tmpdir; call it with save_name/save_pth
+                    
                     _ = showBrain(lh, rh, region,
                             surface, feature_lbl = ft,
                             ipsiTo=ipsiTo, inflated=True,
-                            min_val = v_min_local, max_val = v_max_local, cmap = cmap_local,
+                            min_val = min_val, max_val = max_val, cmap = cmap,
                             save_name = base_save_name, save_pth = tmpdir, verbose = False)
 
                     # find the most recent png written in tmpdir
@@ -1789,9 +1934,9 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                     im = PILImage.open(png_path).convert("RGBA")
                     arr = np.array(im)
                     # Make near-white pixels transparent (tolerance)
-                    r, g, b, a = np.rollaxis(arr, axis=-1)
-                    white_mask = (r >= 250) & (g >= 250) & (b >= 250) & (a >= 250)
-                    arr[white_mask, 3] = 0
+                    #r, g, b, a = np.rollaxis(arr, axis=-1)
+                    #white_mask = (r >= 250) & (g >= 250) & (b >= 250) & (a >= 250)
+                    #arr[white_mask, 3] = 0
                     im = PILImage.fromarray(arr)
 
                     ax.imshow(im)
@@ -1806,10 +1951,13 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
                 finally:
                     # cleanup temporary directory and files
                     try:
-                        shutil.rmtree(tmpdir)
+                        print(f"Calling shutil")
+                        #shutil.rmtree(tmpdir)
                     except Exception:
                         pass
-
+                
+                print(f"shutil call complete")
+            
             # Reduce vertical spacing by manually re-positioning axes to eliminate gaps
             try:
                 left = 0.02
@@ -1842,13 +1990,14 @@ def plotNsurfaces(items, df_names, metrics, lbls, title, ipsiTo=None, save_pth =
 
             if save_pth:
                 if save_name is None:
-                    save_name = f"multiSurface_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
-                out_file = f"{save_pth}/{save_name}.png"
-                # ensure directory exists
-                os.makedirs(save_pth, exist_ok=True)
+                    save_name = f"multiSurfaces"
+                out_name = f"{save_name}_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}"
+                out_file = f"{save_pth}/{out_name}.png"
+                
                 # save with transparent background
                 fig.savefig(out_file, dpi=300, bbox_inches='tight', pad_inches = 0.04, transparent=True)
-                print(f"[plotNsurfaces] Saved: {out_file}")
+                file_size = os.path.getsize(out_file) / (1024 * 1024)  # size in MB
+                print(f"[plotNsurfaces] Saved ({file_size:0.1f} MB): {out_file}")
                 plt.close(fig)
 
             # restore rcParams
@@ -1937,7 +2086,7 @@ def itmToVisual(item, df_name='comps_df_d_ic', metric = 'd_df_z_TLE_ic_ipsiTo-L_
     
     title = title or f"{item.get('study', '3T-7T comp')} {item['label']}"
     
-    v_max, v_min, cmap = get_maxVals(df, df_name, feature, metric)
+    v_max, v_min, cmap = get_maxVals(df, feature, metric)
 
     if v_max is None:
         # Calculate min and max from both lh and rh maps
@@ -1964,7 +2113,7 @@ def showBrain(lh, rh, region = "ctx",
                surface='fsLR-5k', feature_lbl=None, 
                ipsiTo=None, title=None, 
                min_val=-2.5, max_val=2.5, inflated=True, 
-               save_name=None, save_pth=None, cmap="seismic", cbar_pos='bottom',verbose= False
+               save_name=None, save_pth=None, cmap="seismic", cbar_pos='bottom', verbose= False
                ):
     """
     Returns brain figures
@@ -2000,11 +2149,9 @@ def showBrain(lh, rh, region = "ctx",
     elif region in ['hipp', 'hippocampus']:
         hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
 
-    # set wd to save_pth
     if save_pth is not None:
         if not os.path.exists(save_pth):
             os.makedirs(save_pth)
-        os.chdir(save_pth)
 
     if region in ["ctx", "cortex"]:
         if surface == 'fsLR-5k':
@@ -2077,7 +2224,7 @@ def showBrain(lh, rh, region = "ctx",
     lbl_text = {k: str(v) for k, v in lbl_text.items()}
 
     date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-    filename = f"{save_name}_{surface}_{date}.png" if save_name and save_pth else None
+    filename = f"{save_pth}/{save_name}_{surface}_{date}.png" if save_name and save_pth else None
     
     # Plot the surface with a title
     if region == "ctx" or region == "cortex":
@@ -2116,8 +2263,6 @@ def showBrain(lh, rh, region = "ctx",
                                                   labels='hipp', color_bar=cbar_pos, 
                                                   color_range = (min_val,max_val), cmap=cmap, share = True,
                                                   screenshot=True)
-        print("[showBrain] Hippocampus plotting not implemented yet.")
-        return None
 
 
 def vis_item(item, metric, ipsiTo=None, save_pth=None):
@@ -3036,7 +3181,7 @@ def raw2Z_vis(dl, save_path,
             for i, pid in enumerate(df_raw_grp_srt.index):
                 save_name = f"{item_sv_name}_{index}_{i}_{now}"
                 #print(f"\t\t\t{save_name}")
-                
+                title = f"{pid} - {item_txt}"
                 fig_pth = plot_rawToZ(ctrl_fig_ax = ctrl_fig_ax,
                     df_grp = df_raw_grp_srt.loc[pid].values,
                     df_grp_z = df_z_grp_srt.loc[pid].values,
@@ -3064,7 +3209,7 @@ def raw2Z_vis(dl, save_path,
             break
 
 ### Plot % voxels above z-threshold: horizontal bar graph, plotted on surface
-def h_bar_series(s_tT, s_sT, title, save_pth, save_name, xlbl = None, min_val = 0, max_val = 50):
+def h_bar_series(s_tT, s_sT, title, save_pth, save_name, col_7T = "#c0621f", col_3T = "#b89c1f", valAppend = None, xlbl = None, min_val = 0, max_val = 50):
     """
     Horizontal paired-bar plot for two series (3T and 7T) with paired indices like "<base>_<suffix>".
     Both series are plotted together for the same base names; 7T = blue, 3T = red.
@@ -3075,6 +3220,13 @@ def h_bar_series(s_tT, s_sT, title, save_pth, save_name, xlbl = None, min_val = 
         indices of form "base_suffix" where suffix indicates hemisphere ('L','R','left','right','ipsi','contra', etc.)
     save_pth, save_name : save location pieces (function saves PNG)
     min_val, max_val : numeric bounds (used to help determine symmetric plotting range)
+    
+    col_7T, col_3T : str, optional
+        Colors for 7T and 3T bars (default: orange and yellow)
+    valAppend: str, optional
+        String to append to value labels
+    xlbl: str, optional
+        X-axis label
 
     Returns
     -------
@@ -3086,6 +3238,16 @@ def h_bar_series(s_tT, s_sT, title, save_pth, save_name, xlbl = None, min_val = 
     import datetime
     import os
     from matplotlib.patches import Patch
+
+    # save matplotlib defaults
+    _state = {}
+    _state['mpl_backend'] = plt.get_backend()
+    _state['mpl_rc'] = plt.rcParams.copy()
+
+    # change global defaults for this plot
+    plt.rcParams['savefig.facecolor'] = 'none' 
+    plt.rcParams['savefig.edgecolor'] = 'none'
+
 
     # validate inputs
     if not isinstance(s_tT, pd.Series) or not isinstance(s_sT, pd.Series):
@@ -3159,12 +3321,24 @@ def h_bar_series(s_tT, s_sT, title, save_pth, save_name, xlbl = None, min_val = 
     n = df_pairs.shape[0]
     height = max(4, int(n * 0.45) + 1)
     fig, ax = plt.subplots(figsize=(10, height))
+    
+     # make figure/axes background transparent
+    try:
+        fig.patch.set_alpha(0.0)
+        fig.patch.set_facecolor('none')
+    except Exception:
+        pass
+    try:
+        ax.patch.set_alpha(0.0)
+        ax.set_facecolor('none')
+    except Exception:
+        pass
 
     y = np.arange(n)
     # offsets so 7T and 3T bars don't perfectly overlap vertically
     offset = 0.18
-    y7 = y - offset
-    y3 = y + offset
+    y7 = y + offset
+    y3 = y - offset
     bar_h = 0.36
 
     # plotting bounds (symmetric around zero)
@@ -3181,86 +3355,145 @@ def h_bar_series(s_tT, s_sT, title, save_pth, save_name, xlbl = None, min_val = 
     xmin = -max_bound
     xmax = max_bound
 
-    # colors
-    col7 = '#1f77b4'  # blue
-    col3 = '#d62728'  # red
-    def col_for(v, base_col):
-        # keep base_col color but allow tinting if needed; sign-based tinting not required here
-        return base_col
-
     # magnitudes for plotting (bars extend from 0 towards +ve on each side; left bars drawn as negative widths)
     left7_vals = np.abs(df_pairs['left7'].values.astype(float))
     right7_vals = np.abs(df_pairs['right7'].values.astype(float))
     left3_vals = np.abs(df_pairs['left3'].values.astype(float))
     right3_vals = np.abs(df_pairs['right3'].values.astype(float))
 
-    # draw bars: 7T then 3T (so 3T overlays slightly on top)
-    bars7_L = ax.barh(y7, -left7_vals, height=bar_h, color=col7, edgecolor='k', align='center', label='7T (ipsi)')
-    bars7_R = ax.barh(y7, right7_vals, height=bar_h, color=col7, edgecolor='k', align='center', label='7T (contra)')
+    # draw 3T bars first (bottom layer) with no edge color/linewidth
+    bars3_L = ax.barh(y3, -left3_vals, height=bar_h, color=col_3T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='3T (ipsi)', zorder=1)
+    bars3_R = ax.barh(y3, right3_vals, height=bar_h, color=col_3T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='3T (contra)', zorder=1)
 
-    bars3_L = ax.barh(y3, -left3_vals, height=bar_h, color=col3, edgecolor='k', align='center', label='3T (ipsi)')
-    bars3_R = ax.barh(y3, right3_vals, height=bar_h, color=col3, edgecolor='k', align='center', label='3T (contra)')
+    # draw 7T bars after (top layer) so they appear above 3T, also no edge color/linewidth
+    bars7_L = ax.barh(y7, -left7_vals, height=bar_h, color=col_7T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='7T (ipsi)', zorder=2)
+    bars7_R = ax.barh(y7, right7_vals, height=bar_h, color=col_7T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='7T (contra)', zorder=2)
 
-    # central base labels at midline
+    # Move parcel/base labels to left side (outside plotting area)
+    # Reserve left margin so labels are visible
+    fig.subplots_adjust(left=0.01)
+    # compute data y-limits to map to axes fraction
+    y_min_data = y.min() - 0.5
+    y_max_data = y.max() + 0.5
+    y_span = y_max_data - y_min_data if (y_max_data - y_min_data) != 0 else 1.0
+
     for i, base in enumerate(df_pairs['base']):
-        ax.text(0, y[i], str(base).upper(), ha='center', va='center', fontsize=9, fontweight='bold', color='black')
+        # convert data y to axis fraction
+        y_frac = (y[i] - y_min_data) / y_span
+        # place text at small x offset inside axes (left side)
+        ax.text(0.01, y_frac, str(base).upper(), ha='left', va='center', fontsize=9, transform=ax.transAxes)
 
     # numeric annotations near inner edge (towards midline)
     inner_offset = 0.01 * (xmax - xmin)
-    # helper to annotate bars
-    # Annotate values OUTSIDE the bars (left values to the left of the bar, right values to the right)
+   
+    # Annotate bars
+    def fmt_val(v):
+        if np.isnan(v):
+            return "--"
+        try:
+            return str(int(round(float(v))))
+        except Exception:
+            return str(v)
+
     for b, val in zip(bars7_L, df_pairs['left7']):
-        y_center = b.get_y() + b.get_height()/2
-        outer = b.get_x() + b.get_width() - inner_offset  # left bar: annotate left of bar
-        ax.text(outer - 2*inner_offset, y_center, f"{val:.1f}", ha='right', va='center', fontsize=8, color='black', fontweight='bold')
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer - 2 * inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='right', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer - 2 * inner_offset, y_center, fmt_val(val), ha='right', va='center', fontsize=8, color='black')
+    
     for b, val in zip(bars3_L, df_pairs['left3']):
-        y_center = b.get_y() + b.get_height()/2
-        outer = b.get_x() + b.get_width() - inner_offset
-        ax.text(outer - 2*inner_offset, y_center, f"{val:.1f}", ha='right', va='center', fontsize=8, color='black', fontweight='bold')
-
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer - 2 * inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='right', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer - 2 * inner_offset, y_center, fmt_val(val), ha='right', va='center', fontsize=8, color='black')
+        
     for b, val in zip(bars7_R, df_pairs['right7']):
-        y_center = b.get_y() + b.get_height()/2
-        outer = b.get_x() + b.get_width() + inner_offset  # right bar: annotate right of bar
-        ax.text(outer + 2*inner_offset, y_center, f"{val:.1f}", ha='left', va='center', fontsize=8, color='black', fontweight='bold')
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer + 2*inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='left', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer + 2* inner_offset, y_center, fmt_val(val), ha='left', va='center', fontsize=8, color='black')
+        
     for b, val in zip(bars3_R, df_pairs['right3']):
-        y_center = b.get_y() + b.get_height()/2
-        outer = b.get_x() + b.get_width() + inner_offset
-        ax.text(outer + 2*inner_offset, y_center, f"{val:.1f}", ha='left', va='center', fontsize=8, color='black', fontweight='bold')
-
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer + 2* inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='left', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer + 2* inner_offset, y_center, fmt_val(val), ha='left', va='center', fontsize=8, color='black')
+    
     # aesthetics
     ax.set_yticks([])
-    ax.axvline(0, color='k', linewidth=1)
-    ax.set_xlim(xmin * 1.05, xmax * 1.05)
+    ax.axvline(0, color='k', linewidth=0.8, linestyle='--')
+    # extend axis limits by 20% but keep ticks based on the original max_bound
+    ax.set_xlim(xmin * 1.4, xmax * 1.4)
     xticks = np.linspace(xmin, xmax, 5)
     ax.set_xticks(xticks)
     ax.set_xticklabels([f"{abs(t):.0f}" if t != 0 else "0" for t in xticks], fontsize=10)
+
+    # remove L, R and top borders of plot 
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
 
     # xlabel from series name if available
     xlabel = (xlbl if xlbl is not None else "% vertices above threshold")
     ax.set_xlabel(xlabel)
 
     # IPSI / CONTRA labels below x-axis
-    ax.text(0.25, -0.12, "IPSI", transform=ax.transAxes, ha='left', va='top', fontsize=12, fontweight='bold')
-    ax.text(0.75, -0.12, "CONTRA", transform=ax.transAxes, ha='right', va='top', fontsize=12, fontweight='bold')
+    ax.text(0.25, -0.12, "IPSI", transform=ax.transAxes, ha='center', va='top', fontsize=12)
+    ax.text(0.75, -0.12, "CONTRA", transform=ax.transAxes, ha='center', va='top', fontsize=12)
 
     ax.set_title(title if title is not None else "Horizontal bar series")
+    
     # legend (single combined legend)
-    handles = [Patch(facecolor=col7, edgecolor='k', label='7T'),
-               Patch(facecolor=col3, edgecolor='k', label='3T')]
-    ax.legend(handles=handles, loc='upper right')
-
+    handles = [Patch(facecolor=col_7T, edgecolor='none', label='7T'),
+               Patch(facecolor=col_3T, edgecolor='none', label='3T')]
+    leg = ax.legend(handles=handles, loc='lower right', frameon=False)
+    try: # ensure legend frame is fully transparent
+        if leg is not None and leg.get_frame() is not None:
+            leg.get_frame().set_facecolor('none')
+            leg.get_frame().set_edgecolor('none')
+            leg.get_frame().set_alpha(0.0)
+    except Exception:
+        pass
     fig.tight_layout()
 
     # save
     now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
     os.makedirs(save_pth, exist_ok=True)
     name = f"{save_pth}/{save_name}_{now}.png"
-    fig.savefig(name, dpi=300, bbox_inches='tight')
+    fig.savefig(name, dpi=300, bbox_inches='tight', transparent=True, facecolor='none', edgecolor='none')
     file_size = os.path.getsize(name) / 1e6
     
     print(f"\t[h_bar_series] Saved ({file_size:0.2f} MB): {name}")
+    plt.close('all')
+    # restore global defaults
+    try:
+        plt.rcParams.update(_state['mpl_rc'])
+    except Exception:
+        pass
+    try:
+        plt.use(_state['mpl_backend'])
+    except Exception:
+        # backend change may be disallowed after import; ignore if it fails
+        pass
     
-    return 
+    return name
 
 def nToPer(df, num, denom, decimal = True):
     """
@@ -3292,7 +3525,7 @@ def nToPer(df, num, denom, decimal = True):
 
     return perc
 
-def percentXtremeVrtxPerParc_vis(dl,grp, key_df_ctx, key_df_hip, numerator, denominator, save_path, test = False):
+def percentXtremeVrtxPerParc_vis(dl, grp, key_df_ctx, key_df_hip, numerator, denominator, save_path, col_7T = "#c0621f", col_3T = "#b89c1f", test = False):
     """
 
     Input:
@@ -3313,6 +3546,14 @@ def percentXtremeVrtxPerParc_vis(dl,grp, key_df_ctx, key_df_hip, numerator, deno
         denominator: str
             key for dataframe with total number of vertices per parcel
         save_path: str
+
+        pdf_outPth: str
+            If not none, merge pngs to pdf and save pdfs into dir
+        cleanup: bool
+            If True and merging to pdfs, will delete individual pngs after merging to pdf
+
+        col_7T, col_3T: str
+            Colors for 7T and 3T bars (default: orange and yellow)
         
     """
     import tTsTGrpUtils as tsutil
@@ -3320,14 +3561,18 @@ def percentXtremeVrtxPerParc_vis(dl,grp, key_df_ctx, key_df_hip, numerator, deno
 
     skip_idx = []
     counter = 0
-    print(f"\n[percentXtremeVrtxPerParc_vis] Group: {grp}, Numerator: {numerator}, Denominator: {denominator}")
-    print(f"Saving plots to: {save_path}")
+    #print(f"\n[percentXtremeVrtxPerParc_vis] Group: {grp}, Numerator: {numerator}, Denominator: {denominator}")
+    #print(f"Saving plots to: {save_path}")
     for idx in range(len(dl)):
+        
         if idx in skip_idx:
             continue
-        item = dl[idx]
+        else:
+            skip_idx.append(idx)
+                       
         # find paired item for other study
-        idx_other = tsutil.get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth', 'parcellation'], skip_idx=[idx])
+        idx_other = tsutil.get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], skip_idx=skip_idx)
+        
         if idx_other is None:
             continue
         else:
@@ -3348,27 +3593,97 @@ def percentXtremeVrtxPerParc_vis(dl,grp, key_df_ctx, key_df_hip, numerator, deno
         elif region == "cortex":
             key_df = key_df_ctx
 
-        df_tT = tsutil.loadPickle(item_tT[key_df])
-        df_sT = tsutil.loadPickle(item_sT[key_df])
+        df_tT = tsutil.loadPickle(item_tT[key_df], verbose=False)
+        df_sT = tsutil.loadPickle(item_sT[key_df], verbose=False)
         
         thresh_tT = df_tT.loc['z_thresh'].values[0]
         thresh_sT = df_sT.loc['z_thresh'].values[0]
         assert thresh_tT == thresh_sT, "Z-thresholds do not match between studies"
         thresh_lbl = str(df_tT.loc['z_thresh'].values[0]).replace('.', 'p')
 
-        save_name = f"{idx}-{idx_other}_{item_tT['region']}_{item_tT['feature']}_{item_tT['label']}_{item_tT['smth']}mm_stat-{numerator}_lobes_zThr-{thresh_lbl}_{grp}"
+        save_name = f"{idx}-{idx_other}_{item_tT['region']}_{item_tT['feature']}_{item_tT['label']}_{item_tT['smth']}mm_stat-{numerator}_zThr-{thresh_lbl}_{grp}"
+        
         if test:
             save_name = "TEST_" + save_name
+
         per_tT = nToPer(df_tT, numerator, denominator, decimal = False)
         per_sT = nToPer(df_sT, numerator, denominator, decimal = False)
-        h_bar_series(per_tT, per_sT, title= title, xlbl = f"{numerator} % vertices with |z| > {thresh_tT:0.1f}",
-                                    save_pth = save_path, 
+        
+        if region == "hippocampus":
+            # remove cols with name 'Clear Label"
+            per_tT = per_tT[~per_tT.index.str.contains('Clear Label')]
+            per_sT = per_sT[~per_sT.index.str.contains('Clear Label')]
+
+        if 'n_pts' in numerator: 
+            thresh_nVrtx_tT = df_tT.loc['z_thresh_vrtx'].values[0]
+            thresh_nVrtx_sT = df_sT.loc['z_thresh_vrtx'].values[0]
+            assert thresh_nVrtx_tT == thresh_nVrtx_sT, "Vertex thresholds do not match between studies"
+            xlbl = f"% patients with ≥{thresh_nVrtx_tT} vertices with |z| > {thresh_tT:0.1f}"
+            valAppend = "%"
+            min_val = 0
+            max_val = 100
+        else:
+            xlbl = f"{numerator} % of vertices with |z| > {thresh_tT:0.1f}"
+            valAppend = "%"
+            min_val = 0
+            max_val = 50
+
+        pth = h_bar_series(per_tT, per_sT, title= title, xlbl = xlbl, col_7T = col_7T, col_3T=col_3T,
+                                    save_pth = save_path, valAppend = valAppend,
                                     save_name = save_name,
-                                    min_val = 0, max_val = 50)
+                                    min_val = min_val, max_val = max_val)
+        
         
         if test and counter == 1:
             print("Test mode: breaking after 2 pairs")
             break
+
+    
+
+def pdf_percXtremeVrtx(dl, nums, key_df_ctx, key_df_hip, fig_dir, pdf_svPth, cleanup=True, verbose=False):
+    """
+    Merge pngs from pdf_percXtremeVrtx to pdfs
+    """
+    
+    import tTsTGrpUtils as tsutil
+    skip_idx = []
+    for num in nums:
+        for idx, itm in enumerate(dl):
+            if idx in skip_idx:
+                continue
+            else:
+                skip_idx.append(idx)
+                        
+            # find paired item for other study
+            idx_other = tsutil.get_pair(dl, idx = idx, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], skip_idx=skip_idx)
+            
+            if idx_other is None:
+                continue
+            else:
+                skip_idx += [idx, idx_other]
+
+            tT_idx, sT_idx = tsutil.determineStudy(dl, idx, idx_other, study_key = 'study')
+            item_tT = dl[tT_idx]
+            item_sT = dl[sT_idx]
+            region = item_tT['region']
+            
+            if region == "hippocampus":
+                key_df = key_df_hip
+            elif region == "cortex":
+                key_df = key_df_ctx
+
+            df_tT = tsutil.loadPickle(item_tT[key_df], verbose=False)
+            df_sT = tsutil.loadPickle(item_sT[key_df], verbose=False)
+            
+            thresh_tT = df_tT.loc['z_thresh'].values[0]
+            thresh_sT = df_sT.loc['z_thresh'].values[0]
+            assert thresh_tT == thresh_sT, "Z-thresholds do not match between studies"
+            thresh_lbl = str(df_tT.loc['z_thresh'].values[0]).replace('.', 'p')
+
+            ptrn = f"{idx}-{idx_other}_{item_tT['region']}_{item_tT['feature']}_{item_tT['label']}_{item_tT['smth']}mm_stat-{num}_zThr-{thresh_lbl}"
+            
+            pngs2pdf(fig_dir = fig_dir, output = pdf_svPth, ptrn = ptrn, cleanup=cleanup, verbose= verbose)
+
 
 ### Within study Z-score distribution to Cohen's D
 def z2D_vis(dl, save_path,
@@ -3404,8 +3719,8 @@ def z2D_vis(dl, save_path,
         # find pair
         if i in skip_idx:
             continue
-
-        idx_other = tsutil.get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth', 'parcellation'], skip_idx=[i])
+        
+        idx_other = tsutil.get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], skip_idx=skip_idx)
         if idx_other is None:
             continue
         else:
