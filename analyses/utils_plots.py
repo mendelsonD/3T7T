@@ -2224,11 +2224,11 @@ def showBrain(lh, rh, region = "ctx",
     lbl_text = {k: str(v) for k, v in lbl_text.items()}
 
     date = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
-    filename = f"{save_pth}/{save_name}_{surface}_{date}.png" if save_name and save_pth else None
+    filename = f"{save_pth}/{save_name}_{date}.png" if save_name and save_pth else None
     
     # Plot the surface with a title
     if region == "ctx" or region == "cortex":
-        data = np.hstack(np.concatenate([lh, rh], axis=0))
+        data = np.hstack([lh, rh])
         if filename : 
             if verbose:
                 print(f"[showBrain] Cortical plot saved to {filename}")
@@ -3494,6 +3494,396 @@ def h_bar_series(s_tT, s_sT, title, save_pth, save_name, col_7T = "#c0621f", col
         pass
     
     return name
+
+
+def dDif_bar_vis(dl, key_df, key_metrics, save_path, test = False):
+    """
+    Input:
+        dl: list
+            list of dictionary items with:
+                key_df_ctx or key_df_hip: vertex-wise dataframe
+                region: region to determine type of parcellation
+                surf: surface type (e.g., 'fsLR-32k', 'den-0p5mm')
+                group: group label ('TLE_ic', 'TLE_L', 'TLE_R', 'ctrl')
+        key_df: str
+            Key for dataframe with statistics regarding number of atypical vertices per parcel/lobe for cortical or hippocampal data
+        key_metrics: list of str
+            List of index names in df to plot
+        colours: list [of len(key_metrics)]
+            List of colors for each metric in key_metrics
+        save_path: str
+
+        test: bool
+            If True, only process first two items for testing purposes
+        
+    """
+    import tTsTGrpUtils as tsutil
+    import pandas as pd
+    # TODO. COMPLETE rework
+    counter = 0
+    #print(f"\n[percentXtremeVrtxPerParc_vis] Group: {grp}, Numerator: {numerator}, Denominator: {denominator}")
+    #print(f"Saving plots to: {save_path}")
+    for idx in range(len(dl)):
+        
+        counter += 1
+
+        if counter % 10 == 0:
+            print(f"Progress: {counter} pairs of {len(dl)//2}")
+
+        df = idx.get(key_df, None)
+        if df is None:
+            print(f"\tKey not found in item at index {idx}: {key_df}. Skipping.")
+            continue
+        elif isinstance(df, str):
+            df = tsutil.loadPickle(df, verbose=False)
+        elif not isinstance(df, pd.DataFrame):
+            print(f"\tKey value is not a DataFrame or pickle path in item at index {idx}: {key_df}. Is of type `{type(df)}`. Skipping.")
+            continue
+        
+        df = df[key_metrics] # extract indices of interest
+
+        surf = idx.get('surf', None)
+        region = idx.get('region', None)
+        feature = idx.get('feature', None)
+        label = idx.get('label', None)
+        smth = idx.get('smth', None)
+        
+        title = tsutil.printItemMetadata(idx, printStudy=False, return_txt=True)
+
+        if '_ic' in key_df:
+            ipsiTo = idx.get('ipsiTo', None)
+        else:
+            ipsiTo = None
+        if region in ['ctx', 'cortex']: # hard code the parcellations           
+            df_parc = tsutil.apply_glasser(df = df, surf = surf, labelType = 'longlobe', addHemiLbl = True, ipsiTo = ipsiTo)
+            df_parc = df_parc[~df_parc.column.str.contains('0')]
+
+        elif region in ['hip', 'hippocampus']:
+            df_parc = tsutil.apply_DK25(df =df, surf = surf, ipsiTo = ipsiTo)
+            df_parc = df_parc[~df_parc.column.str.contains('Clear Label')]
+        else:
+            print(f"\tUnknown region type in item at index {idx}: {region}. Skipping.")
+            continue
+
+        save_name = f"{idx}-{region}_{feature}_{surf}_{label}_{smth}mm_{key_df}"
+        
+        if test:
+            save_name = "TEST_" + save_name
+        
+        ####### didnt update below
+
+        if 'n_pts' in numerator: 
+            thresh_nVrtx_tT = df_tT.loc['z_thresh_vrtx'].values[0]
+            thresh_nVrtx_sT = df_sT.loc['z_thresh_vrtx'].values[0]
+            assert thresh_nVrtx_tT == thresh_nVrtx_sT, "Vertex thresholds do not match between studies"
+            xlbl = f"% patients with ≥{thresh_nVrtx_tT} vertices with |z| > {thresh_tT:0.1f}"
+            valAppend = "%"
+            min_val = 0
+            max_val = 100
+        else:
+            xlbl = f"{numerator} % of vertices with |z| > {thresh_tT:0.1f}"
+            valAppend = "%"
+            min_val = 0
+            max_val = 50
+
+        pth = h_bar_series(per_tT, per_sT, title= title, xlbl = xlbl, col_7T = col_7T, col_3T=col_3T,
+                                    save_pth = save_path, valAppend = valAppend,
+                                    save_name = save_name,
+                                    min_val = min_val, max_val = max_val)
+        
+        
+        if test and counter == 1:
+            print("Test mode: breaking after 2 pairs")
+            break
+
+def h_bar_dDif(df, metrics, title, save_pth, save_name, col_7T = "#c0621f", col_3T = "#b89c1f", valAppend = None, xlbl = None, min_val = 0, max_val = 50):
+    """
+    Horizontal paired-bar plot for two series (3T and 7T) with paired indices like "<base>_<suffix>".
+    Both series are plotted together for the same base names; 7T = blue, 3T = red.
+
+    Inputs
+    ------
+    df: pd.DataFrame
+        Metrics as index names by number of vertices in surface
+    s_tT, s_sT : pd.Series
+        indices of form "base_suffix" where suffix indicates hemisphere ('L','R','left','right','ipsi','contra', etc.)
+    save_pth, save_name : save location pieces (function saves PNG)
+    min_val, max_val : numeric bounds (used to help determine symmetric plotting range)
+    
+    col_7T, col_3T : str, optional
+        Colors for 7T and 3T bars (default: orange and yellow)
+    valAppend: str, optional
+        String to append to value labels
+    xlbl: str, optional
+        X-axis label
+
+    Returns
+    -------
+    fig, ax
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import pandas as pd
+    import datetime
+    import os
+    from matplotlib.patches import Patch
+
+    # save matplotlib defaults
+    _state = {}
+    _state['mpl_backend'] = plt.get_backend()
+    _state['mpl_rc'] = plt.rcParams.copy()
+
+    # change global defaults for this plot
+    plt.rcParams['savefig.facecolor'] = 'none' 
+    plt.rcParams['savefig.edgecolor'] = 'none'
+
+
+    # validate inputs
+    if not isinstance(s_tT, pd.Series) or not isinstance(s_sT, pd.Series):
+        raise ValueError("series3 and series7 must be pandas Series")
+
+    # helper: parse series into mapping base -> {role: value}
+    def parse_series(s):
+        mapping = {}
+        names = list(s.index)
+        for n in names:
+            if not isinstance(n, str) or len(n.split('_')) != 2:
+                continue
+            base, suf = n.rsplit('_', 1)
+            s0 = str(suf).lower()
+            # normalize role
+            if s0 in ('l', 'left', 'lh'):
+                role = 'L'
+            elif s0 in ('r', 'right', 'rh'):
+                role = 'R'
+            elif s0 in ('ipsi', 'ipsilateral'):
+                role = 'ipsi'
+            elif s0 in ('contra', 'contralateral'):
+                role = 'contra'
+            else:
+                role = s0
+            try:
+                val = float(s.loc[n])
+            except Exception:
+                val = np.nan
+            mapping.setdefault(base, {})[role] = val
+        return mapping
+
+    map3 = parse_series(s_tT)
+    map7 = parse_series(s_sT)
+
+    # union of bases
+    bases = sorted(set(list(map3.keys()) + list(map7.keys())))
+
+    rows = []
+    for base in bases:
+        d3 = map3.get(base, {})
+        d7 = map7.get(base, {})
+        # resolve left/right for each study, prefer ipsi/contra mapping if present else L/R
+        def resolve_side(d):
+            if 'ipsi' in d or 'contra' in d:
+                left = d.get('ipsi', np.nan)
+                right = d.get('contra', np.nan)
+                if pd.isna(left):
+                    left = d.get('L', d.get('l', np.nan))
+                if pd.isna(right):
+                    right = d.get('R', d.get('r', np.nan))
+            else:
+                left = d.get('L', d.get('l', np.nan))
+                right = d.get('R', d.get('r', np.nan))
+            left_val = float(left) if not pd.isna(left) else 0.0
+            right_val = float(right) if not pd.isna(right) else 0.0
+            return left_val, right_val
+
+        left3, right3 = resolve_side(d3)
+        left7, right7 = resolve_side(d7)
+        rows.append({'base': base, 'left3': left3, 'right3': right3, 'left7': left7, 'right7': right7})
+
+    df_pairs = pd.DataFrame(rows)
+    if df_pairs.empty:
+        raise ValueError("No paired rows found after parsing series")
+
+    # sorting by max absolute across both studies/sides
+    df_pairs['absmax'] = df_pairs[['left3','right3','left7','right7']].abs().max(axis=1)
+    df_pairs = df_pairs.sort_values('absmax', ascending=True).reset_index(drop=True)
+
+    n = df_pairs.shape[0]
+    height = max(4, int(n * 0.45) + 1)
+    fig, ax = plt.subplots(figsize=(10, height))
+    
+     # make figure/axes background transparent
+    try:
+        fig.patch.set_alpha(0.0)
+        fig.patch.set_facecolor('none')
+    except Exception:
+        pass
+    try:
+        ax.patch.set_alpha(0.0)
+        ax.set_facecolor('none')
+    except Exception:
+        pass
+
+    y = np.arange(n)
+    # offsets so 7T and 3T bars don't perfectly overlap vertically
+    offset = 0.18
+    y7 = y + offset
+    y3 = y - offset
+    bar_h = 0.36
+
+    # plotting bounds (symmetric around zero)
+    all_abs = np.nanmax(np.abs(df_pairs[['left3','right3','left7','right7']].values))
+    try:
+        usr_min = float(min_val)
+    except Exception:
+        usr_min = 0.0
+    try:
+        usr_max = float(max_val)
+    except Exception:
+        usr_max = 0.0
+    max_bound = max(all_abs if not np.isnan(all_abs) else 0.0, abs(usr_min), abs(usr_max), 1e-6)
+    xmin = -max_bound
+    xmax = max_bound
+
+    # magnitudes for plotting (bars extend from 0 towards +ve on each side; left bars drawn as negative widths)
+    left7_vals = np.abs(df_pairs['left7'].values.astype(float))
+    right7_vals = np.abs(df_pairs['right7'].values.astype(float))
+    left3_vals = np.abs(df_pairs['left3'].values.astype(float))
+    right3_vals = np.abs(df_pairs['right3'].values.astype(float))
+
+    # draw 3T bars first (bottom layer) with no edge color/linewidth
+    bars3_L = ax.barh(y3, -left3_vals, height=bar_h, color=col_3T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='3T (ipsi)', zorder=1)
+    bars3_R = ax.barh(y3, right3_vals, height=bar_h, color=col_3T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='3T (contra)', zorder=1)
+
+    # draw 7T bars after (top layer) so they appear above 3T, also no edge color/linewidth
+    bars7_L = ax.barh(y7, -left7_vals, height=bar_h, color=col_7T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='7T (ipsi)', zorder=2)
+    bars7_R = ax.barh(y7, right7_vals, height=bar_h, color=col_7T,
+                      edgecolor='none', linewidth=0, align='center',
+                      label='7T (contra)', zorder=2)
+
+    # Move parcel/base labels to left side (outside plotting area)
+    # Reserve left margin so labels are visible
+    fig.subplots_adjust(left=0.01)
+    # compute data y-limits to map to axes fraction
+    y_min_data = y.min() - 0.5
+    y_max_data = y.max() + 0.5
+    y_span = y_max_data - y_min_data if (y_max_data - y_min_data) != 0 else 1.0
+
+    for i, base in enumerate(df_pairs['base']):
+        # convert data y to axis fraction
+        y_frac = (y[i] - y_min_data) / y_span
+        # place text at small x offset inside axes (left side)
+        ax.text(0.01, y_frac, str(base).upper(), ha='left', va='center', fontsize=9, transform=ax.transAxes)
+
+    # numeric annotations near inner edge (towards midline)
+    inner_offset = 0.01 * (xmax - xmin)
+   
+    # Annotate bars
+    def fmt_val(v):
+        if np.isnan(v):
+            return "--"
+        try:
+            return str(int(round(float(v))))
+        except Exception:
+            return str(v)
+
+    for b, val in zip(bars7_L, df_pairs['left7']):
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer - 2 * inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='right', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer - 2 * inner_offset, y_center, fmt_val(val), ha='right', va='center', fontsize=8, color='black')
+    
+    for b, val in zip(bars3_L, df_pairs['left3']):
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer - 2 * inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='right', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer - 2 * inner_offset, y_center, fmt_val(val), ha='right', va='center', fontsize=8, color='black')
+        
+    for b, val in zip(bars7_R, df_pairs['right7']):
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer + 2*inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='left', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer + 2* inner_offset, y_center, fmt_val(val), ha='left', va='center', fontsize=8, color='black')
+        
+    for b, val in zip(bars3_R, df_pairs['right3']):
+        y_center = b.get_y() + b.get_height() / 2
+        outer = b.get_x() + b.get_width()
+        if valAppend:
+            ax.text(outer + 2* inner_offset, y_center, f"{fmt_val(val)}{valAppend}", ha='left', va='center', fontsize=8, color='black')
+        else:
+            ax.text(outer + 2* inner_offset, y_center, fmt_val(val), ha='left', va='center', fontsize=8, color='black')
+    
+    # aesthetics
+    ax.set_yticks([])
+    ax.axvline(0, color='k', linewidth=0.8, linestyle='--')
+    # extend axis limits by 20% but keep ticks based on the original max_bound
+    ax.set_xlim(xmin * 1.4, xmax * 1.4)
+    xticks = np.linspace(xmin, xmax, 5)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels([f"{abs(t):.0f}" if t != 0 else "0" for t in xticks], fontsize=10)
+
+    # remove L, R and top borders of plot 
+    ax.spines['left'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+
+    # xlabel from series name if available
+    xlabel = (xlbl if xlbl is not None else "% vertices above threshold")
+    ax.set_xlabel(xlabel)
+
+    # IPSI / CONTRA labels below x-axis
+    ax.text(0.25, -0.12, "IPSI", transform=ax.transAxes, ha='center', va='top', fontsize=12)
+    ax.text(0.75, -0.12, "CONTRA", transform=ax.transAxes, ha='center', va='top', fontsize=12)
+
+    ax.set_title(title if title is not None else "Horizontal bar series")
+    
+    # legend (single combined legend)
+    handles = [Patch(facecolor=col_7T, edgecolor='none', label='7T'),
+               Patch(facecolor=col_3T, edgecolor='none', label='3T')]
+    leg = ax.legend(handles=handles, loc='lower right', frameon=False)
+    try: # ensure legend frame is fully transparent
+        if leg is not None and leg.get_frame() is not None:
+            leg.get_frame().set_facecolor('none')
+            leg.get_frame().set_edgecolor('none')
+            leg.get_frame().set_alpha(0.0)
+    except Exception:
+        pass
+    fig.tight_layout()
+
+    # save
+    now = datetime.datetime.now().strftime("%d%b%Y-%H%M%S")
+    os.makedirs(save_pth, exist_ok=True)
+    name = f"{save_pth}/{save_name}_{now}.png"
+    fig.savefig(name, dpi=300, bbox_inches='tight', transparent=True, facecolor='none', edgecolor='none')
+    file_size = os.path.getsize(name) / 1e6
+    
+    print(f"\t[h_bar_series] Saved ({file_size:0.2f} MB): {name}")
+    plt.close('all')
+    # restore global defaults
+    try:
+        plt.rcParams.update(_state['mpl_rc'])
+    except Exception:
+        pass
+    try:
+        plt.use(_state['mpl_backend'])
+    except Exception:
+        # backend change may be disallowed after import; ignore if it fails
+        pass
+    
+    return name
+
 
 def nToPer(df, num, denom, decimal = True):
     """

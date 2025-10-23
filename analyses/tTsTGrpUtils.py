@@ -598,7 +598,7 @@ def get_surf_pth(root, sub, ses, lbl, space="nativepro", surf="fsLR-32k", verbos
     input:
         root: root directory of study derivative of interest (ie. study's micapipe or hippunfold root directory)
         sub: subject ID (no `sub-` prefix)
-        ses: session ID (with leading zero if applicable; no `ses-` prefix)
+        ses: session ID (with leading zero if applicable; no `ses-` prefix)h
         res: surface type and resolution (e.g., "fsLR-32k", "fsLR-5k", "0p5mm")
         lbl: surface label (e.g., "white", "pial", "midthickness", "hipp_inner", "hipp_outer)
     """
@@ -4826,20 +4826,27 @@ def btwD(dl, save_pth_df, koi = ['df_maps_z'],
         logger.info(f"Comparing D-scores between studies for {len(dl_iterate)} dictionary items.\n")
 
         comps = []
-        skip_idx = []
         counter = 0
-
+        skip_idx = []
         for i, item in enumerate(dl_iterate):
             counter += 1
             if counter % 10 == 0:
                 print(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} : Processing {counter} of {len(dl_iterate)}...")
             
-            if i in skip_idx:
-                continue
-            else:
-                skip_idx.append(i)
+            if item.get('study', None) in ['PNI', '7T']:
+                if i in skip_idx:
+                    continue # already processed as pair
+                else:
+                    skip_idx += [i]
+            
+            if item.get('downsampledRes', None) != 'native':
+                difdsRes = True
+            else: # res of pair must match
+                difdsRes = False
+                pass
                        
-            idx_other = get_pair(dl_iterate, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], skip_idx=skip_idx)
+            idx_other = get_pair(dl, idx = i, mtch=['region', 'surf', 'label', 'feature', 'smth', 'downsampledRes'], difdsRes=difdsRes, difStudy=True)
+            
             if idx_other is None:
                 logger.info(f"\tNo matching index found. Skipping.")
                 continue
@@ -4853,10 +4860,12 @@ def btwD(dl, save_pth_df, koi = ['df_maps_z'],
             
             txt_tT = printItemMetadata(item, idx=index, return_txt=True)
             txt_sT = printItemMetadata(dl_iterate[idx_other], idx=index_other, return_txt=True)
-            logger.info(f"{txt_tT}\t{txt_sT}")
+            logger.info(f"\n{txt_tT}\n{txt_sT}")
 
             # identify which study is which (to know how to subtract)
             tT_idx, sT_idx = determineStudy(dl_iterate, i, idx_other, study_key = 'study')
+
+            skip_idx += [sT_idx] # NOTE. Assumes that only 7T images are downsampled 
 
             item_tT = dl_iterate[tT_idx]
             item_sT = dl_iterate[sT_idx]
@@ -4870,7 +4879,6 @@ def btwD(dl, save_pth_df, koi = ['df_maps_z'],
                 item_sT = item
             """
 
-            
             # Initialize output item
             out_item = {
                     'studies': (item_tT['study'], item_sT['study']),
@@ -4879,7 +4887,8 @@ def btwD(dl, save_pth_df, koi = ['df_maps_z'],
                     'surf': item_tT['surf'],
                     'label': item_tT['label'],
                     'smth': item_tT['smth'],
-                    'parcellation': item_tT.get('parcellation', None)
+                    'parcellation': [item_tT.get('parcellation', None), item_sT.get('parcellation', None)],
+                    'downsampledRes': [item_tT.get('downsampledRes', None), item_sT.get('downsampledRes', None)]
                 }
         
             # if df_z and df_w are None, skip
@@ -5751,9 +5760,10 @@ def apply_midMask(lh, rh, surf):
     addR = False
 
     if seriesL:
-        if lh.index[0].endswith('_L'):
-            addL = True
-            lh.index = [col.replace('_L', '') for col in lh.index]
+        if isinstance(lh.index[0], str):
+            if lh.index[0].endswith('_L'):
+                addL = True
+                lh.index = [col.replace('_L', '') for col in lh.index]
         
         lh.iloc[mid_vrtx_lh] = np.nan
 
@@ -5761,9 +5771,10 @@ def apply_midMask(lh, rh, surf):
             lh.index = [str(col) + '_L' for col in lh.index]
 
     else:
-        if lh.columns[0].endswith('_L'):
-            addL = True
-            lh.columns = [col.replace('_L', '') for col in lh.columns]
+        if isinstance(lh.index[0], str):
+            if lh.columns[0].endswith('_L'):
+                addL = True
+                lh.columns = [col.replace('_L', '') for col in lh.columns]
 
         lh.iloc[:, mid_vrtx_lh] = np.nan
 
@@ -5771,17 +5782,20 @@ def apply_midMask(lh, rh, surf):
             lh.columns = [str(col) + '_L' for col in lh.columns]
     
     if seriesR:
-        if rh.index[0].endswith('_R'):
-            addR = True
-            rh.index = [col.replace('_R', '') for col in rh.index]
+        if isinstance(rh.index[0], str):
+            if rh.index[0].endswith('_R'):
+                addR = True
+                rh.index = [col.replace('_R', '') for col in rh.index]
+        
         rh.iloc[mid_vrtx_rh] = np.nan
 
         if addR: # reappend hemi labels
             rh.index = [str(col) + '_R' for col in rh.index]
     else:
-        if rh.columns[0].endswith('_R'):
-            addR = True
-            rh.columns = [col.replace('_R', '') for col in rh.columns]
+        if isinstance(rh.index[0], str):
+            if rh.columns[0].endswith('_R'):
+                addR = True
+                rh.columns = [col.replace('_R', '') for col in rh.columns]
 
         rh.iloc[:, mid_vrtx_rh] = np.nan
 
