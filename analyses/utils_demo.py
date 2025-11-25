@@ -84,9 +84,19 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
         out = carryVals(out, var)
 
     out = t1.dateDif(out, [dob_col, "Date"], "age", save=False) # compute age
+    clin_sheet = [s for s in sheets if s['NAME'] == 'Clin'][0]# find sheet with name 'Clin'
     
-    out = group(out, out_col="grp", ID_col="MICS_ID", save_pth=None) # assign high level groups
-    out = group(out, out_col="grp_detailed", ID_col="MICS_ID", save_pth=None) # assign detailed groups
+
+    out = group(out, out_col="grp", detailed = False, 
+                ID_col="MICS_ID", MFCL_col=clin_sheet['EpilepsyClass'], 
+                lobe_col=clin_sheet['FocusConfirmed'],
+                lat_col=clin_sheet['FocusLat'],
+                save_pth=None) # assign high level groups
+    out = group(out, out_col="grp_detailed",  detailed = True, 
+                ID_col="MICS_ID", MFCL_col=clin_sheet['EpilepsyClass'], 
+                lobe_col=clin_sheet['FocusConfirmed'],
+                lat_col=clin_sheet['FocusLat'],
+                save_pth=None) # assign detailed groups
     
     # Sanity checks:
     # Ensure all participants assigned a group
@@ -437,9 +447,12 @@ def carryVals(df, var):
     df[var] = df.groupby('MICS_ID')[var].transform(choose_val)
     return df
 
-def group(df, ID_col="MICS_ID", out_col="grp", save_pth=None, MFCL_col="Epilepsy classification:Focal,Generalized", lobe_col="Epileptogenic focus confirmed by the information of (sEEG/ site of surgical resection/ Ictal EEG abnormalities +/. MRI findings): FLE=forntal lobe epilepsy and cingulate epilepsy, CLE:central/midline epilepsy,ILE: insular epilepsy, mTLE=mesio.temporal lobe epilepsy, nTLE=neocortical lobe epilepsy, PQLE=posterior quadrant lobe epilepsy , multifocal epilepsy,IGE=ideopathic lobe epilepsy,unclear)", lat_col="Lateralization of epileptogenic focus"):
+def group(df, ID_col="MICS_ID", out_col="grp", detailed = True, save_pth=None, 
+          MFCL_col="Epilepsy classification:Focal,Generalized", 
+          lobe_col="Epileptogenic focus ",
+            lat_col="Lateralization of epileptogenic focus"):
     """
-    Requires pandas as pd
+    Assigns group classification based on lobe and lateralization of epilepsy focus.
 
     Inputs:
     df: str or pd.DataFrame
@@ -448,7 +461,9 @@ def group(df, ID_col="MICS_ID", out_col="grp", save_pth=None, MFCL_col="Epilepsy
         Column name for the ID
     out_col: str
         Column name for the output group classification. 
-        Options: 'grp' returns high-level grouping. All other col_names return detailed grouping.
+        Options: 
+            'grp': returns high-level grouping. 
+            All other col_names: returns detailed grouping.
     MFCL_col: str
         Column name for the multifocal classification
     lobe_col: str  
@@ -465,20 +480,19 @@ def group(df, ID_col="MICS_ID", out_col="grp", save_pth=None, MFCL_col="Epilepsy
     import os
 
     print("[group] Identifying participant groups")
+    
     # check if df is a string (path) or dataframe
     if isinstance(df, str):
-        # check if file exists
-        if not os.path.isfile(df):
+        if not os.path.isfile(df): # check if file exists
             raise ValueError(f"[group] Error: {df} does not exist.")
-        
-        # read in file
         df = pd.read_csv(df, dtype=str)
+
     elif isinstance(df, pd.DataFrame):
         pass
     else:
         raise ValueError("[group] Error: df must be a string (path) or dataframe")
 
-    df[out_col] = df.apply(
+    df[out_col] = df.apply( # set default value
         lambda row: f"PATTERN NOT RECOGNIZED: lobe={row.get(lobe_col, None)}, lat={row.get(lat_col, None)}, MFCL={row.get(MFCL_col, None)}",
         axis=1
     )
@@ -490,15 +504,15 @@ def group(df, ID_col="MICS_ID", out_col="grp", save_pth=None, MFCL_col="Epilepsy
     else:
         raise ValueError("[group] Error: ID_col must be 'MICS_ID' or 'PNI_ID'")
 
-    
-    if out_col == "grp":
+    if detailed == False:
         print("\tReturning highlevel grouping to column: ", out_col)
+        print("\tWARNING: Bilateral TLEs included in TLE group")
        
         df.loc[df[ID_col].astype(str).str.contains('|'.join(ctrl_ptrn), na=False), out_col] = 'CTRL'
         
         # TLE and mTLE: L, left, R, right, unclear
         df.loc[
-            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & 
+            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle', 'ntle', 'n-tle'])) & 
             (df[lat_col].astype(str).str.lower().str.contains('l|left|r|right|l>r|r>l|bl|bilateral|unclear', na=False)), 
             out_col
         ] = 'TLE'
@@ -537,31 +551,54 @@ def group(df, ID_col="MICS_ID", out_col="grp", save_pth=None, MFCL_col="Epilepsy
         
         df.loc[df[ID_col].astype(str).str.contains('|'.join(ctrl_ptrn), na=False), out_col] = 'CTRL'
         
-        # Combine TLE and mTLE, label as TLE
-        df.loc[
-            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & (df[lat_col] == 'L'),
-            out_col
+        # TLE
+        df.loc[ # combines TLE and mTLE
+            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & ((df[lat_col] == 'L') | (df[lat_col].astype(str).str.lower() == 'left')), out_col
         ] = 'TLE_L'
         df.loc[
-            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & ((df[lat_col] == 'R') | (df[lat_col].astype(str).str.lower() == 'right')),
-            out_col
+            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & ((df[lat_col] == 'R') | (df[lat_col].astype(str).str.lower() == 'right')), out_col
         ] = 'TLE_R'
         df.loc[
-            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & (df[lat_col].astype(str).str.contains('unclear', na=False)),
-            out_col
+            (df[lobe_col] == 'TLE') & ((df[lat_col] == 'BL') | (df[lat_col] == 'bilateral')), out_col
+        ] = 'TLE_BL'
+        df.loc[
+            (df[lobe_col] == 'TLE') & (df[lat_col] == 'L>R'), out_col
+        ] = 'TLE_BL_L'
+        df.loc[
+            (df[lobe_col] == 'TLE') & (df[lat_col] == 'R>L'), out_col
+        ] = 'TLE_BL_R'
+        df.loc[
+            (df[lobe_col].astype(str).str.lower().isin(['tle', 'mtle'])) & (df[lat_col].astype(str).str.contains('unclear', na=False)), out_col
         ] = 'TLE_U'
+        df.loc[ # neocortical TLE (nTLE)
+            (df[lobe_col].astype(str).str.lower() == 'ntle') & ((df[lat_col] == 'L') | (df[lat_col].astype(str).str.lower() == 'left')), out_col
+        ] = 'nTLE_L'
+        df.loc[
+            (df[lobe_col].astype(str).str.lower() == 'ntle') & ((df[lat_col] == 'R') | (df[lat_col].astype(str).str.lower() == 'right')), out_col
+        ] = 'nTLE_R'
+        
 
-        df.loc[(df[lobe_col] == 'FLE') & (df[lat_col] == 'L'), out_col] = 'FLE_L'
+        df.loc[(df[lobe_col] == 'FLE') & ((df[lat_col] == 'L') | (df[lat_col].astype(str).str.lower() == 'left')), out_col] = 'FLE_L'
         df.loc[(df[lobe_col] == 'FLE') & ((df[lat_col] == 'R') | (df[lat_col].astype(str).str.lower() == 'right')), out_col] = 'FLE_R'
+        # PLE (parietal): L, R, right, unclear
+        df.loc[
+            ((df[lobe_col] == 'PLE')) &
+            (df[lat_col].astype(str).str.contains('l|r|right|unclear', case=False, na=False)),
+            out_col
+        ] = 'PLE'
+
+        # PQLE (posterior quadrant): L, R, right, unclear
+        df.loc[
+            ((df[lobe_col] == 'PQLE')) &
+            (df[lat_col].astype(str).str.contains('l|r|right|unclear', case=False, na=False)),
+            out_col
+        ] = 'PQLE'
 
         df.loc[(df[lobe_col].astype(str).str.contains('unclear', na=False)) & (df[lat_col] == 'L'), out_col] = 'UKN_L'
         df.loc[(df[lobe_col].astype(str).str.contains('unclear', na=False)) & ((df[lat_col] == 'R') | (df[lat_col].astype(str).str.lower() == 'right')), out_col] = 'UKN_R'
         df.loc[(df[lobe_col].astype(str).str.contains('unclear', na=False)) & (df[lat_col].astype(str).str.contains('unclear', na=False)), out_col] = 'UKN_U'
         
         df.loc[(df[MFCL_col] == 'Multifocal'), out_col] = 'MFCL'
-        df.loc[(df[lobe_col] == 'TLE') & (df[lat_col] == 'L>R'), out_col] = 'TLE_L'
-        df.loc[(df[lobe_col] == 'TLE') & (df[lat_col] == 'R>L'), out_col] = 'TLE_R'
-        df.loc[(df[lobe_col] == 'TLE') & (df[lat_col] == 'BL'), out_col] = 'TLE_BL'
     
     return df
 
@@ -719,6 +756,7 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
                 print(f"Participant {counter}/{qc_sheet.shape[0]}...")
             id = row['ID']
             ses = row['SES']
+            date = row['Date']
             logger.info(f"{id}-{ses} [row: {idx}]")
             
             # determine root
@@ -748,7 +786,7 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
                     vol_path = "NA"
                      
                 qc_sheet.at[idx, f"{vol}_pth"] = vol_path
-            logger.info(f"\tVolume paths processed.\n")
+            logger.info(f"\tVolume paths processed.")
 
             # add path to surfaces
             for lbl in ctx_surfs:
@@ -801,8 +839,7 @@ def mk_qcSheet(df, fts, studies, ctx_surf_qc, save_name, save_pth, currentQC=Non
             cols_pth = [col for col in cols if col.endswith('_pth')]
             cols_non_pth = [col for col in cols if not col.endswith('_pth')]
             new_order = cols_non_pth + cols_pth
-            qc_sheet = qc_sheet[new_order]
-            logger.info(f"\tQC sheet shape post: {qc_sheet.shape}")    
+            qc_sheet = qc_sheet[new_order] 
             logger.info(f"\n")
         
         # Carry over values from QC_sheets that are partially filled in
