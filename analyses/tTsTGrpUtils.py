@@ -86,6 +86,49 @@ def savePickle(obj, root, name, timeStamp = True, append=None, test=False, verbo
     else:
         return pth
 
+def del_dl(dl_pth, keys):
+    """
+    Delete list of dictionary items and pickle objects under specified keys.
+
+    input:
+        dl: str
+            path to dictionary list pickle file to delete
+        keys: list of str
+            keys to search for in dict items
+            if found, then see if the value is a path or list of paths. Delete these files if found
+
+    """
+    import os
+    
+    dl = loadPickle(dl_pth)
+    for item in dl:
+        for key in keys:
+            try: 
+                val = item.get(key, None)
+                if val is None:
+                    continue
+
+                if isinstance(val, str):
+                    if os.path.exists(val):
+                        os.remove(val)
+                        print(f"[del_dl] Deleted file: {val}")
+                elif isinstance(val, list):
+                    for pth in val:
+                        if os.path.exists(pth):
+                            os.remove(pth)
+                            print(f"[del_dl] Deleted file: {pth}")
+            except Exception as e:
+                print(f"[del_dl] WARNING: Could not delete files for key '{key}'. Error: {e}")
+                continue
+    
+    # delete dl pickle file itself
+    try:
+        os.remove(dl_pth)
+        print(f"[del_dl] Deleted pickle file: {dl_pth}")
+    except Exception as e:
+        print(f"[del_dl] WARNING: Could not delete pickle file '{dl_pth}'. Error: {e}")
+
+
 def filt_dl(dl, key, voi, key_ids=None, verbose = True):
     """
     From a list of dictionary items, return only items whose feature is in features of interest and with non-0 ctrl and groups
@@ -257,7 +300,7 @@ def sortCols(df):
     df_sorted = df[sorted_cols]
     return df_sorted
 
-def splitHemis(obj, ipsiTo = 'L'):
+def splitHemis(obj, rmv_lbl = False, ipsiTo = 'L'):
     """
     From a pd.DataFrame or pd.Series with column/index names with hemisphere indicated by values after last '_' in index/col name string,
     split into left and right hemisphere. Return one df/series per hemisphere. Supports L/R and ipsi/contra (provided an ipsiTo mapping).
@@ -265,11 +308,14 @@ def splitHemis(obj, ipsiTo = 'L'):
     Input:
         cols: list or pd.DataFrame or pd.Series
             column/index names
+        rmv_lbl: bool
+            if should remove label suffix from returned columns/index
+            if true: returns only index number
         ipsiTo: str
             'L' or 'R', indicating which hemisphere is ipsilateral
     
     Returns:
-        L: list of str (of len cols/2)
+        L: list of str (of len cols/2) 
         R: list of str (of len cols/2)
     """
     import pandas as pd
@@ -308,6 +354,24 @@ def splitHemis(obj, ipsiTo = 'L'):
     # isolate respecitve columns/index per hemi
     obj_L = obj[L]
     obj_R = obj[R]
+
+    if rmv_lbl:
+        def _rmv_lbl(cols):
+            new_cols = []
+            for col in cols:
+                parts = col.rsplit('_', 1)
+                if len(parts) == 2 and parts[1] in ['L', 'R', 'ipsi', 'contra']:
+                    new_cols.append(parts[0])
+                else:
+                    new_cols.append(col)
+            return new_cols
+
+        if isinstance(obj, pd.DataFrame):
+            obj_L.columns = _rmv_lbl(obj_L.columns.tolist())
+            obj_R.columns = _rmv_lbl(obj_R.columns.tolist())
+        elif isinstance(obj, pd.Series):
+            obj_L.index = _rmv_lbl(obj_L.index.tolist())
+            obj_R.index = _rmv_lbl(obj_R.index.tolist())
 
     return obj_L, obj_R
 
@@ -1033,7 +1097,6 @@ def downsample_vol(vol_pth, out_pth, res=0.8):
     os.environ['PATH'] = os.path.join(os.environ['FSLDIR'], 'bin') + ':' + os.environ.get('PATH','')
     
     cmd = [
-       
         "/data_/mica1/01_programs/fsl_mica/bin/flirt",
         "-in", vol_pth,
         "-ref", vol_pth,
@@ -1106,7 +1169,7 @@ def downsample_df(df, specs, studies, demographics, df_save_name, override=False
     ses_colNum = df.columns.get_loc('SES')
 
     for ft, r in zip(features, res):
-        print
+        print(f"{datetime.datetime.now()} - [downsample_df] Downsampling feature: {ft} at {r}mm isotropic resolution...")
         out_colName = f"vol_{ft}_ds-{str(r).replace('.', 'p')}mm"
         out_col = pd.Series(name = out_colName)
         studies_present = set()
@@ -1127,7 +1190,7 @@ def downsample_df(df, specs, studies, demographics, df_save_name, override=False
                 sv_name_intermediate = f"{df_save_name}_{counter}_{now.strftime('%d%b%Y_%H%M%S')}.csv"
                 df_save_pth_full = os.path.join(df_savePth, sv_name_intermediate)
                 df_intermediate.to_csv(df_save_pth_full, index=False)
-                print(f"\t Intermittent save: {df_save_pth_full}. Deleting previous intermittent save if present...")
+                print(f"\t Intermittent save: {df_save_pth_full}")
                 try:
                     os.remove(intermit_pths) if intermit_pths != "" else None
                 except Exception as e:
@@ -2344,13 +2407,13 @@ def idToMap(df_demo, dict_demo, specs, studies,
 
 def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
     """
-    Create dict item for each, study, feature, label, smoothing pair (including hippocampal)
-    Note: multiple patient groups should be kept in same DF. Seperate groups later on
+    Reads in map paths and returns dataframe with rows as participant, columns as vertices (L and R hemis with suffix '{vrtx}_L', '{vrtx}_R')
+    NOTE: This does not seperate particiapnt groups (i.e., patients and controls will all be included)
 
     Input:
         df: DataFrame with columns for ID, SES, Date, and paths to left and right hemisphere maps.
-            NOTE. Asusme path columns end with '_L' and '_R' for left and right hemisphere respectively.
-        mapCols: List of column names in df that contain paths to the maps.
+            NOTE. Assume path columns end with '_L' and '_R' for left and right hemisphere respectively.
+        mapCols: List of column names in df with paths to maps to extract.
         col_ID: Column name for participant ID in the DataFrame. Default is 'UID'.
         col_study: If not none, uses values in this column in the index
     
@@ -2361,24 +2424,29 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
     import numpy as np
     import pandas as pd
     
+    # Ø. Ensure all required columns are in df
     assert col_ID in df.columns, f"[get_maps] df must contain 'ID' column. Cols in df: {df.columns}"
     assert 'SES' in df.columns, f"[get_maps] df must contain 'SES' column. Cols in df: {df.columns}"
-    
-    # Assert that all columns in mapCols exist in df
     missing_cols = [col for col in mapCols if col not in df.columns]
     assert not missing_cols, f"[get_maps] The following columns from mapCols are missing in df: {missing_cols}"
 
-    # find appropriate cols
+    # 1. Find appropriate cols
     col_L = [i for i in mapCols if  ('hemi-L' in i)]
     col_R = [i for i in mapCols if ('hemi-R' in i)]
     assert len(col_L) == 1, f"[get_maps] more than one col with 'hemi-L'. {col_L}"
     assert len(col_R) == 1, f"[gete_maps] more than one col ending with 'hemi-R'. {col_R}"
     if verbose:
         print(f"[get_maps] {col_L}, {col_R}")
-    col_L = col_L[0]
+    col_L = col_L[0] # takes the first (and only) match
     col_R = col_R[0]
 
-    # read in the maps and append to df_maps
+    # 2. Read in maps, append to df_maps
+    # a. Check that there are rows to extract
+    if df[col_L].shape[0] == 0 or df[col_R].shape[0] == 0:
+        print(f"[get_maps] WARNING. No valid entries found in df for columns {col_L} and/or {col_R}. Returning None.")
+        return None
+    
+    # b. Simplify input df
     if 'UID' in df.columns:
         if col_study is not None and col_study != 'UID':
             df_maps = df[['UID', col_study, col_ID, 'SES', col_L, col_R]]
@@ -2390,11 +2458,7 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
         else:
             df_maps = df[[col_ID, 'SES', col_L, col_R]]
     
-    if df_maps[col_L].shape[0] == 0 or df_maps[col_R].shape[0] == 0:
-        print(f"[get_maps] WARNING. No valid entries found in df for columns {col_L} and/or {col_R}. Returning None.")
-        return None
-    
-    # TODO. Remove indices with NA in either column from df_maps
+    # c. Remove NA values
     na_values = uniqueNAvals(df_maps[[col_L, col_R]])
     if len(na_values) > 0 and verbose:
         print(f"[get_maps] Unique NA values found in map columns: {na_values}")
@@ -2402,7 +2466,7 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
     for na_val in na_values:
         df_maps = df_maps[~((df_maps[col_L] == na_val) | (df_maps[col_R] == na_val))]
 
-    # Stack all hemisphere maps into a DataFrame (vertices as columns)
+    # d. Read in: Stack hemisphere maps into array (vertices as columns)
     map_L_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_L]])
     map_R_matrix = np.vstack([nib.load(x).darrays[0].data for x in df_maps[col_R]])
     
@@ -2742,7 +2806,7 @@ def clean_demoPths(df, nStudies, save_pth, save_name, verbose=True):
     # Print number of unique participants in UID before and after cleaning
     print(f"\t{df_clean.shape[0]} rows remain with {df_clean['UID'].nunique()} unique IDs (total sessions: 3T={len(df_clean[df_clean['study'] == '3T']['UID'])}, 7T={len(df_clean[df_clean['study'] == '7T']['UID'])}).")
     
-
+    rmv_pth = None
     if save_pth is not None:
         date = pd.Timestamp.now().strftime("%d%b%Y-%H%M%S")
         keep_pth = f"{save_pth}/{save_name}_clean_{date}.csv"
@@ -2753,6 +2817,8 @@ def clean_demoPths(df, nStudies, save_pth, save_name, verbose=True):
             rmv_pth = f"{save_pth}/{save_name}_removed_{date}.csv"
             df_rmv.to_csv(rmv_pth, index=False)
             print(f"[clean_demoPths] Saved removed cases df: {rmv_pth}")
+        else:
+            print(f"[clean_demoPths] No cases were removed; no removal file saved.")
 
     return df_clean, keep_pth, df_rmv, rmv_pth
 
@@ -2930,10 +2996,8 @@ def get_mapCols(allCols, split=True, verbose=False):
     From a list of column names, return a list of map columns (one for each of L, R). 
     NOTE. Does not differentiate smoothed and unsmoothed maps.
 
-    Assumes:
-        `hemi-L` and `hemi-R` for L/R maps
-        `_smth-` for smoothed maps
-        `_unsmth-` for unsmoothed maps
+    Assumes col names contain:
+        `hemi-L` or `hemi-R` for L/R maps
 
     Input:
         allCols: pandas.core.indexes.base.Index <df.columns>
@@ -2948,7 +3012,6 @@ def get_mapCols(allCols, split=True, verbose=False):
     """
     cols_L = [col for col in allCols if 'hemi-L' in col]
     cols_R = [col for col in allCols if 'hemi-R' in col]
-    
 
     if split:
         if verbose:
@@ -3157,15 +3220,18 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
         return pth_noSmth
 
 
-def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_thresh,
-               save_df_pth, log_save_pth,
-               log_name = "04d_extractMap",
+def extractMap(df_mapPaths, cols_L, cols_R, 
+               specs, studies, demographics, qc_thresh,
+               save_df_pth, log_save_pth, log_name = "04d_extractMap",
                append_name = None, region=None, verbose=False, test = False):
     """
-    Extract map paths from a dataframe based on specified columns and optional subset string in col name.
-    Applies cleaning to ensure all dfs have complete data and that all cases are consistent between analogous dfs at both studies
+    Reads in data from map paths provided in specified dataframe columns.
+    Optional subset string in col name.
+    Applies cleaning to ensure:
+        1- All dfs have complete data
+        2- All cases are consistent between analogous dfs at both studies
 
-    NOTE. Assumes 'UID' is present -- uses this column to create index for demographics df.
+    NOTE. Uses 'UID' column to create index for output demographics dataframe
     
     Input:
         df_mapPaths: pd.DataFrame 
@@ -3187,13 +3253,18 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
         
         save_df_pth: str
             Path to save extracted dataframe.
-
-        append_name: str
-            string to append to the save name of the dataframe. If None, do not append anything.
         log_save_pth: str
             path to save log file to
+        log_name: str
+            name of log file
+
+        append_name: str
+            string to append to the save name of the dataframe. 
+            If None, do not append anything.
+        
         region: string, optional
-            specify cortex or hippocampus. If none, all columns passed will be extracted and region=None will be added to dict item.
+            specify cortex or hippocampus. 
+            If none, all columns passed will be extracted and region=None will be added to dict item.
         verbose: bool, optional
             If True, print detailed processing information.
         test: bool, optional
@@ -3221,10 +3292,12 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
 
     # Prepare log file path
     if log_save_pth is None:
-        print("WARNING. Save path not specified. Defaulting to current working directory.")
         log_save_pth = os.getcwd()  # Default to current working directory
-    if not os.path.exists(log_save_pth):
+        print(f"WARNING. Save path not specified. Defaulting to current working directory: {log_save_pth}")
+    elif not os.path.exists(log_save_pth):
         os.makedirs(log_save_pth)
+    else:
+        pass
     
     if region is not None:
         log_name = f"{log_name}_{region}"
@@ -3232,6 +3305,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
         log_name = f"{log_name}_{append_name}"
     if test:
         log_name = f"TEST_{log_name}"
+
     start = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     log_file_path = os.path.join(log_save_pth, f"{log_name}_log_{start}.txt")
     print(f"\n[extractMap] Saving log to: {log_file_path}")
@@ -3249,11 +3323,20 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
     out_dl = []
     
     try:
+        # Ø. Preamble
+        ## Ensure proper inputs
+        if cols_L == [] or cols_R == []:
+            logger.info("\n[extractMap] WARNING. No map columns found. Skipping.")
+            return out_dl
         
-        # Set appropriate index to df_mapPaths. this index should be propogated into daughter data frames
-        df_mapPaths['UID_study_ses'] = df_mapPaths.apply(lambda row: f"{row['UID']}_{row['study']}_{row['SES']}", axis=1)
-        df_mapPaths = df_mapPaths.set_index('UID_study_ses')
-
+        if test:
+            import numpy as np
+            idx_len = 2
+            idx_rdm = np.random.choice(len(cols_L), size=idx_len, replace=False).tolist()  # randomly choose index
+            cols_L = [cols_L[i] for i in idx_rdm]
+            cols_R = [cols_R[i] for i in idx_rdm]
+            logger.info(f"TEST MODE. Extract maps from {idx_len} random map columns: indices {idx_rdm}.")
+        
         if region is not None:
             if region == "cortex" or region == "ctx":
                 region = "cortex"
@@ -3266,33 +3349,28 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
             
             cols_L = [col for col in cols_L if reg in col]
             cols_R = [col for col in cols_R if reg in col]
-
-        if cols_L == [] or cols_R == []:
-            logger.info("\n[extractMap] WARNING. No map columns found. Skipping.")
-            return out_dl
-        
-        if test:
-            import numpy as np
-            idx_len = 2
-            idx_rdm = np.random.choice(len(cols_L), size=idx_len, replace=False).tolist()  # randomly choose index
-            cols_L = [cols_L[i] for i in idx_rdm]
-            cols_R = [cols_R[i] for i in idx_rdm]
-            logger.info(f"TEST MODE. Extract maps from {idx_len} random maps: indices {idx_rdm}.")
         
         if region is not None:
             logger.info(f"\nRegion {region}: {len(cols_L) + len(cols_R)} map columns found (col name pattern: {reg}).")
         else:
             logger.info(f"\n{len(cols_L) + len(cols_R)} map columns found.")
 
+        ## Set index to df_mapPaths
+        df_mapPaths['UID_study_ses'] = df_mapPaths.apply(lambda row: f"{row['UID']}_{row['study']}_{row['SES']}", axis=1)
+        df_mapPaths = df_mapPaths.set_index('UID_study_ses')
+
+        # 1. Iterate map path cols
         counter = 0
         for col_L, col_R in zip(cols_L, cols_R):
             counter += 1
             if counter % 10 == 0:
                 print(f"\t{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {counter} of {len(cols_L)}...")
             
+            if 'zb' in col_L or 'zb' in col_R:
+                zb_maps = True
             assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
-            
-            # Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
+
+            # A. Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
             hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
             commonName = col_L[hemi_L_idx:]
             
@@ -3300,39 +3378,48 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 ds = True
                 downsampledRes = commonName.split('_res-')[1].split('_')[0].replace("p", ".")
                 
-                # find corresponding cols (same region, feature, label, surface, smoothing)
+                # find corresponding native resolution column (same region, feature, label, surface, smoothing)
                 correspL = get_correspCol(col_L, cols_L)[0] # assumes a single match
                 correspR = get_correspCol(col_R, cols_R)[0]
-
 
             else:
                 ds = False
                 downsampledRes = "native"
                 
-            
             logger.info(f"\n\tProcessing {commonName}...\t\t[{col_L} {col_R}]")
+            
             if ds:
                 logger.info(f"\t\t\tDownsampled resolution: {downsampledRes} mm\t\tcorresponding cols: {correspL} {correspR}")
             logger.info(f"\t\t\t{len(df_mapPaths['UID'].unique())} unique IDs in input data with {df_mapPaths.shape[0]} rows")
-            
             logger.info(f"\t\t\tEnsuring QC values >= {qc_thresh}") # set maps with QC values less than qc_thresh to NA
             
-            # add to dict list
+            # B. Create dict item for this map
             surf = col_L.split('surf-')[1].split('_label')[0]
+            logger.info(f"\tsurface:{surf}")
             lbl = col_L.split('_label-')[1].split('_')[0]
+            logger.info(f"\tlabel:{lbl}")
+
             if lbl == 'thickness':
                 ft = 'thickness'
             else:
                 ft = col_L.split('_label-')[1].split('_')[1]
+                if 'feature-' in ft:
+                    ft = ft.split('feature-')[1]
+            logger.info(f"\tfeature:{ft}")
             
             if '_unsmth' in commonName:
                 smth = 'NA'
             else:
-                smth = col_L.split('_smth-')[1].split('mm')[0]
-            
-            # Clean and select final sessions 
-            
-            ## Setup QC column
+                try:
+                    smth = col_L.split('_smth-')[1].split('mm')[0]
+                except:
+                    try:
+                        smth = col_L.split('_smooth-')[1].split('mm')[0]
+                    except:
+                        logger.error(f"ERROR. Unable to retrieve smoothing from column name. Recognized patterns are 'smth-XX' or 'smooth-XX'")
+
+            # C. Clean and select single session per participant 
+            ## C.0. Define QC column
             if ft == 'T1map':
                 vol = 'T1map'
             elif ft == 'thickness':
@@ -3345,41 +3432,19 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 raise ValueError(
                     "[extractMap] WARNING. Feature not recognized, thus unable to link to name of raw MRI volume."
                 )
-            
+
             col_QC = f"QC_{reg}Surf_{vol}" # 'QC_{ctx/hip}Surf_{vol for feature}
             
-            if not ds:    
-                # 1. Apply QC criteria
-                df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
-                
-                logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
-                #logger.info(f"Number of NA col L + col R:\n\t before QC: \n\t\t{df_mapPaths[[col_L, col_R]].isna().sum()}\n\tafter: \n\t\t{df_mapPaths_qc[[col_L, col_R]].isna().sum()}")
-                
-                ## 2. Remove missing data
-                logger.info(f"\t\t\tCleaning missing map paths...")
-                df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
-                logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
-                logger.info(f"\t\t\t\t\tRemoved: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()))}")
-
-                ## 3. Remove participants that do not have data for each study
-                logger.info(f"\t\t\tCleaning missing study pairs... ")
-                required_studies = [s['study'] for s in studies]
-                participant_counts = df_demo.groupby('UID')['study'].nunique()
-                valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
-                df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
-                df_demo = df_demo[df_demo['UID'].isin(valid_ids)]
-                logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
-            else: # main column is downasmpled. Need to filter consistently with corresponding column that is not downsampled
+            if ds: # main column is downasmpled.
                 df_copy = df_mapPaths.copy()
                 
-                ## 1. Apply QC citeria
+                ## C.1. Apply QC citeria
                 df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
-                df_copy_qc, count_qc_corresp, count_qc_ids_corresp = apply_QCthresh(df_copy, col_qc = col_QC, cols_effect = [correspL, correspR], thresh = qc_thresh)
+                df_copy_qc, count_qc_corresp, count_qc_ids_corresp = apply_QCthresh(df_copy, col_qc = col_QC, cols_effect = [correspL, correspR], thresh = qc_thresh) # get QC based on native resolution column
                 logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
                 
-                ## 2. Remove mising data
+                ## C.2. Remove mising data
                 logger.info(f"\t\t\tCleaning missing map paths...")
-                
                 indx_NA_corresp = df_copy_qc[df_copy_qc[[correspL, correspR]].isna().any(axis=1)].index.tolist() # find indices with missing values in df_copy_qc
                 df_mapPaths_qc.loc[indx_NA_corresp, [col_L, col_R]] = np.nan # set corresponding rows in df_mapPaths_qc to NaN for col_L and col_R
                 
@@ -3400,17 +3465,51 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 df_demo = df_demo[df_demo['UID'].isin(valid_ids)]  
                 logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
             
+            else: # native resolution
+                # C.1. Apply QC criteria
+                df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
+                logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
+                #logger.info(f"Number of NA col L + col R:\n\t before QC: \n\t\t{df_mapPaths[[col_L, col_R]].isna().sum()}\n\tafter: \n\t\t{df_mapPaths_qc[[col_L, col_R]].isna().sum()}")
+                
+                ## C.2. Remove missing data
+                logger.info(f"\t\t\tCleaning missing map paths...")
+                df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
+                logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
+                logger.info(f"\t\t\t\t\tRemoved: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()))}")
+
+                ## 3. Remove participants that do not have data for each study
+                logger.info(f"\t\t\tCleaning missing study pairs... ")
+                required_studies = [s['study'] for s in studies]
+                participant_counts = df_demo.groupby('UID')['study'].nunique()
+                
+                valid_ids = participant_counts[participant_counts >= len(required_studies)].index.tolist()
+                
+                df_tmp_drop = df_demo[~df_demo['UID'].isin(valid_ids)].copy()
+                df_demo = df_demo[df_demo['UID'].isin(valid_ids)]
+                logger.info(f"\t\t\t\t\tRemoved: {sorted(df_tmp_drop['UID'].unique())}")
+            
             n_before = df_mapPaths_qc['UID'].nunique()
             n_after = df_demo['UID'].nunique()
             n_removed = n_before - n_after
+
+            # define columns to drop in df_demo
+            cols2drop = []
+            cols2drop.extend(cols_L)
+            cols2drop.extend(cols_R)
+            # remove col_L, col_R from cols2drop
+            cols2drop = [col for col in cols2drop if col not in [col_L, col_R]]
+            if 'dob' in df_demo.columns:
+                cols2drop.append('dob')
+            df_demo = df_demo.drop(columns=cols2drop)
 
             logger.info(f"\t\t\t\t{n_removed} unique IDs removed [{n_after} unique IDs with {df_demo.shape[0]} rows remain]")
             if n_after == 0:
                 logger.info(f"\t\t\tWARNING. No participants remain after filtering for complete study data. Skipping this map.")
                 continue
             
-            for study in studies:
+            for study in studies: # extract maps, create dict item for each field strength
                 if downsampledRes != "native" and ft in specs['ds_foi'] and (study['name'] not in specs['ds_study']) and (study['study'] not in specs['ds_study']):
+                    # if downsampled resolution maps are not to be used for this study, skip
                     #print(f"\t\t\tSkipping study {study['name']} for native resolution maps.")
                     continue
                 
@@ -3419,7 +3518,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                 
                 col_ID = get_IDCol(study_name, demographics) # determine ID col name for this study
                 
-                df_demo_study = df_demo[df_demo['study'] == study_code] # filter for rows from this study
+                df_demo_study = df_demo[df_demo['study'] == study_code] # keep rows for this study only
  
                 logger.info(f"\n\t\t\t[{study_code}] Selecting unique session per ID... {len(df_demo_study['UID'].unique())} UIDs with {len(df_demo_study)} rows before session cleaning.")
 
@@ -3428,23 +3527,23 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                                 col_ID="UID",  col_study='study', verbose=True)
                 
                 df_demo_ses = df_demo_study.loc[ses_indices]
-                # remove dupplicated rows
-                df_demo_ses = df_demo_ses[~df_demo_ses.index.duplicated(keep='first')]
+                
+                df_demo_ses = df_demo_ses[~df_demo_ses.index.duplicated(keep='first')] # remove duplicated rows
 
                 logger.info(f"\t\t\t\t{len(df_demo_ses['UID'].unique())} UIDs with {df_demo_ses.shape[0]} rows remain for study {study_name}.")
                 if verbose:
                     logger.info(f"\t\t\t\t\tUnique UIDs: {df_demo_ses['UID'].unique().tolist()}")
                     logger.info(f"\t\t\t\t\tRetained [from clean_ses] ({len(ses_indices)}): {sorted(ses_indices)}")
                     logger.info(f"\t\t\t\t\tPresent in current df ({len(df_demo_ses.index.tolist())}): {df_demo_ses.index.tolist()}")
-                
-                if verbose:
                     logger.info(f"\t\t\t\t\t{len(df_demo_study) - len(df_demo_ses)} rows removed due to multiple sessions per UID-study. [{len(df_demo_study)} rows before, {len(df_demo_ses)} rows remain for {len(df_demo_ses['UID'].unique())} unique participants]")
 
+                # EXTRACT MAPS
                 maps = get_maps(df_demo_ses, mapCols=[col_L, col_R], col_ID = col_ID, col_study='UID', verbose=False)
-                if maps is None or maps.shape[0] == 0:
+                if maps is None or maps.shape[0] == 0: # Do not create dictionary item for these maps
                     logger.info(f"\t\t\t[extractMap] WARNING. No maps found for study {study_code}. Skipping this study for this map.")
                     continue
                 
+                # Save map as pickle obj
                 map_name = f"{study_code}_{commonName}"
                 if append_name is not None:
                     map_name = f"{map_name}_{append_name}"
@@ -3457,7 +3556,8 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                                                  verbose=False, rtn_txt = True)
                 logger.info(f"\t\t\t\t{save_stmt}")
 
-                out_dl.append({
+                # Create dict item, append to list
+                item = {
                     'study': study_name,
                     'region': region,
                     'surf': surf,
@@ -3466,9 +3566,12 @@ def extractMap(df_mapPaths,  cols_L, cols_R, specs, studies, demographics, qc_th
                     'smth': smth,
                     'downsampledRes': downsampledRes,
                     'df_demo': df_demo_ses,
-                    'df_maps': maps_pth,
-                })
-        
+                    'df_maps': maps_pth
+                }
+                if zb_maps: # indicate that maps are from zbrains
+                    item['zb_maps'] = True
+
+                out_dl.append(item)
         if verbose:
             logger.info(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
         

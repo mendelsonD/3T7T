@@ -4743,3 +4743,64 @@ def btwD_vis(dl, save_path,
     
     print(f"\nCompleted btwD_vis for {counter} analyses.")
     return
+
+def hist_comp(maps_dict, ax=None, show_plot=False):
+    """
+    Create overlayed histogram for vertex-wise data listed in a dictionary item
+
+
+    Input:
+        maps_dict: dict
+            Dictionary where keys are names of items to plot (e.g., 'smth_0mm', 'UIDXXX')
+            and values are lists of two paths: [hemi_L.func.gii, hemi_R.func.gii]
+        ax: matplotlib.axes.Axes, optional
+            Matplotlib axis to plot on. If None, a new figure and axis are created.
+        show_plot: bool, optional
+            If True, displays the plot immediately. Default is False.
+    """
+    
+    
+    import nibabel as nib
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    # Define colors for different keys
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray']
+    
+    # Create figure and axis if not provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.get_figure()
+    
+    all_differences = []
+    
+    for i, (kernel, paths) in enumerate(maps_dict.items()):
+        map_l, map_r = paths
+        #print(f"Loading {kernel}: L={map_l}, R={map_r}")
+        
+        data_l = nib.load(map_l).darrays[0].data
+        data_r = nib.load(map_r).darrays[0].data
+        array_d = data_l - data_r
+        
+        all_differences.append(array_d)
+        
+        # Use different color for each kernel
+        color = colors[i % len(colors)]
+        
+        ax.hist(array_d, bins=50, alpha=0.5, color=color, 
+                label=f'{kernel} (μ={array_d.mean():.2f}, σ={array_d.std():.2f})', 
+                density=True)
+        
+        #print(f"{kernel} - Mean: {array_d.mean():.2f}, Std: {array_d.std():.2f}")
+    
+    ax.set_xlabel('Difference Value (L - R)')
+    ax.set_ylabel('Density')
+    ax.set_title('Histogram Comparison: L-R Hemisphere Differences by Smoothing Kernel')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    if show_plot:
+        plt.show()
+    
+    return fig, ax
