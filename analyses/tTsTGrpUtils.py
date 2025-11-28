@@ -86,49 +86,6 @@ def savePickle(obj, root, name, timeStamp = True, append=None, test=False, verbo
     else:
         return pth
 
-def del_dl(dl_pth, keys):
-    """
-    Delete list of dictionary items and pickle objects under specified keys.
-
-    input:
-        dl: str
-            path to dictionary list pickle file to delete
-        keys: list of str
-            keys to search for in dict items
-            if found, then see if the value is a path or list of paths. Delete these files if found
-
-    """
-    import os
-    
-    dl = loadPickle(dl_pth)
-    for item in dl:
-        for key in keys:
-            try: 
-                val = item.get(key, None)
-                if val is None:
-                    continue
-
-                if isinstance(val, str):
-                    if os.path.exists(val):
-                        os.remove(val)
-                        print(f"[del_dl] Deleted file: {val}")
-                elif isinstance(val, list):
-                    for pth in val:
-                        if os.path.exists(pth):
-                            os.remove(pth)
-                            print(f"[del_dl] Deleted file: {pth}")
-            except Exception as e:
-                print(f"[del_dl] WARNING: Could not delete files for key '{key}'. Error: {e}")
-                continue
-    
-    # delete dl pickle file itself
-    try:
-        os.remove(dl_pth)
-        print(f"[del_dl] Deleted pickle file: {dl_pth}")
-    except Exception as e:
-        print(f"[del_dl] WARNING: Could not delete pickle file '{dl_pth}'. Error: {e}")
-
-
 def filt_dl(dl, key, voi, key_ids=None, verbose = True):
     """
     From a list of dictionary items, return only items whose feature is in features of interest and with non-0 ctrl and groups
@@ -300,7 +257,7 @@ def sortCols(df):
     df_sorted = df[sorted_cols]
     return df_sorted
 
-def splitHemis(obj, rmv_lbl = False, ipsiTo = 'L'):
+def splitHemis(obj, ipsiTo = 'L'):
     """
     From a pd.DataFrame or pd.Series with column/index names with hemisphere indicated by values after last '_' in index/col name string,
     split into left and right hemisphere. Return one df/series per hemisphere. Supports L/R and ipsi/contra (provided an ipsiTo mapping).
@@ -308,14 +265,11 @@ def splitHemis(obj, rmv_lbl = False, ipsiTo = 'L'):
     Input:
         cols: list or pd.DataFrame or pd.Series
             column/index names
-        rmv_lbl: bool
-            if should remove label suffix from returned columns/index
-            if true: returns only index number
         ipsiTo: str
             'L' or 'R', indicating which hemisphere is ipsilateral
     
     Returns:
-        L: list of str (of len cols/2) 
+        L: list of str (of len cols/2)
         R: list of str (of len cols/2)
     """
     import pandas as pd
@@ -354,24 +308,6 @@ def splitHemis(obj, rmv_lbl = False, ipsiTo = 'L'):
     # isolate respecitve columns/index per hemi
     obj_L = obj[L]
     obj_R = obj[R]
-
-    if rmv_lbl:
-        def _rmv_lbl(cols):
-            new_cols = []
-            for col in cols:
-                parts = col.rsplit('_', 1)
-                if len(parts) == 2 and parts[1] in ['L', 'R', 'ipsi', 'contra']:
-                    new_cols.append(parts[0])
-                else:
-                    new_cols.append(col)
-            return new_cols
-
-        if isinstance(obj, pd.DataFrame):
-            obj_L.columns = _rmv_lbl(obj_L.columns.tolist())
-            obj_R.columns = _rmv_lbl(obj_R.columns.tolist())
-        elif isinstance(obj, pd.Series):
-            obj_L.index = _rmv_lbl(obj_L.index.tolist())
-            obj_R.index = _rmv_lbl(obj_R.index.tolist())
 
     return obj_L, obj_R
 
@@ -896,7 +832,8 @@ def smooth_map(surf, map, out_name, kernel=10, verbose=True):
         "wb_command",
         "-metric-smoothing", 
         surf,
-        map, str(kernel), 
+        map, 
+        str(kernel), 
         out_name
         ]
     
@@ -1806,57 +1743,25 @@ def idToMap(df_demo, dict_demo, specs, studies,
             pth_map_unsmth_L = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_L_filename}.func.gii"
             pth_map_unsmth_R = f"{root_mp}/sub-{sub}/ses-{ses}/maps/sub-{sub}_ses-{ses}_{out_pth_R_filename}.func.gii"
             
-            # iii. Path to smoothed map in output directory 
+            # iii. Initialize output path for smoothed map 
             pth_map_smth_L  = os.path.join(
-                out_dir,
-                f"sub-{sub}_ses-{ses}_ctx_{out_pth_L_filename}_smth-{smth}mm.func.gii",
+                out_dir, f"sub-{sub}_ses-{ses}_ctx_{out_pth_L_filename}_smth-{smth}mm.func.gii",
             )
 
             pth_map_smth_R = os.path.join(
-                out_dir,
-                f"sub-{sub}_ses-{ses}_ctx_{out_pth_R_filename}_smth-{smth}mm.func.gii",
+                out_dir, f"sub-{sub}_ses-{ses}_ctx_{out_pth_R_filename}_smth-{smth}mm.func.gii",
             )
             
-            # iv. Make col in output df for smoothed maps
+            # iv. Make col in output df to hold smoothed maps
             col_smth_L = os.path.basename(pth_map_smth_L).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             col_smth_R = os.path.basename(pth_map_smth_R).replace('.func.gii', '').replace(f"sub-{sub}_", '').replace(f"ses-{ses}_", '')
             
             col_unsmth_L = col_smth_L.replace(f"_smth-{smth}mm", "_unsmth")
             col_unsmth_R = col_smth_R.replace(f"_smth-{smth}mm", "_unsmth")
             
-            # 1. Check if path to smoothed map exists in 3T7T project directory. If yes, then add path to smoothed and unsmoothed maps to df and return.
-            if chk_pth(pth_map_smth_L) and chk_pth(pth_map_smth_R):
-                if verbose:
-                    logger.info(f"\t\tSmoothed maps exists: {pth_map_smth_L}\t{pth_map_smth_R}\n")
-                
-                pths_series = addToSeries(col = [col_unsmth_L, col_unsmth_R, col_smth_L, col_smth_R], 
-                                          val = [pth_map_unsmth_L, pth_map_unsmth_R, pth_map_smth_L, pth_map_smth_R], 
-                                          series = pths_series)
-                df_out = appendSeries(pths_series, df, match_on=match_on)
-                return df_out
-            elif chk_pth(pth_map_smth_L):
-                if verbose:
-                    logger.info(f"\t\tSmoothed L map exists :\t\t{pth_map_smth_L}")
 
-                pths_series = pd.concat([pths_series,
-                                        pd.Series({col_unsmth_L: pth_map_unsmth_L, 
-                                                   col_smth_L: pth_map_smth_L})])
-                skip_L = True
-            elif chk_pth(pth_map_smth_R):
-                if verbose:
-                    logger.info(f"\t\tSmoothed R map exists, adding path to df:\t\t{pth_map_smth_R}")
-
-                pths_series = addToSeries(col = [col_unsmth_R, col_smth_R], 
-                                         val = [pth_map_unsmth_R, pth_map_smth_R], 
-                                         series = pths_series)
-                
-                skip_R = True
-            else: # continue to smoothing steps below
-                pass
-            
-            # 2. Compute smoothed map
-            # If got here, then smoothed map does not already exist.
-            # i. Ensure unsmoothed maps exists
+            # v. Ensure unsmoothed maps exists and add to output df
+            # if unsmoothed map does not exist, determine why
             if not chk_pth(pth_map_unsmth_L) and not chk_pth(pth_map_unsmth_R): # both unsmoothed maps mising
                 
                 if checkRawPth(root = study['dir_root'] + study['dir_raw'], sub = sub, ses = ses, ft = ft) == False: # check if raw data problem
@@ -1919,20 +1824,40 @@ def idToMap(df_demo, dict_demo, specs, studies,
                                           val = [pth_map_unsmth_L, pth_map_unsmth_R],
                                           series = pths_series)
             
-            # ii. Add path to unsmoothed maps to df
-            if not skip_L:
-                logger.info(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
-                pths_series = addToSeries(col = [col_unsmth_L],
-                                            val = [pth_map_unsmth_L],
-                                            series = pths_series)
-            if not skip_R:
-                logger.info(f"\t\tAdded L unsmoothed path: {pth_map_unsmth_L}")
-                pths_series = addToSeries(col = [col_unsmth_R],
-                                            val = [pth_map_unsmth_R],
-                                            series = pths_series)
+            # 1. Check if smoothed map already exists in 3T7T project directory. 
+            # If yes, then do not recompute; add path to smoothed and unsmoothed maps to df and return.
+            if chk_pth(pth_map_smth_L) and chk_pth(pth_map_smth_R): # both exist
+                if verbose:
+                    logger.info(f"\t\tSmoothed maps exists: {pth_map_smth_L}\t{pth_map_smth_R}\n")
+                
+                pths_series = addToSeries(col = [col_smth_L, col_smth_R], 
+                                          val = [pth_map_smth_L, pth_map_smth_R], 
+                                          series = pths_series)
+                df_out = appendSeries(pths_series, df, match_on=match_on)
+                return df_out
+            elif chk_pth(pth_map_smth_L): # only L exists
+                if verbose:
+                    logger.info(f"\t\tSmoothed L map exists :\t\t{pth_map_smth_L}")
 
-            # iii. Smooth map and save to project directory
-            # a. Get path to surface segmentations & check they exist
+                pths_series = addToSeries(col = [col_unsmth_L, col_smth_L], 
+                                         val = [pth_map_unsmth_L, pth_map_smth_L], 
+                                         series = pths_series)
+
+                skip_L = True
+            elif chk_pth(pth_map_smth_R): # only R exists
+                if verbose:
+                    logger.info(f"\t\tSmoothed R map exists, adding path to df:\t\t{pth_map_smth_R}")
+
+                pths_series = addToSeries(col = [col_unsmth_R, col_smth_R], 
+                                         val = [pth_map_unsmth_R, pth_map_smth_R], 
+                                         series = pths_series)
+                
+                skip_R = True
+            else: # neither exist, continue to smoothing steps below
+                pass
+            
+            # 2. Compute smoothed map [need to smooth for at least one hemi]
+            # i. Get path to surface segmentations & check they exist
             surf_L, surf_R = get_surf_pth( 
                 root=root_mp,
                 sub=sub,
@@ -1940,7 +1865,7 @@ def idToMap(df_demo, dict_demo, specs, studies,
                 surf=surf,
                 lbl=lbl
             )
-
+            # TODO. REVIEW BELOW CODE. COPY ABOVE STRUCTURE TO hip_maps function [28 Nov 2025]
             if not chk_pth(surf_L) and not chk_pth(surf_R) and not skip_L and not skip_R: # check that surfaces exist
                 dir_surf = os.path.commonpath([surf_L, surf_R]) # Find the common directory of both surf_L and surf_R
                 logger.info(f"\t\t[ctx_maps] WARNING {study_code} {sub}-{ses} ({ft}, {lbl}, {surf}): Cortical nativepro surface not found. Skipping. Check micapipe processing ( {dir_surf} ). Missing: {surf_L}\t{surf_R}\n")
@@ -1974,7 +1899,7 @@ def idToMap(df_demo, dict_demo, specs, studies,
             if not skip_L:
                 pth_map_smth_L = smooth_map(
                     surf_L, pth_map_unsmth_L, 
-                    pth_map_smth_L, kernel=smth, verbose=True # NOTE. CHANGED VERBOSE FOR DEBUG
+                    pth_map_smth_L, kernel=smth, verbose=False
                     )
 
                 if pth_map_smth_L is None:
@@ -2294,9 +2219,9 @@ def idToMap(df_demo, dict_demo, specs, studies,
                     logger.info(f"\t\tSmoothed map L: {pth_map_smth_L}")
             
             if not skip_R:
-                pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_L, pth_map_smth_R, kernel=smth, verbose=False)
+                pth_map_smth_R = smooth_map(surf_R, pth_map_unsmth_R, pth_map_smth_R, kernel=smth, verbose=False)
                 if not chk_pth(pth_map_smth_R):
-                    pth_map_smth_R = f"NA: SCRIPT ERROR. Surf: {surf_R}, Unsmoothed: {pth_map_unsmth_L}, kernel: {smth}"
+                    pth_map_smth_R = f"NA: SCRIPT ERROR. Surf: {surf_R}, Unsmoothed: {pth_map_unsmth_R}, kernel: {smth}"
                 
                 pths_series = addToSeries(col = [col_smth_R],
                                          val = [pth_map_smth_R],
@@ -2806,7 +2731,7 @@ def clean_demoPths(df, nStudies, save_pth, save_name, verbose=True):
     # Print number of unique participants in UID before and after cleaning
     print(f"\t{df_clean.shape[0]} rows remain with {df_clean['UID'].nunique()} unique IDs (total sessions: 3T={len(df_clean[df_clean['study'] == '3T']['UID'])}, 7T={len(df_clean[df_clean['study'] == '7T']['UID'])}).")
     
-    rmv_pth = None
+
     if save_pth is not None:
         date = pd.Timestamp.now().strftime("%d%b%Y-%H%M%S")
         keep_pth = f"{save_pth}/{save_name}_clean_{date}.csv"
@@ -2817,8 +2742,6 @@ def clean_demoPths(df, nStudies, save_pth, save_name, verbose=True):
             rmv_pth = f"{save_pth}/{save_name}_removed_{date}.csv"
             df_rmv.to_csv(rmv_pth, index=False)
             print(f"[clean_demoPths] Saved removed cases df: {rmv_pth}")
-        else:
-            print(f"[clean_demoPths] No cases were removed; no removal file saved.")
 
     return df_clean, keep_pth, df_rmv, rmv_pth
 
@@ -3220,7 +3143,7 @@ def make_map(sub, ses, surf_pth, vol_pth, smoothing, out_name, out_dir):
         return pth_noSmth
 
 
-def extractMap(df_mapPaths, cols_L, cols_R, 
+def extractMap(df_mapPaths,  cols_L, cols_R, 
                specs, studies, demographics, qc_thresh,
                save_df_pth, log_save_pth, log_name = "04d_extractMap",
                append_name = None, region=None, verbose=False, test = False):
@@ -3324,7 +3247,7 @@ def extractMap(df_mapPaths, cols_L, cols_R,
     
     try:
         # Ø. Preamble
-        ## Ensure proper inputs
+        ## Ensure inputs proper
         if cols_L == [] or cols_R == []:
             logger.info("\n[extractMap] WARNING. No map columns found. Skipping.")
             return out_dl
@@ -3335,7 +3258,7 @@ def extractMap(df_mapPaths, cols_L, cols_R,
             idx_rdm = np.random.choice(len(cols_L), size=idx_len, replace=False).tolist()  # randomly choose index
             cols_L = [cols_L[i] for i in idx_rdm]
             cols_R = [cols_R[i] for i in idx_rdm]
-            logger.info(f"TEST MODE. Extract maps from {idx_len} random map columns: indices {idx_rdm}.")
+            logger.info(f"TEST MODE. Extract maps from {idx_len} random maps: indices {idx_rdm}.")
         
         if region is not None:
             if region == "cortex" or region == "ctx":
@@ -3366,10 +3289,8 @@ def extractMap(df_mapPaths, cols_L, cols_R,
             if counter % 10 == 0:
                 print(f"\t{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {counter} of {len(cols_L)}...")
             
-            if 'zb' in col_L or 'zb' in col_R:
-                zb_maps = True
             assert col_L.replace('hemi-L', '') == col_R.replace('hemi-R', ''), f"Left and right hemisphere columns do not match: {col_L}, {col_R}"
-
+            
             # A. Find the substring after 'hemi-L' and 'hemi-R' that is common between col_L and col_R
             hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
             commonName = col_L[hemi_L_idx:]
@@ -3395,29 +3316,17 @@ def extractMap(df_mapPaths, cols_L, cols_R,
             
             # B. Create dict item for this map
             surf = col_L.split('surf-')[1].split('_label')[0]
-            logger.info(f"\tsurface:{surf}")
             lbl = col_L.split('_label-')[1].split('_')[0]
-            logger.info(f"\tlabel:{lbl}")
-
             if lbl == 'thickness':
                 ft = 'thickness'
             else:
                 ft = col_L.split('_label-')[1].split('_')[1]
-                if 'feature-' in ft:
-                    ft = ft.split('feature-')[1]
-            logger.info(f"\tfeature:{ft}")
             
             if '_unsmth' in commonName:
                 smth = 'NA'
             else:
-                try:
-                    smth = col_L.split('_smth-')[1].split('mm')[0]
-                except:
-                    try:
-                        smth = col_L.split('_smooth-')[1].split('mm')[0]
-                    except:
-                        logger.error(f"ERROR. Unable to retrieve smoothing from column name. Recognized patterns are 'smth-XX' or 'smooth-XX'")
-
+                smth = col_L.split('_smth-')[1].split('mm')[0]
+            
             # C. Clean and select single session per participant 
             ## C.0. Define QC column
             if ft == 'T1map':
@@ -3432,7 +3341,7 @@ def extractMap(df_mapPaths, cols_L, cols_R,
                 raise ValueError(
                     "[extractMap] WARNING. Feature not recognized, thus unable to link to name of raw MRI volume."
                 )
-
+            
             col_QC = f"QC_{reg}Surf_{vol}" # 'QC_{ctx/hip}Surf_{vol for feature}
             
             if ds: # main column is downasmpled.
@@ -3443,6 +3352,22 @@ def extractMap(df_mapPaths, cols_L, cols_R,
                 df_copy_qc, count_qc_corresp, count_qc_ids_corresp = apply_QCthresh(df_copy, col_qc = col_QC, cols_effect = [correspL, correspR], thresh = qc_thresh) # get QC based on native resolution column
                 logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
                 
+                df_mapPaths_qc, count_qc, count_qc_ids = apply_QCthresh(df_mapPaths, col_qc = col_QC, cols_effect = [col_L, col_R], thresh = qc_thresh)
+                df_copy_qc, count_qc_corresp, count_qc_ids_corresp = apply_QCthresh(df_copy, col_qc = col_QC, cols_effect = [correspL, correspR], thresh = qc_thresh) # get QC based on native resolution column
+                logger.info(f"\t\t\t\t{count_qc} rows ({count_qc_ids} unique IDs) with QC values < {qc_thresh} for feature `{ft}` ({col_QC}). Relevant cols have been set to missing.")
+                
+                ## C.2. Remove mising data
+                logger.info(f"\t\t\tCleaning missing map paths...")
+                indx_NA_corresp = df_copy_qc[df_copy_qc[[correspL, correspR]].isna().any(axis=1)].index.tolist() # find indices with missing values in df_copy_qc
+                df_mapPaths_qc.loc[indx_NA_corresp, [col_L, col_R]] = np.nan # set corresponding rows in df_mapPaths_qc to NaN for col_L and col_R
+                
+                df_demo = df_mapPaths_qc.dropna(subset=[col_L, col_R]) # remove rows with missing values in col_L or col_R
+                df_demo_corresp = df_copy_qc.dropna(subset=[correspL, correspR]) # remove rows with missing values in corresponding cols
+                logger.info(f"\t\t\t\t{len(df_mapPaths) - len(df_demo)} rows ({df_mapPaths['UID'].nunique() - df_demo['UID'].nunique()} UIDs) removed ({df_copy_qc['UID'].nunique() - df_demo_corresp['UID'].nunique()} rows NA in corresponding col which may or may not overlap with missing values in the downsampled column) [{df_demo['UID'].nunique()} unique IDs with {df_demo.shape[0]} rows remain]")
+                logger.info(f"\t\t\t\t\tRemoved due to mising in corresponding col: {indx_NA_corresp}")
+                logger.info(f"\t\t\t\t\tThose removed due to missing in ds col: {sorted(set(df_mapPaths_qc['UID'].unique()) - set(df_demo['UID'].unique()) - set(indx_NA_corresp))}")
+
+                ## 3. Remove participants that do not have data for each study
                 ## C.2. Remove mising data
                 logger.info(f"\t\t\tCleaning missing map paths...")
                 indx_NA_corresp = df_copy_qc[df_copy_qc[[correspL, correspR]].isna().any(axis=1)].index.tolist() # find indices with missing values in df_copy_qc
@@ -3491,16 +3416,6 @@ def extractMap(df_mapPaths, cols_L, cols_R,
             n_before = df_mapPaths_qc['UID'].nunique()
             n_after = df_demo['UID'].nunique()
             n_removed = n_before - n_after
-
-            # define columns to drop in df_demo
-            cols2drop = []
-            cols2drop.extend(cols_L)
-            cols2drop.extend(cols_R)
-            # remove col_L, col_R from cols2drop
-            cols2drop = [col for col in cols2drop if col not in [col_L, col_R]]
-            if 'dob' in df_demo.columns:
-                cols2drop.append('dob')
-            df_demo = df_demo.drop(columns=cols2drop)
 
             logger.info(f"\t\t\t\t{n_removed} unique IDs removed [{n_after} unique IDs with {df_demo.shape[0]} rows remain]")
             if n_after == 0:
@@ -3555,9 +3470,10 @@ def extractMap(df_mapPaths, cols_L, cols_R,
                                                  timeStamp=False, append = start, 
                                                  verbose=False, rtn_txt = True)
                 logger.info(f"\t\t\t\t{save_stmt}")
-
+                df_demo_ses_final = df_demo_ses.copy()
+                df_demo_ses_final = df_demo_ses_final # keep only the columns 'Date', 'sex', 'handedness',  
                 # Create dict item, append to list
-                item = {
+                out_dl.append({
                     'study': study_name,
                     'region': region,
                     'surf': surf,
@@ -3567,11 +3483,8 @@ def extractMap(df_mapPaths, cols_L, cols_R,
                     'downsampledRes': downsampledRes,
                     'df_demo': df_demo_ses,
                     'df_maps': maps_pth
-                }
-                if zb_maps: # indicate that maps are from zbrains
-                    item['zb_maps'] = True
-
-                out_dl.append(item)
+                })
+        
         if verbose:
             logger.info(f"\n[extractMap] Returning list with {len(out_dl)} dictionary items (region: {region}).")
         
