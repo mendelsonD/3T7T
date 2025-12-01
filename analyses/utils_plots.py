@@ -1336,14 +1336,22 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
                    frameon=False,
                    fontsize=int(sizes['legend'] * scale),
                    markerscale=max(1, sizes['mrkrsize'] * scale))
-        
-    """ place legend just outside the right side with the same visual spacing
+    
+    # figure physical width in pixels
+    fig_w_in, _ = fig.get_size_inches()
+    dpi = fig.dpi if hasattr(fig, "dpi") else plt.rcParams.get("figure.dpi", 100)
+    fig_w_px = fig_w_in * dpi
+
+    # place legend just outside the right side with the same visual spacing
+    approx_char_width_px = (sizes['x_tick'] * scale) * 0.6
+    pad_px = approx_char_width_px * 5  # 5 characters worth of space
+    pad_frac = pad_px / fig_w_px # fraction of figure width to reserve on each side
+
     ax.legend(fontsize=sizes['legend']*scale,
               markerscale=max(1, sizes['mrkrsize']*2),
               loc='upper left',
               bbox_to_anchor=(1.0 + pad_frac, 1.0),
               borderaxespad=0)
-    """
 
     # y ticks
     # y ticks: place at participant baselines only (exclude pad rows)
@@ -1399,22 +1407,11 @@ def plot_ridgeLine(df_a, df_b, lbl_a, lbl_b, title,
     
     ax.tick_params(axis='y', which='major', pad=max(2, int(4 * scale))) # horizontal padding so labels don't touch axis
 
-    approx_char_width_px = (sizes['x_tick'] * scale) * 0.6
-    pad_px = approx_char_width_px * 5  # 5 characters worth of space
-
     # above first ID, report mean and std of correlations
     if cor:
         cor_txt = f"Mean r: {cors_mn:.2f} ± {cors_std:.2f}"
         ax.text(0.01, 0.99, cor_txt, ha='left', va='top', fontsize=int(sizes['annot'] * scale),
                 transform=ax.transAxes)
-
-    # figure physical width in pixels
-    fig_w_in, _ = fig.get_size_inches()
-    dpi = fig.dpi if hasattr(fig, "dpi") else plt.rcParams.get("figure.dpi", 100)
-    fig_w_px = fig_w_in * dpi
-
-    # fraction of figure width to reserve on each side
-    pad_frac = pad_px / fig_w_px
 
     # convert fraction -> data units (x-axis runs from 0 .. len(vertices)-1)
     x_min = 0
@@ -3195,15 +3192,18 @@ def raw2Z_vis(dl, save_path,
                 figs.append(fig_pth)
 
             # merge figures and deleted raw images
-            pngs2pdf(fig_dir = f"{save_path}/raw", 
+            pdf_pth = pngs2pdf(fig_dir = f"{save_path}/raw", 
                             ptrn = item_sv_name,
-                            output = save_path)
-            # delete files in figs
-            for f in figs:
-                try:
-                    os.remove(f)
-                except:
-                    pass
+                            output = save_path,
+                            verbose = True)
+            # check that pdf_pth exists
+            if pdf_pth is not None and os.path.exists(pdf_pth):
+                # delete files in figs
+                for f in figs:
+                    try:
+                        os.remove(f)
+                    except:
+                        pass
         if test and counter == 1:
             print("\t[test] Stopping after first item.")
             break

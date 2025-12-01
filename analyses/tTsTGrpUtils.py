@@ -257,7 +257,7 @@ def sortCols(df):
     df_sorted = df[sorted_cols]
     return df_sorted
 
-def splitHemis(obj, ipsiTo = 'L'):
+def splitHemis(obj, rmv_lbl = False, ipsiTo = 'L'):
     """
     From a pd.DataFrame or pd.Series with column/index names with hemisphere indicated by values after last '_' in index/col name string,
     split into left and right hemisphere. Return one df/series per hemisphere. Supports L/R and ipsi/contra (provided an ipsiTo mapping).
@@ -308,6 +308,24 @@ def splitHemis(obj, ipsiTo = 'L'):
     # isolate respecitve columns/index per hemi
     obj_L = obj[L]
     obj_R = obj[R]
+
+    if rmv_lbl:
+        def _rmv_hemi_lbl(col_list):
+            new_cols = []
+            for c in col_list:
+                parts = c.rsplit('_', 1)
+                if len(parts) == 2 and parts[1] in ['L', 'R', 'ipsi', 'contra']:
+                    new_cols.append(parts[0])
+                else:
+                    new_cols.append(c)
+            return new_cols
+
+        if isinstance(obj_L, pd.DataFrame):
+            obj_L.columns = _rmv_hemi_lbl(obj_L.columns.tolist())
+            obj_R.columns = _rmv_hemi_lbl(obj_R.columns.tolist())
+        elif isinstance(obj_L, pd.Series):
+            obj_L.index = _rmv_hemi_lbl(obj_L.index.tolist())
+            obj_R.index = _rmv_hemi_lbl(obj_R.index.tolist())
 
     return obj_L, obj_R
 
@@ -1462,7 +1480,7 @@ def get_dsMaps_pths(df, specs, studies, demographics, region, surf, lbl, ft, res
     import pandas as pd
     import numpy as np
     
-    soi = specs['ds_study']
+    soi = specs['ds_study'] # studies of interest
     if isinstance(soi, str):
         soi = [soi]
 
@@ -1496,8 +1514,9 @@ def get_dsMaps_pths(df, specs, studies, demographics, region, surf, lbl, ft, res
             L = np.nan
             R = np.nan
         
-        col_R.at[idx] = R
         col_L.at[idx] = L
+        col_R.at[idx] = R
+        
     
     # concat series objects to input df and return
     df_out = df.copy()
@@ -2330,13 +2349,13 @@ def idToMap(df_demo, dict_demo, specs, studies,
     return df_demo, out_pth, log_file_path
 
 
-def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
+def get_maps(df, mapCols, col_ID='UID', col_study = None, verbose=False):
     """
     Reads in map paths and returns dataframe with rows as participant, columns as vertices (L and R hemis with suffix '{vrtx}_L', '{vrtx}_R')
     NOTE: This does not seperate particiapnt groups (i.e., patients and controls will all be included)
 
     Input:
-        df: DataFrame with columns for ID, SES, Date, and paths to left and right hemisphere maps.
+        df: DataFrame with columns for ID, `SES`, `Date`, and paths to left and right hemisphere maps.
             NOTE. Assume path columns end with '_L' and '_R' for left and right hemisphere respectively.
         mapCols: List of column names in df with paths to maps to extract.
         col_ID: Column name for participant ID in the DataFrame. Default is 'UID'.
@@ -2403,10 +2422,10 @@ def get_maps(df, mapCols, col_ID='MICs_ID', col_study = None, verbose=False):
     map_L_df.columns = [f"{v}_L" for v in map_L_df.columns]
     map_R_df.columns = [f"{v}_R" for v in map_R_df.columns]
     
-    df_maps = df_maps.drop(columns=[col_L, col_R]) # append map_L_df and map_R_df to df_maps. Remove the original columns col_L and col_R from df_maps
+    df_maps = df_maps.drop(columns=[col_L, col_R]) # Remove the original map path columns col_L and col_R from df_maps 
     #print(f"\tdf_maps cols: {df_maps.columns}")
     
-    df_maps = pd.concat([df_maps, map_L_df, map_R_df], axis=1)
+    df_maps = pd.concat([df_maps, map_L_df, map_R_df], axis=1) # Append map_L_df and map_R_df to df_maps.
     #print(f"\tFinal shape:{df_maps.shape}")
 
     df_maps = setIndex(df=df_maps, col_ID=col_ID, sort=True) # index: <UID_><study_>ID_SES
@@ -3266,7 +3285,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R,
                 reg = "ctx"
             elif region == "hippocampus" or region == "hip":
                 region = "hippocampus"
-                reg = "hip"
+                reg = "hip" # TODO. should be `hipp`?
             else:
                 raise ValueError(f"[extractMap] Unknown region: {region}. Should be 'cortex' or 'hippocampus'.")
             
@@ -3295,7 +3314,7 @@ def extractMap(df_mapPaths,  cols_L, cols_R,
             hemi_L_idx = col_L.find('hemi-L_') + len('hemi-L_')
             commonName = col_L[hemi_L_idx:]
             
-            if "_res-" in commonName: # Note assumes that columns that are not downsampled do not have this substring in their col name
+            if "_res-" in commonName: # NOTE. assumes that columns that are not downsampled do not have this substring in their col name
                 ds = True
                 downsampledRes = commonName.split('_res-')[1].split('_')[0].replace("p", ".")
                 
@@ -3752,6 +3771,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth, stats,
     
     start = datetime.datetime.now().strftime('%d%b%Y-%H%M%S')
     log_file_path = os.path.join(save_pth, f"{save_name}_log_{start}.txt")
+    
     # Prepare log file path
     logger = _get_file_logger(__name__, log_file_path)
     logger.info("Log started for winComp function.")
@@ -3916,7 +3936,7 @@ def parcellate_items(dl, df_keys, parcellationSpecs, df_save_pth, stats,
     logger.info(f"\nCompleted. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"[parcellate_items] Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
-    return dl_out, parcellationSpecs
+    return dl_out, out_pth, parcellationSpecs 
 
 def get_Npths(demographics, study, groups, feature="FA", derivative="micapipe", label="midthickness", hemi="LR", space="nativepro", surf="fsLR-5k"):
     """
@@ -4047,6 +4067,8 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
         <saves computed statistics dfs>
         dl_winStats: (list) 
             list of dict items with path to dataframes in appropriately named keys
+        out_pth: (str)
+            path to saved pickle file of dl_winStats
     """
 
     import numpy as np
@@ -4328,7 +4350,7 @@ def winComp(dl, demographics, keys_maps, col_grp, ctrl_grp, covars, out_df_save_
     logger.info(f"Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Completed. End time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    return dl_out
+    return dl_out, out_pth
 
 def search_df(df, ptrn, search_col, searchType='end'): 
     """
@@ -4393,7 +4415,7 @@ def toIC(df_r, df_l):
 
     return df_ic
 
-def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
+def grp_flip(dl, demographics, goi, g_exclude, df_keys, col_grp, save_pth_df,
              save=True, save_pth=None, save_name="05b_stats_winStudy_grp", test=False, verbose=False):
     """
     Group participants and ipsi/contra flip maps according to side of lesion.
@@ -4402,6 +4424,8 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
         dl: (list)              List of dictionary items, each with keys:
         demographics: (dict)    Demographics file path and column names.
         goi: (list)             Groups of interest. List of group names to extract from demographics file.
+        g_exclude: (list of lists)  Names of groups containing string at same position in GOI but that should not be included in that group.
+            e.g.: TLE_BL or nTLE_* may want to be excluded when the GOI is 'TLE'
         df_keys: (list)         Keys in the dict items to apply grouping and flipping to (eg. df_z, df_w).
             NOTE. Indices of these dfs should be UID_ID_SES
         col_grp: (str)          Column name in demographics file with group labels.
@@ -4441,7 +4465,7 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
         logger.info(f"[grp_flip] Saving log to: {log_file_path}")
         logger.info(f"Performing two steps:\n\ta. Selecting patients belonging to {goi}.\n\tb. Ipsi/contra flip.")
         logger.info(f"Start time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        logger.info(f"\tParameters:\n\tinput dl: {len(dl)}\n\tgoi: {goi}\n\tdf_keys: {df_keys}\n\tsave_pth_df: {save_pth_df}\n\tcol_grp: {col_grp}\n\ttest: {test}\n\tverbose: {verbose}\n")
+        logger.info(f"\tParameters:\n\tinput dl: {len(dl)}\n\tgoi: {goi}\n\tg_exclude: {g_exclude}\n\tdf_keys: {df_keys}\n\tsave_pth_df: {save_pth_df}\n\tcol_grp: {col_grp}\n\ttest: {test}\n\tverbose: {verbose}\n")
 
         if test:
             idx_len = 1 # number of indices
@@ -4454,6 +4478,8 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
         else:
             dl_iterate = dl.copy()  # Create a copy of the original list to iterate over
             dl_grp_ic = copy.deepcopy(dl)  # Create a copy of the original list for output and to iterate over
+
+        assert len(goi) == len(g_exclude), f"ERROR. Length of lists goi (groups of interest) and g_exclude (groups to exclude) must be the same. Currently- goi: {len(goi)} | g_exclude: {len(g_exclude)}"
 
         counter = 0 
         for i, item in enumerate(dl_iterate):
@@ -4482,24 +4508,44 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                 continue
             
             logger.info(f"\t\t{len(IDs_ctrl)} IDs CTRL: {IDs_ctrl}")
-            for grp_val in goi: # for each group of interest
+            for grp_in, grp_ex in zip(goi, g_exclude): # for each group of interest
                 
                 if verbose:
-                    logger.info(f"\tGrouping {grp_val}")
+                    logger.info(f"\tGrouping {grp_in} while excluding {grp_ex}")
                 
-                # Get participants in this group
-                demo_grp = df_demo[df_demo[col_grp].str.contains(grp_val)].copy()
-                
+                # Get participants in goi
+                demo_grp = df_demo[df_demo[col_grp].str.contains(grp_in)].copy()
+                # remove participants in demo_grp with group in any of g_exclude
+                if grp_ex:
+                    # normalize grp_ex to a list of patterns
+                    if isinstance(grp_ex, str):
+                        exclude_patterns = [grp_ex]
+                    else:
+                        exclude_patterns = list(grp_ex)
+
+                    # build boolean mask for rows to exclude (True if any pattern matches)
+                    mask_ex = pd.Series(False, index=demo_grp.index)
+                    for ex in exclude_patterns:
+                        if ex is None or ex == "":
+                            continue
+                        mask_ex |= demo_grp[col_grp].astype(str).str.contains(str(ex), na=False)
+
+                    if mask_ex.any():
+                        logger.info(f"\t\tExcluding {mask_ex.sum()} rows from {grp_in} matching exclude patterns: {exclude_patterns}")
+                    demo_grp = demo_grp[~mask_ex].copy()
+                else:
+                    demo_grp = demo_grp.copy()
+                    
                 # extract IDs for grp_L and grp_R
                 IDs_R = search_df(df=demo_grp, ptrn='R', search_col=col_grp,  searchType='end')
                 IDs_L = search_df(df=demo_grp, ptrn='L', search_col=col_grp, searchType='end')
                 
                 # add group IDs to output dictionary item
-                dl_grp_ic[i][f'{grp_val}_R_IDs'] = IDs_R
-                dl_grp_ic[i][f'{grp_val}_L_IDs'] = IDs_L
+                dl_grp_ic[i][f'{grp_in}_R_IDs'] = IDs_R
+                dl_grp_ic[i][f'{grp_in}_L_IDs'] = IDs_L
                 
-                logger.info(f"\t\t{len(IDs_L)} IDs {grp_val}_L: {IDs_L}")
-                logger.info(f"\t\t{len(IDs_R)} IDs {grp_val}_R: {IDs_R}")
+                logger.info(f"\t\t{len(IDs_L)} IDs {grp_in}_L: {IDs_L}")
+                logger.info(f"\t\t{len(IDs_R)} IDs {grp_in}_R: {IDs_R}")
                 
                 if type(df_keys) is str:
                     df_keys = [df_keys]
@@ -4542,7 +4588,7 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                     
                     # save these dfs, add path to output dictionary item
                     for df, suffix in zip([df_stat_l, df_stat_r, df_stat_ic], ['L', 'R', 'ic']):
-                        name = f"{key}_{grp_val}_{suffix}"
+                        name = f"{key}_{grp_in}_{suffix}"
                         pkl_name = f"{index}_{name}"
                         if test:
                             pkl_name = f"TEST_{index}_{name}"
@@ -4551,7 +4597,7 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
                                         timeStamp = False, append = start,
                                         rtn_txt=True, verbose = False)
                         
-                        logger.info(f"\t\t\tPath {grp_val}_{suffix}: {pth}")
+                        logger.info(f"\t\t\tPath {grp_in}_{suffix}: {pth}")
 
                         dl_grp_ic[i][name] = pth
 
@@ -4586,8 +4632,6 @@ def grp_flip(dl, demographics, goi, df_keys, col_grp, save_pth_df,
 
         logger.info(f"\n[grp_flip] Completed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"\n[grp_flip] Completed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-
 
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
