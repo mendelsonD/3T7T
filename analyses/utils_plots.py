@@ -2144,7 +2144,7 @@ def showBrain(lh, rh, region = "ctx",
             if verbose:
                 print(f"[showBrains] WARNING: MICAPIPE environment variable not set. Using hard-coded path {micapipe}")
     elif region in ['hipp', 'hippocampus']:
-        hipp_surfaces = "/host/verges/tank/data/daniel/3T7T/z/code/analyses/resources/"
+        hipp_surfaces = "/host/verges/tank/data/daniel/01_3T7T/z/code/analyses/resources/"
 
     if save_pth is not None:
         if not os.path.exists(save_pth):

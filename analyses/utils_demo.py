@@ -10,18 +10,28 @@ import tTsTGrpUtils as tsutil
 sys.path.append("/host/verges/tank/data/daniel/")
 from genUtils import id, gen, t1
 
-def get_demo(sheets, save_pth=None, save_name="01b_demo"):
+def get_demo(sheets, 
+             mr_col = 'BaselineMRI', mr_ptrns = None, 
+             save_pth=None, save_name="01b_demo"):
     """
     Run all functions to generate demographic data for 3T-7T participants.
 
     input:
         sheets: list of dictionarys with source sheet information (path to sheet, key columns to extract
+        
+        mr_col: name of the column in clinical exam sheet to use for MR negative detection
+        ptrn_mr_neg: list of lists
+            [0]: list of strings or regex patterns to identify MR negative participants based on clinical exam columns 
+            [1]: list of strings indicating missing data
+
+        save_name: base name for saving output demographic file
         save_pth: path to save the output demographic file
 
     outputs:
         list of IDs with paired 3T-7T data
         sheet with each row as separate session and with associated demographic information
     """
+    from datetime import datetime
     importlib.reload(id)
     importlib.reload(t1)
     importlib.reload(tsutil)
@@ -46,18 +56,13 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
     print("[get_demo] After cleaning for missing scan dates, there are ", out['MICS_ID'].nunique(), " unique participants with a total of ", out.shape[0], " sessions (3T:",(out['study'] == '3T').sum(),", 7T:", (out['study'] == '7T').sum(),") in input datasheet.")
     #out.to_csv(f"{save_pth}/demo_debug_3-rmvNADate.csv", index=False) # debug
     
-    # assign unique ID per participant
     uniqueIDName = "UID"
-
-    out = uniqueID(out, idcols=id_cols, uniqueIDName=uniqueIDName)
+    out = uniqueID(out, idcols=id_cols, uniqueIDName=uniqueIDName) # assign unique ID per participant
     id_cols = id_cols + [uniqueIDName]
     print(id_cols)
     
-    # save out
     if save_pth is not None: # save corresponding IDs
-        import datetime
-
-        save_name_tmp = f"{save_pth}/01a_ids_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
+        save_name_tmp = f"{save_pth}/01a_ids_{datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
         toSave = out[id_cols].drop_duplicates()
         toSave.to_csv(save_name_tmp, index=False)
         print("[get_demo] Saved list of paired ids to: ", save_name_tmp)
@@ -72,8 +77,8 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
     if dob_col is None:
         print("[get_demo] WARNING. No DOB column found in any input sheet. Age will not be computed.")
     
-    out = tsutil.stdizeNA(out)
-    out = mergeCols(out)
+    out = tsutil.stdizeNA(out) # standardize missing values
+    out = mergeCols(out) # merge columns with same name
     print("[get_demo] Merged columns with the same name. Current columns (sorted): \n\t", sorted(out.columns.tolist(), key=lambda x: x.lower()))
 
     # Fill missing demo variables for each participant, warn if multiple unique values exist
@@ -86,7 +91,6 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
     out = t1.dateDif(out, [dob_col, "Date"], "age", save=False) # compute age
     clin_sheet = [s for s in sheets if s['NAME'] == 'Clin'][0]# find sheet with name 'Clin'
     
-
     out = group(out, out_col="grp", detailed = False, 
                 ID_col="MICS_ID", MFCL_col=clin_sheet['EpilepsyClass'], 
                 lobe_col=clin_sheet['FocusConfirmed'],
@@ -98,6 +102,38 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
                 lat_col=clin_sheet['FocusLat'],
                 save_pth=None) # assign detailed groups
     
+    # Determine if MR negative based on specified patterns in specified column 
+    if mr_col not in out.columns:
+        print(f"[get_demo] WARNING. Specified MR column '{mr_col}' not found in data. Skipping MR negative detection.")
+    else:
+        neg_mri_count = 0
+        for val in out[mr_col]:
+            if isinstance(val, str):
+                val_lwr = val.lower()
+                if any(ptrn in val_lwr for ptrn in mr_ptrns[0]):
+                    neg_mri_count += 1
+                    
+                    if 'MR_neg' not in out.columns:
+                        regex_parts = [re.escape(p.lower()).replace(r'\*', '.*') for p in mr_ptrns[0]]
+                        pattern = re.compile('|'.join(regex_parts))
+                        
+                        def _is_missing_like(s):
+                            s2 = s.strip().lower()
+                            return s2 in [m.lower() for m in mr_ptrns[1]]
+
+                        def _detect_neg(x):
+                            if isinstance(x, str):
+                                x2 = x.strip().lower()
+                                if _is_missing_like(x2):
+                                    return pd.NA
+                                return bool(pattern.search(x2))
+                            return pd.NA
+
+                        out['MR_neg'] = out[mr_col].apply(_detect_neg).astype('boolean') # binarize while preserving NA values
+                        out_unique = out[['UID', mr_col, 'MR_neg']].drop_duplicates().reset_index(drop=True)
+                        neg_mri_count = int(out_unique['MR_neg'].sum()) # recompute the negative count from the dataframe (overwrite incremental count)
+        print(f"Number of patients with negative MRI findings: {neg_mri_count} of {len(out['UID'].unique())}")
+
     # Sanity checks:
     # Ensure all participants assigned a group
     grpChk(out, grp_cols=['grp', 'grp_detailed'])
@@ -108,9 +144,7 @@ def get_demo(sheets, save_pth=None, save_name="01b_demo"):
         print(out.loc[dupes, ['UID', 'MICS_ID', 'PNI_ID', 'study', 'SES'] + [col for col in out.columns if col not in ['MICS_ID', 'PNI_ID', 'study', 'SES']]])
 
     if save_pth is not None:
-        import datetime
-
-        save_name = f"{save_pth}/01b_demo_{datetime.datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
+        save_name = f"{save_pth}/01b_demo_{datetime.now().strftime('%d%b%Y-%H%M%S')}.csv"
         out.to_csv(save_name, index=False)
         print("[get_demo] Saved to: ", save_name)
     else:
@@ -142,10 +176,12 @@ def uniqueID(df, idcols, uniqueIDName="UID"):
     
     return df
 
-def grp_summary(df_demo, col_grp= 'grp_detailed', save_pth=None, save_name="01c_grpSummary", toPrint=True):
+def grp_summary(df_demo, col_grp='grp_detailed', save_pth=None, save_name="01c_grpSummary", toPrint=True):
     """
     Count number of participants, sessions for a grouping variable
     """
+    from datetime import datetime
+
     # Calculate max and median number of sessions per participant for each group and study
     def max_sessions(df, group, study):
         subset = df[(df[col_grp] == group) & (df['study'] == study)]
@@ -175,6 +211,7 @@ def grp_summary(df_demo, col_grp= 'grp_detailed', save_pth=None, save_name="01c_
     group_summary['max_ses_7T'] = group_summary.index.map(lambda g: max_sessions(df_demo, g, '7T'))
     group_summary['median_ses_3T'] = group_summary.index.map(lambda g: median_sessions(df_demo, g, '3T'))
     group_summary['median_ses_7T'] = group_summary.index.map(lambda g: median_sessions(df_demo, g, '7T'))
+
     # Add a total row at the end with sums for participant/session counts, leave median/max empty
     total_row = {
         'num_px': group_summary['num_px'].sum(),
@@ -186,13 +223,45 @@ def grp_summary(df_demo, col_grp= 'grp_detailed', save_pth=None, save_name="01c_
         'median_ses_7T': ''
     }
 
+    # summarize MR negative by group
+    if 'MR_neg' in df_demo.columns:
+        df_demo_unique = df_demo[['UID', col_grp, 'MR_neg']].drop_duplicates().reset_index(drop=True).groupby(col_grp)['MR_neg']
+        mr_neg_summary = pd.DataFrame({
+            'MR_total': df_demo_unique.size(),
+            'MR_neg': df_demo_unique.apply(lambda x: x.eq(True).sum()),
+            'MR_na': df_demo_unique.apply(lambda x: x.isna().sum())
+        })
+        mr_neg_summary['MR_pos'] = mr_neg_summary['MR_total'] - mr_neg_summary['MR_neg'] - mr_neg_summary['MR_na']
+        # percent negative among known (exclude NA)
+        mr_neg_summary['MR_pct_neg'] = (mr_neg_summary['MR_neg'] / (mr_neg_summary['MR_neg'] + mr_neg_summary['MR_pos']) * 100).round(1)
+        mr_neg_summary = mr_neg_summary.sort_values('MR_total', ascending=False)
+        
+        group_summary = group_summary.join(mr_neg_summary, how='left') # Join MR summary into group_summary (align on index = groups)
+        
+        for c in ['MR_total', 'MR_neg', 'MR_na', 'MR_pos']: # initialize
+            if c in group_summary.columns:
+                group_summary[c] = group_summary[c].where(group_summary[c].notna(), pd.NA).astype("Int64")
+        if 'MR_pct_neg' in group_summary.columns:
+            group_summary['MR_pct_neg'] = group_summary['MR_pct_neg'].fillna(0.0)
+
+        # Add MR total to total_row
+        total_row.update({
+            'MR_total': int(group_summary['MR_total'].sum()) if 'MR_total' in group_summary.columns else 0,
+            'MR_neg': int(group_summary['MR_neg'].sum()) if 'MR_neg' in group_summary.columns else 0,
+            'MR_na': int(group_summary['MR_na'].sum()) if 'MR_na' in group_summary.columns else 0,
+            'MR_pos': int(group_summary['MR_pos'].sum()) if 'MR_pos' in group_summary.columns else 0,
+        })
+        # compute overall percent negative (exclude NA)
+        denom = total_row['MR_neg'] + total_row['MR_pos']
+        total_row['MR_pct_neg'] = round((total_row['MR_neg'] / denom * 100), 1) if denom > 0 else 0.0
+
     group_summary = pd.concat([group_summary, pd.DataFrame([total_row], index=['TOTAL'])])
 
     group_summary = group_summary.sort_values('num_px', ascending=False)
 
     # save to csv
     if save_pth is not None:
-        output_csv = os.path.join(save_pth, f"{save_name}_{pd.Timestamp.now().strftime('%d%b%Y')}.csv")
+        output_csv = os.path.join(save_pth, f"{save_name}_{datetime.now().strftime('%d%b%Y-%H%M%S')}.csv")
         group_summary.to_csv(output_csv, header=True)
         print(f"[grp_summary] Saved participant summary to {output_csv}")
     if toPrint:
