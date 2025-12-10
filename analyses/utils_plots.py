@@ -4804,3 +4804,128 @@ def hist_comp(maps_dict, ax=None, show_plot=False):
         plt.show()
     
     return fig, ax
+
+# create violin plots. Each corresponding row for across all parcels
+def violin_plot(x1, x2, x1_lbl, x2_lbl, y_axis_lbl, title, save_name, save_path):
+    import seaborn as sns
+    import pandas as pd
+    from matplotlib.patches import Patch
+    import os
+    from datetime import datetime
+    import matplotlib.pyplot as plt
+    
+    # Extract UIDs from indices
+    x1_uids = [idx.split('_')[0] for idx in x1.index]
+    x2_uids = [idx.split('_')[0] for idx in x2.index]
+    
+    # Find common UIDs
+    common_uids = set(x1_uids) & set(x2_uids)
+    
+    # Prepare data for plotting
+    plot_data = []
+    labels = []
+    
+    for uid in common_uids:
+        # Find matching participants
+        x1_idx = [idx for idx in x1.index if idx.startswith(uid)]
+        x2_idx = [idx for idx in x2.index if idx.startswith(uid)]
+        
+        if x1_idx and x2_idx:
+            x1_participant = x1.loc[x1_idx[0]]
+            x2_participant = x2.loc[x2_idx[0]]
+            
+            # Create label
+            x1_parts = x1_idx[0].split('_')
+            x2_parts = x2_idx[0].split('_')
+            label = f"{uid}-{x1_parts[1]}-{x1_parts[2]}-{x2_parts[1]}-{x2_parts[2]}"
+            
+            # Add data points
+            plot_data.extend([(val, label, x1_lbl) for val in x1_participant.values])
+            plot_data.extend([(val, label, x2_lbl) for val in x2_participant.values])
+            labels.append(label)
+    
+    # Convert to DataFrame
+    df_plot = pd.DataFrame(plot_data, columns=['value', 'participant', 'study'])
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Create violin plot
+    parts = ax.violinplot([df_plot[(df_plot['participant'] == label) & (df_plot['study'] == x1_lbl)]['value'].values 
+                          for label in labels], 
+                         positions=range(len(labels)), widths=0.4)
+    
+    # Color left violins (x1 data) light red and set whiskers to black
+    for pc in parts['bodies']:
+        pc.set_facecolor('lightcoral')
+        pc.set_alpha(0.7)
+    
+    # Set whiskers to black for x1 violins
+    for part_name in ['cbars', 'cmins', 'cmaxes', 'cmedians']:
+        if part_name in parts:
+            parts[part_name].set_color('gray')
+    
+    # Add right violins (x2 data) in light blue
+    parts2 = ax.violinplot([df_plot[(df_plot['participant'] == label) & (df_plot['study'] == x2_lbl)]['value'].values 
+                           for label in labels], 
+                          positions=[pos + 0.4 for pos in range(len(labels))], widths=0.4)
+    
+    # Color right violins light blue and set whiskers to gray
+    for pc in parts2['bodies']:
+        pc.set_facecolor('lightblue')
+        pc.set_alpha(0.7)
+    
+    # Set whiskers to gray for x2 violins
+    for part_name in ['cbars', 'cmins', 'cmaxes', 'cmedians']:
+        if part_name in parts2:
+            parts2[part_name].set_color('gray')
+    
+    # add column that puts all the data together across participants for each study
+    parts_all_x1 = ax.violinplot([df_plot[df_plot['study'] == x1_lbl]['value'].values], 
+                                 positions=[len(labels) + 1], widths=0.4)
+    for pc in parts_all_x1['bodies']:
+        pc.set_facecolor('lightcoral')
+        pc.set_alpha(0.7)
+    
+    # Set whiskers to black for aggregated x1 violin
+    for part_name in ['cbars', 'cmins', 'cmaxes', 'cmedians']:
+        if part_name in parts_all_x1:
+            parts_all_x1[part_name].set_color('black')
+    
+    # Add aggregated violin for x2 data
+    parts_all_x2 = ax.violinplot([df_plot[df_plot['study'] == x2_lbl]['value'].values], 
+                                 positions=[len(labels) + 1.4], widths=0.4)
+    for pc in parts_all_x2['bodies']:
+        pc.set_facecolor('lightblue')
+        pc.set_alpha(0.7)
+    
+    # Set whiskers to black for aggregated x2 violin
+    for part_name in ['cbars', 'cmins', 'cmaxes', 'cmedians']:
+        if part_name in parts_all_x2:
+            parts_all_x2[part_name].set_color('black')
+
+    labels.append("")
+    labels.append("All Participants")
+    
+    # Customize plot
+    tick_positions = [pos + 0.2 for pos in range(len(labels))]
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(labels, rotation=45, ha='right')
+    ax.set_ylabel(y_axis_lbl)
+    ax.set_title(title)
+    
+    # Add legend
+    legend_elements = [Patch(facecolor='lightcoral', alpha=0.7, label=x1_lbl),
+                      Patch(facecolor='lightblue', alpha=0.7, label=x2_lbl)]
+    ax.legend(handles=legend_elements)
+    
+    plt.tight_layout()
+    
+    # Save plot
+    if save_path and save_name:
+        os.makedirs(save_path, exist_ok=True)
+        time = datetime.now().strftime("%d%b%Y-%H%M")
+        out_path = os.path.join(save_path, f"{save_name}_{time}.png")
+        plt.savefig(out_path, dpi=300, bbox_inches='tight')
+        print(f"Saved plot to: {out_path}")
+    plt.show()
